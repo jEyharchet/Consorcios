@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { prisma } from "@/lib/prisma";
+import { prisma } from "../../../../lib/prisma";
 
 async function createConsorcio(formData: FormData) {
   "use server";
