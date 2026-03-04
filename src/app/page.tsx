@@ -1,7 +1,7 @@
 export default function Home() {
   return (
     <main className="flex min-h-screen items-center justify-center px-6 py-16">
-      <section className="flex w-full max-w-3xl flex-col items-center text-center">
+      <section className="flex w-full max-w-2xl flex-col items-center text-center">
         <h1 className="text-4xl font-bold tracking-tight text-slate-900 sm:text-5xl">
           Administración de Consorcios
         </h1>
@@ -10,23 +10,16 @@ export default function Home() {
           Sistema para gestión de edificios, unidades y expensas
         </p>
 
-        <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
-          <button
-            type="button"
-            className="rounded-lg bg-slate-900 px-6 py-3 text-sm font-medium text-white transition hover:bg-slate-700"
-          >
+        <div className="mt-10 flex flex-wrap justify-center gap-4">
+          <button className="rounded-lg bg-slate-900 px-6 py-3 text-sm font-medium text-white hover:bg-slate-700">
             Consorcios
           </button>
-          <button
-            type="button"
-            className="rounded-lg bg-slate-900 px-6 py-3 text-sm font-medium text-white transition hover:bg-slate-700"
-          >
+
+          <button className="rounded-lg bg-slate-900 px-6 py-3 text-sm font-medium text-white hover:bg-slate-700">
             Unidades
           </button>
-          <button
-            type="button"
-            className="rounded-lg bg-slate-900 px-6 py-3 text-sm font-medium text-white transition hover:bg-slate-700"
-          >
+
+          <button className="rounded-lg bg-slate-900 px-6 py-3 text-sm font-medium text-white hover:bg-slate-700">
             Expensas
           </button>
         </div>
