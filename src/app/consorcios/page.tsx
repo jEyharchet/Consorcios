@@ -1,54 +1,53 @@
+import Link from "next/link";
 import { prisma } from "../../../lib/prisma";
 
 export default async function ConsorciosPage() {
   const consorcios = await prisma.consorcio.findMany({
-    orderBy: { nombre: "asc" },
     include: { unidades: true },
+    orderBy: { nombre: "asc" },
   });
 
-export default function ConsorciosPage() {
   return (
     <main className="mx-auto w-full max-w-6xl px-6 py-10">
       <header className="mb-6 flex items-center justify-between gap-4">
-        <h1 className="text-3xl font-bold tracking-tight text-slate-900">Consorcios</h1>
-        <button
-          type="button"
-          className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700"
+        <h1 className="text-2xl font-semibold">Consorcios</h1>
+
+        <Link
+          href="/consorcios/nuevo"
+          className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
         >
           Nuevo consorcio
-        </button>
+        </Link>
       </header>
 
-      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
-        <table className="min-w-full divide-y divide-slate-200">
+      <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+        <table className="w-full border-collapse">
           <thead className="bg-slate-50">
-            <tr>
-              <th className="px-4 py-3 text-left text-sm font-semibold text-slate-700">Nombre</th>
-              <th className="px-4 py-3 text-left text-sm font-semibold text-slate-700">Dirección</th>
-              <th className="px-4 py-3 text-left text-sm font-semibold text-slate-700">Unidades</th>
+            <tr className="text-left text-sm text-slate-600">
+              <th className="px-4 py-3 font-medium">Nombre</th>
+              <th className="px-4 py-3 font-medium">Dirección</th>
+              <th className="px-4 py-3 font-medium">Unidades</th>
             </tr>
           </thead>
-          <tbody>
+
+          <tbody className="text-sm text-slate-800">
             {consorcios.length === 0 ? (
               <tr className="border-t border-slate-100">
-                <td className="px-4 py-4 text-sm text-slate-500">—</td>
-                <td className="px-4 py-4 text-sm text-slate-500">—</td>
-                <td className="px-4 py-4 text-sm text-slate-700">0</td>
+                <td className="px-4 py-4 text-slate-500" colSpan={3}>
+                  No hay consorcios cargados.
+                </td>
               </tr>
             ) : (
-              consorcios.map((consorcio) => (
-                <tr key={consorcio.id} className="border-t border-slate-100">
-                  <td className="px-4 py-4 text-sm text-slate-700">{consorcio.nombre}</td>
-                  <td className="px-4 py-4 text-sm text-slate-700">{consorcio.direccion}</td>
-                  <td className="px-4 py-4 text-sm text-slate-700">{consorcio.unidades?.length ?? 0}</td>
+              consorcios.map((c) => (
+                <tr key={c.id} className="border-t border-slate-100">
+                  <td className="px-4 py-4">{c.nombre}</td>
+                  <td className="px-4 py-4 text-slate-700">{c.direccion}</td>
+                  <td className="px-4 py-4 text-slate-700">
+                    {c.unidades.length}
+                  </td>
                 </tr>
               ))
             )}
-            <tr className="border-t border-slate-100">
-              <td className="px-4 py-4 text-sm text-slate-500">—</td>
-              <td className="px-4 py-4 text-sm text-slate-500">—</td>
-              <td className="px-4 py-4 text-sm text-slate-700">0</td>
-            </tr>
           </tbody>
         </table>
       </div>
