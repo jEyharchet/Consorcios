@@ -2,10 +2,11 @@ import { prisma } from "../../../lib/prisma";
 
 export default async function ConsorciosPage() {
   const consorcios = await prisma.consorcio.findMany({
-    include: { unidades: true },
     orderBy: { nombre: "asc" },
+    include: { unidades: true },
   });
 
+export default function ConsorciosPage() {
   return (
     <main className="mx-auto w-full max-w-6xl px-6 py-10">
       <header className="mb-6 flex items-center justify-between gap-4">
@@ -39,10 +40,15 @@ export default async function ConsorciosPage() {
                 <tr key={consorcio.id} className="border-t border-slate-100">
                   <td className="px-4 py-4 text-sm text-slate-700">{consorcio.nombre}</td>
                   <td className="px-4 py-4 text-sm text-slate-700">{consorcio.direccion}</td>
-                  <td className="px-4 py-4 text-sm text-slate-700">{consorcio.unidades.length}</td>
+                  <td className="px-4 py-4 text-sm text-slate-700">{consorcio.unidades?.length ?? 0}</td>
                 </tr>
               ))
             )}
+            <tr className="border-t border-slate-100">
+              <td className="px-4 py-4 text-sm text-slate-500">—</td>
+              <td className="px-4 py-4 text-sm text-slate-500">—</td>
+              <td className="px-4 py-4 text-sm text-slate-700">0</td>
+            </tr>
           </tbody>
         </table>
       </div>
