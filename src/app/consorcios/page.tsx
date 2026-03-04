@@ -1,4 +1,3 @@
-<<<<<<< codex/initialize-web-project-for-administracion-de-consorcios-nh0lji
 import { prisma } from "../../../lib/prisma";
 
 export default async function ConsorciosPage() {
@@ -7,9 +6,7 @@ export default async function ConsorciosPage() {
     include: { unidades: true },
   });
 
-=======
 export default function ConsorciosPage() {
->>>>>>> main
   return (
     <main className="mx-auto w-full max-w-6xl px-6 py-10">
       <header className="mb-6 flex items-center justify-between gap-4">
@@ -32,7 +29,6 @@ export default function ConsorciosPage() {
             </tr>
           </thead>
           <tbody>
-<<<<<<< codex/initialize-web-project-for-administracion-de-consorcios-nh0lji
             {consorcios.length === 0 ? (
               <tr className="border-t border-slate-100">
                 <td className="px-4 py-4 text-sm text-slate-500">—</td>
@@ -48,13 +44,11 @@ export default function ConsorciosPage() {
                 </tr>
               ))
             )}
-=======
             <tr className="border-t border-slate-100">
               <td className="px-4 py-4 text-sm text-slate-500">—</td>
               <td className="px-4 py-4 text-sm text-slate-500">—</td>
               <td className="px-4 py-4 text-sm text-slate-700">0</td>
             </tr>
->>>>>>> main
           </tbody>
         </table>
       </div>
