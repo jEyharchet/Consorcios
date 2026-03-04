@@ -20,7 +20,13 @@ export default function ConsorciosPage() {
               <th className="px-4 py-3 text-left text-sm font-semibold text-slate-700">Unidades</th>
             </tr>
           </thead>
-          <tbody />
+          <tbody>
+            <tr className="border-t border-slate-100">
+              <td className="px-4 py-4 text-sm text-slate-500">—</td>
+              <td className="px-4 py-4 text-sm text-slate-500">—</td>
+              <td className="px-4 py-4 text-sm text-slate-700">0</td>
+            </tr>
+          </tbody>
         </table>
       </div>
     </main>
