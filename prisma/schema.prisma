@@ -4,12 +4,133 @@ generator client {
 
 datasource db {
   provider = "sqlite"
-  url      = "file:./dev.db"
+  url      = env("DATABASE_URL")
 }
 
 model Consorcio {
+  id            Int       @id @default(autoincrement())
+  nombre        String
+  direccion     String
+  ciudad        String?
+  provincia     String?
+  codigoPostal  String?
+  cuit          String?
+  fechaCreacion DateTime  @default(now())
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  unidades      Unidad[]
+  liquidaciones Liquidacion[]
+
+  @@index([nombre])
+}
+
+model Unidad {
+  id                 Int      @id @default(autoincrement())
+  consorcioId        Int
+  identificador      String
+  tipo               String   @default("DEPARTAMENTO")
+  piso               String?
+  superficie         Float?
+  porcentajeExpensas Float?
+
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  consorcio          Consorcio @relation(fields: [consorcioId], references: [id], onDelete: Cascade)
+  personas           UnidadPersona[]
+  expensas           Expensa[]
+
+  @@unique([consorcioId, identificador])
+  @@index([consorcioId])
+}
+
+model Persona {
   id        Int      @id @default(autoincrement())
   nombre    String
-  direccion String
+  apellido  String
+  email     String?
+  telefono  String?
+  tipo      String   @default("PROPIETARIO")
+
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  unidades  UnidadPersona[]
+
+  @@index([apellido, nombre])
+  @@index([email])
+}
+
+model UnidadPersona {
+  unidadId  Int
+  personaId Int
+
+  desde     DateTime?
+  hasta     DateTime?
+  esTitular Boolean @default(true)
+
+  unidad    Unidad  @relation(fields: [unidadId], references: [id], onDelete: Cascade)
+  persona   Persona @relation(fields: [personaId], references: [id], onDelete: Cascade)
+
+  @@id([unidadId, personaId])
+  @@index([personaId])
+}
+
+model Liquidacion {
+  id               Int       @id @default(autoincrement())
+  consorcioId      Int
+  periodo          String
+  fechaEmision     DateTime  @default(now())
+  fechaVencimiento DateTime?
+  total            Float?
+
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  consorcio        Consorcio @relation(fields: [consorcioId], references: [id], onDelete: Cascade)
+  expensas         Expensa[]
+
+  @@unique([consorcioId, periodo])
+  @@index([consorcioId])
+}
+
+model Expensa {
+  id            Int      @id @default(autoincrement())
+  liquidacionId Int
+  unidadId      Int
+
+  monto         Float
+  saldo         Float
+  estado        String   @default("PENDIENTE")
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  liquidacion   Liquidacion @relation(fields: [liquidacionId], references: [id], onDelete: Cascade)
+  unidad        Unidad      @relation(fields: [unidadId], references: [id], onDelete: Cascade)
+  pagos         Pago[]
+
+  @@unique([liquidacionId, unidadId])
+  @@index([unidadId])
+  @@index([liquidacionId])
+}
+
+model Pago {
+  id         Int      @id @default(autoincrement())
+  expensaId  Int
+
+  fechaPago  DateTime @default(now())
+  monto      Float
+  medioPago  String   @default("TRANSFERENCIA")
+  referencia String?
+  nota       String?
+
+  createdAt  DateTime @default(now())
+
+  expensa    Expensa  @relation(fields: [expensaId], references: [id], onDelete: Cascade)
+
+  @@index([expensaId])
+  @@index([fechaPago])
 }
