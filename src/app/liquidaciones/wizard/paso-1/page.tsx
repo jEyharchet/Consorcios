@@ -141,6 +141,10 @@ export default async function LiquidacionWizardPaso1NuevaPage({
   async function confirmarPaso1(formData: FormData) {
     "use server";
 
+    if (activeConsorcioId === null) {
+      redirect("/liquidaciones");
+    }
+
     await requireConsorcioRole(activeConsorcioId, ["ADMIN", "OPERADOR"]);
 
     const mesRendicionValue = normalizePeriodo((formData.get("mesRendicion")?.toString() ?? "").trim());
