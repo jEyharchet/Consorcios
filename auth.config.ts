@@ -27,7 +27,7 @@ const authConfig = {
     session({ session, token }) {
       if (session.user) {
         session.user.id = typeof token.id === "string" ? token.id : "";
-        session.user.role = isGlobalRole(String(token.role ?? "")) ? String(token.role) : "USER";
+        session.user.role = isGlobalRole(String(token.role ?? "")) ? (String(token.role) as "SUPER_ADMIN" | "USER") : "USER";
         session.user.activo = token.activo !== false;
       }
 
