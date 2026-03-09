@@ -1,13 +1,17 @@
-import Link from "next/link";
+﻿import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { prisma } from "../../../../lib/prisma";
+import { prisma } from "../../../lib/prisma";
+import { requireSuperAdmin } from "../../../lib/auth";
 
 async function createConsorcio(formData: FormData) {
   "use server";
 
-  const nombre = formData.get("nombre")?.toString();
-  const direccion = formData.get("direccion")?.toString();
+  await requireSuperAdmin();
+
+  const nombre = formData.get("nombre")?.toString() ?? "";
+  const tituloLegal = formData.get("tituloLegal")?.toString() || null;
+  const direccion = formData.get("direccion")?.toString() ?? "";
   const ciudad = formData.get("ciudad")?.toString() || null;
   const provincia = formData.get("provincia")?.toString() || null;
   const codigoPostal = formData.get("codigoPostal")?.toString() || null;
@@ -17,6 +21,7 @@ async function createConsorcio(formData: FormData) {
   await prisma.consorcio.create({
     data: {
       nombre,
+      tituloLegal,
       direccion,
       ciudad,
       provincia,
@@ -29,7 +34,9 @@ async function createConsorcio(formData: FormData) {
   redirect("/consorcios");
 }
 
-export default function NuevoConsorcioPage() {
+export default async function NuevoConsorcioPage() {
+  await requireSuperAdmin();
+
   return (
     <main className="mx-auto w-full max-w-3xl px-6 py-10">
       <h1 className="text-3xl font-bold tracking-tight text-slate-900">Nuevo consorcio</h1>
@@ -48,8 +55,20 @@ export default function NuevoConsorcioPage() {
         </div>
 
         <div className="space-y-2">
+          <label htmlFor="tituloLegal" className="block text-sm font-medium text-slate-700">
+            Titulo legal
+          </label>
+          <input
+            id="tituloLegal"
+            name="tituloLegal"
+            type="text"
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none ring-slate-300 transition placeholder:text-slate-400 focus:border-slate-400 focus:ring-2"
+          />
+        </div>
+
+        <div className="space-y-2">
           <label htmlFor="direccion" className="block text-sm font-medium text-slate-700">
-            Dirección
+            Direccion
           </label>
           <input
             id="direccion"

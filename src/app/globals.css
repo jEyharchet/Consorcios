@@ -1,4 +1,4 @@
-@tailwind base;
+﻿@tailwind base;
 @tailwind components;
 @tailwind utilities;
 
@@ -8,4 +8,27 @@
 
 body {
   @apply bg-slate-50 text-slate-900 antialiased;
+}
+
+.page-break {
+  margin-top: 40px;
+}
+
+.landscape-page {
+  width: 100%;
+}
+
+@media print {
+  .page-break {
+    page-break-before: always;
+    break-before: page;
+  }
+
+  @page landscape {
+    size: landscape;
+  }
+
+  .landscape-page {
+    page: landscape;
+  }
 }

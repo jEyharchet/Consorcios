@@ -8,118 +8,204 @@ datasource db {
 }
 
 model Consorcio {
-  id            Int       @id @default(autoincrement())
+  id            Int      @id @default(autoincrement())
   nombre        String
+  tituloLegal   String?
   direccion     String
   ciudad        String?
   provincia     String?
   codigoPostal  String?
   cuit          String?
-  fechaCreacion DateTime  @default(now())
+  fechaCreacion DateTime @default(now())
 
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-
-  unidades      Unidad[]
-  liquidaciones Liquidacion[]
-
-  @@index([nombre])
+  unidades            Unidad[]
+  liquidaciones       Liquidacion[]
+  administradores     ConsorcioAdministrador[]
+  proveedorConsorcios ProveedorConsorcio[]
+  gastos              Gasto[]
+  userConsorcios      UserConsorcio[]
+  cuentasBancarias    ConsorcioCuentaBancaria[]
 }
 
 model Unidad {
-  id                 Int      @id @default(autoincrement())
+  id                 Int     @id @default(autoincrement())
   consorcioId        Int
   identificador      String
-  tipo               String   @default("DEPARTAMENTO")
+  tipo               String  @default("DEPARTAMENTO")
   piso               String?
+  departamento       String?
   superficie         Float?
   porcentajeExpensas Float?
 
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  consorcio          Consorcio @relation(fields: [consorcioId], references: [id], onDelete: Cascade)
-  personas           UnidadPersona[]
-  expensas           Expensa[]
+  consorcio Consorcio      @relation(fields: [consorcioId], references: [id], onDelete: Cascade)
+  personas  UnidadPersona[]
+  expensas  Expensa[]
+  prorrateos LiquidacionProrrateoUnidad[]
 
   @@unique([consorcioId, identificador])
   @@index([consorcioId])
 }
 
 model Persona {
-  id        Int      @id @default(autoincrement())
-  nombre    String
-  apellido  String
-  email     String?
-  telefono  String?
-  tipo      String   @default("PROPIETARIO")
+  id       Int    @id @default(autoincrement())
+  nombre   String
+  apellido String
+  email    String?
+  telefono String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  unidades  UnidadPersona[]
+  unidades                UnidadPersona[]
+  consorciosAdministrados ConsorcioAdministrador[]
 
   @@index([apellido, nombre])
   @@index([email])
 }
 
 model UnidadPersona {
+  id        Int      @id @default(autoincrement())
   unidadId  Int
   personaId Int
-
-  desde     DateTime?
+  desde     DateTime
   hasta     DateTime?
-  esTitular Boolean @default(true)
 
-  unidad    Unidad  @relation(fields: [unidadId], references: [id], onDelete: Cascade)
-  persona   Persona @relation(fields: [personaId], references: [id], onDelete: Cascade)
+  unidad  Unidad  @relation(fields: [unidadId], references: [id], onDelete: Cascade)
+  persona Persona @relation(fields: [personaId], references: [id], onDelete: Cascade)
 
-  @@id([unidadId, personaId])
+  @@index([unidadId, personaId])
   @@index([personaId])
 }
 
+model ConsorcioAdministrador {
+  id          Int      @id @default(autoincrement())
+  consorcioId Int
+  personaId   Int
+  desde       DateTime
+  hasta       DateTime?
+
+  actaNombreOriginal String?
+  actaMimeType       String?
+  actaPath           String?
+  actaSubidaAt       DateTime?
+
+  consorcio Consorcio @relation(fields: [consorcioId], references: [id], onDelete: Cascade)
+  persona   Persona   @relation(fields: [personaId], references: [id], onDelete: Cascade)
+
+  @@index([consorcioId])
+  @@index([personaId])
+  @@index([consorcioId, personaId])
+}
+
 model Liquidacion {
-  id               Int       @id @default(autoincrement())
-  consorcioId      Int
-  periodo          String
-  fechaEmision     DateTime  @default(now())
-  fechaVencimiento DateTime?
-  total            Float?
+  id                     Int      @id @default(autoincrement())
+  consorcioId            Int
+  periodo                String
+  fechaEmision           DateTime @default(now())
+  fechaVencimiento       DateTime?
+  mesRendicion           String?
+  mesVencimiento         String?
+  montoFondoReserva      Float?
+  montoOrdinarias        Float?
+  montoExtraordinarias   Float?
+  tasaInteresMensual     Float?
+  datosJuicios           String?
+  recomendacionesGenerales String?
+  novedadesMes           String?
+  wizardPasoActual       Int?     @default(1)
+  total                  Float?
+  estado                 String   @default("BORRADOR")
+  boletaCuentaSnapshot   String?
 
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  consorcio        Consorcio @relation(fields: [consorcioId], references: [id], onDelete: Cascade)
-  expensas         Expensa[]
+  consorcio  Consorcio                  @relation(fields: [consorcioId], references: [id], onDelete: Cascade)
+  expensas   Expensa[]
+  gastos     Gasto[]
+  deudas     LiquidacionDeuda[]
+  prorrateos       LiquidacionProrrateoUnidad[]
+  gastosHistoricos LiquidacionGastoHistorico[]
+  archivos         LiquidacionArchivo[]
+  regeneracionJobs LiquidacionRegeneracionJob[]
 
   @@unique([consorcioId, periodo])
   @@index([consorcioId])
 }
 
 model Expensa {
-  id            Int      @id @default(autoincrement())
+  id            Int @id @default(autoincrement())
   liquidacionId Int
   unidadId      Int
 
-  monto         Float
-  saldo         Float
-  estado        String   @default("PENDIENTE")
+  monto  Float
+  saldo  Float
+  estado String @default("PENDIENTE")
 
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  liquidacion   Liquidacion @relation(fields: [liquidacionId], references: [id], onDelete: Cascade)
-  unidad        Unidad      @relation(fields: [unidadId], references: [id], onDelete: Cascade)
-  pagos         Pago[]
+  liquidacion Liquidacion @relation(fields: [liquidacionId], references: [id], onDelete: Cascade)
+  unidad      Unidad      @relation(fields: [unidadId], references: [id], onDelete: Cascade)
+  pagos       Pago[]
+  deudasIncluidas LiquidacionDeuda[]
 
   @@unique([liquidacionId, unidadId])
   @@index([unidadId])
   @@index([liquidacionId])
 }
 
+model LiquidacionDeuda {
+  id                  Int      @id @default(autoincrement())
+  liquidacionId       Int
+  expensaId           Int
+  capitalOriginal     Float
+  interesCalculado    Float
+  criterio            String
+  importeLiquidado    Float
+  fechaCalculoInteres DateTime
+  createdAt           DateTime @default(now())
+
+  liquidacion Liquidacion @relation(fields: [liquidacionId], references: [id], onDelete: Cascade)
+  expensa     Expensa     @relation(fields: [expensaId], references: [id], onDelete: Cascade)
+
+  @@index([liquidacionId])
+  @@index([expensaId])
+  @@index([liquidacionId, expensaId])
+}
+
+model LiquidacionProrrateoUnidad {
+  id            Int   @id @default(autoincrement())
+  liquidacionId Int
+  unidadId      Int
+
+  coeficiente   Float
+  saldoAnterior Float
+  pagosPeriodo  Float
+  saldoDeudor   Float
+  saldoAFavor   Float
+  intereses     Float
+  gastoOrdinario Float
+  redondeo      Float
+  total         Float
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  liquidacion Liquidacion @relation(fields: [liquidacionId], references: [id], onDelete: Cascade)
+  unidad     Unidad      @relation(fields: [unidadId], references: [id], onDelete: Cascade)
+
+  @@unique([liquidacionId, unidadId])
+  @@index([liquidacionId])
+  @@index([unidadId])
+}
+
 model Pago {
-  id         Int      @id @default(autoincrement())
-  expensaId  Int
+  id        Int @id @default(autoincrement())
+  expensaId Int
 
   fechaPago  DateTime @default(now())
   monto      Float
@@ -127,10 +213,236 @@ model Pago {
   referencia String?
   nota       String?
 
-  createdAt  DateTime @default(now())
+  createdAt DateTime @default(now())
 
-  expensa    Expensa  @relation(fields: [expensaId], references: [id], onDelete: Cascade)
+  expensa Expensa @relation(fields: [expensaId], references: [id], onDelete: Cascade)
 
   @@index([expensaId])
   @@index([fechaPago])
 }
+
+model Proveedor {
+  id                 Int     @id @default(autoincrement())
+  nombre             String
+  tipo               String
+  subtipo            String?
+  telefono           String?
+  email              String?
+  fechaInicio        DateTime
+  fechaBaja          DateTime?
+  evaluacionPromedio Float?
+  activo             Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  consorcios ProveedorConsorcio[]
+  gastos     Gasto[]
+
+  @@index([nombre])
+}
+
+model ProveedorConsorcio {
+  id          Int      @id @default(autoincrement())
+  proveedorId Int
+  consorcioId Int
+  desde       DateTime
+  hasta       DateTime?
+
+  proveedor Proveedor @relation(fields: [proveedorId], references: [id], onDelete: Cascade)
+  consorcio Consorcio @relation(fields: [consorcioId], references: [id], onDelete: Cascade)
+
+  @@unique([proveedorId, consorcioId])
+  @@index([proveedorId])
+  @@index([consorcioId])
+  @@index([proveedorId, consorcioId])
+}
+
+model Gasto {
+  id            Int @id @default(autoincrement())
+  consorcioId   Int
+  proveedorId   Int?
+  liquidacionId Int?
+
+  fecha           DateTime
+  periodo         String
+  concepto        String
+  descripcion     String?
+  tipoExpensa     String
+  rubroExpensa    String
+  monto           Float
+  comprobantePath String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  consorcio   Consorcio   @relation(fields: [consorcioId], references: [id], onDelete: Cascade)
+  proveedor   Proveedor?  @relation(fields: [proveedorId], references: [id], onDelete: SetNull)
+  liquidacion Liquidacion? @relation(fields: [liquidacionId], references: [id], onDelete: SetNull)
+
+  @@index([consorcioId])
+  @@index([proveedorId])
+  @@index([liquidacionId])
+  @@index([periodo])
+}
+
+model LiquidacionGastoHistorico {
+  id             Int      @id @default(autoincrement())
+  liquidacionId  Int
+  gastoOrigenId  Int?
+  fecha          DateTime
+  periodo        String
+  concepto       String
+  descripcion    String?
+  tipoExpensa    String
+  rubroExpensa   String
+  monto          Float
+  proveedorNombre String?
+  createdAt      DateTime @default(now())
+
+  liquidacion Liquidacion @relation(fields: [liquidacionId], references: [id], onDelete: Cascade)
+
+  @@index([liquidacionId])
+  @@index([liquidacionId, tipoExpensa])
+  @@index([liquidacionId, rubroExpensa])
+}
+
+
+model ConsorcioCuentaBancaria {
+  id               Int      @id @default(autoincrement())
+  consorcioId      Int
+  banco            String
+  titular          String
+  cbu              String
+  alias            String?
+  cuitTitular      String?
+  activa           Boolean  @default(true)
+  esCuentaExpensas Boolean  @default(false)
+  qrEnabled        Boolean  @default(false)
+  qrMode           String?
+  qrPayloadTemplate String?
+  qrLabel          String?
+  qrExperimental   Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  consorcio Consorcio @relation(fields: [consorcioId], references: [id], onDelete: Cascade)
+
+  @@index([consorcioId])
+  @@index([consorcioId, esCuentaExpensas])
+}
+model User {
+  id            String   @id @default(cuid())
+  name          String?
+  email         String?  @unique
+  emailVerified DateTime?
+  image         String?
+  role          String   @default("USER")
+  activo        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  accounts       Account[]
+  sessions       Session[]
+  userConsorcios UserConsorcio[]
+}
+
+model Account {
+  id                String @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model UserConsorcio {
+  id          Int      @id @default(autoincrement())
+  userId      String
+  consorcioId Int
+  role        String   @default("LECTURA")
+  createdAt   DateTime @default(now())
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  consorcio Consorcio @relation(fields: [consorcioId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, consorcioId])
+  @@index([consorcioId])
+}
+model LiquidacionArchivo {
+  id                  Int      @id @default(autoincrement())
+  liquidacionId       Int
+  tipoArchivo         String
+  nombreArchivo       String
+  rutaArchivo         String
+  mimeType            String   @default("application/pdf")
+  responsableGroupKey String?
+  activo              Boolean  @default(true)
+  reemplazadoAt       DateTime?
+  createdAt           DateTime @default(now())
+
+  liquidacion Liquidacion @relation(fields: [liquidacionId], references: [id], onDelete: Cascade)
+
+  @@index([liquidacionId])
+  @@index([tipoArchivo])
+  @@index([liquidacionId, activo])
+}
+
+
+model LiquidacionRegeneracionJob {
+  id                Int      @id @default(autoincrement())
+  liquidacionId     Int
+  tipo              String
+  status            String
+  stage             String
+  expectedFiles     Int      @default(0)
+  generatedFiles    Int      @default(0)
+  validatedFiles    Int      @default(0)
+  message           String?
+  errorDetail       String?
+  requestedByUserId String?
+  startedAt         DateTime?
+  finishedAt        DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  liquidacion Liquidacion @relation(fields: [liquidacionId], references: [id], onDelete: Cascade)
+
+  @@index([liquidacionId])
+  @@index([status])
+  @@index([liquidacionId, createdAt])
+}
+
+
+
+
+
+
+
