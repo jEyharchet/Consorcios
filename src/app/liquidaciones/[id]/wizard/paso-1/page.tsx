@@ -144,6 +144,9 @@ export default async function LiquidacionWizardPaso1EditPage({
 
   async function confirmarPaso1(formData: FormData) {
     "use server";
+    if (!liquidacion) {
+      redirect("/liquidaciones");
+    }
 
     const liquidacionActual = await prisma.liquidacion.findUnique({
       where: { id: liquidacion.id },
