@@ -136,6 +136,10 @@ export default async function NuevaLiquidacionPage({
       redirect("/liquidaciones/nuevo?error=periodo_invalido");
     }
 
+    if (activeConsorcioId === null) {
+      redirect("/liquidaciones");
+    }
+
     await requireConsorcioRole(activeConsorcioId, ["ADMIN", "OPERADOR"]);
 
     const total =
