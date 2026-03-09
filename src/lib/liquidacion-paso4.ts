@@ -281,7 +281,9 @@ export async function getLiquidacionPaso4Data(liquidacionId: number) {
         tipoExpensa: g.tipoExpensa,
         rubroExpensa: g.rubroExpensa,
         monto: g.monto,
-        proveedor: g.proveedorNombre ? { nombre: g.proveedorNombre } : null,
+        proveedor: "proveedorNombre" in g
+          ? (g.proveedorNombre ? { nombre: g.proveedorNombre } : null)
+          : (g.proveedor ?? null),
       }))
     : gastosFromSource.map((g) => ({
         id: g.id,
@@ -292,7 +294,14 @@ export async function getLiquidacionPaso4Data(liquidacionId: number) {
         tipoExpensa: g.tipoExpensa,
         rubroExpensa: g.rubroExpensa,
         monto: g.monto,
-        proveedor: g.proveedor?.nombre ? { nombre: g.proveedor.nombre } : null,
+        proveedor:
+          "proveedorNombre" in g
+            ? g.proveedorNombre
+              ? { nombre: g.proveedorNombre }
+              : null
+            : g.proveedor?.nombre
+              ? { nombre: g.proveedor.nombre }
+              : null,
       }));
 
   const totalGastos = gastos.reduce((acc, g) => acc + g.monto, 0);
