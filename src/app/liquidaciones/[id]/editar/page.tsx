@@ -129,6 +129,10 @@ export default async function EditarLiquidacionPage({
   async function guardarCambios() {
     "use server";
 
+    if (!liquidacion) {
+      redirect("/liquidaciones");
+    }
+
     const liquidacionActual = await prisma.liquidacion.findUnique({
       where: { id: liquidacion.id },
       select: { id: true, consorcioId: true, periodo: true },
