@@ -19,6 +19,10 @@ export default async function NuevaPersonaPage({
     return <div className="p-6">Unidad no encontrada</div>;
   }
 
+  if (!unidadBase) {
+    redirect("/unidades");
+  }
+  
   await requireConsorcioRole(unidadBase.consorcioId, ["ADMIN", "OPERADOR"]);
 
   const q = searchParams?.q?.trim() ?? "";
@@ -54,6 +58,10 @@ export default async function NuevaPersonaPage({
     const desdeRaw = (formData.get("desde")?.toString() ?? "").trim();
     const hastaRaw = (formData.get("hasta")?.toString() ?? "").trim();
     const q = (formData.get("q")?.toString() ?? "").trim();
+
+    if (!unidadBase) {
+      redirect("/unidades");
+    }
 
     await requireConsorcioRole(unidadBase.consorcioId, ["ADMIN", "OPERADOR"]);
 
@@ -94,6 +102,10 @@ export default async function NuevaPersonaPage({
 
   async function createPersona(formData: FormData) {
     "use server";
+
+    if (!unidadBase) {
+      redirect("/unidades");
+    }
 
     await requireConsorcioRole(unidadBase.consorcioId, ["ADMIN", "OPERADOR"]);
 
