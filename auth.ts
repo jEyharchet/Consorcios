@@ -34,4 +34,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       });
     },
   },
+  logger: {
+    error(code, metadata) {
+      console.error("[auth][error]", code, metadata ?? {});
+    },
+    warn(code) {
+      console.warn("[auth][warn]", code);
+    },
+  },
 });

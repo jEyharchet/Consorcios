@@ -3,13 +3,27 @@ import Google from "next-auth/providers/google";
 
 import { isGlobalRole } from "./src/lib/roles";
 
+const authSecret = process.env.AUTH_SECRET;
+const googleClientId = process.env.AUTH_GOOGLE_ID;
+const googleClientSecret = process.env.AUTH_GOOGLE_SECRET;
+
+if (!authSecret) {
+  throw new Error("AUTH_SECRET no esta configurado");
+}
+
+if (!googleClientId || !googleClientSecret) {
+  throw new Error("AUTH_GOOGLE_ID y AUTH_GOOGLE_SECRET son obligatorios");
+}
+
 const authConfig = {
   pages: { signIn: "/login" },
+  secret: authSecret,
+  trustHost: true,
   session: { strategy: "jwt" },
   providers: [
     Google({
-      clientId: process.env.AUTH_GOOGLE_ID,
-      clientSecret: process.env.AUTH_GOOGLE_SECRET,
+      clientId: googleClientId,
+      clientSecret: googleClientSecret,
     }),
   ],
   callbacks: {
