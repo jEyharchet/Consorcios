@@ -54,7 +54,9 @@ export default async function Home() {
       };
 
   const [consorcios, unidades, personas, proveedores] = await Promise.all([
-    prisma.consorcio.count(access.isSuperAdmin ? {} : { where: { id: { in: access.allowedConsorcioIds } } }),
+    prisma.consorcio.count({
+      where: access.isSuperAdmin ? undefined : { id: { in: access.allowedConsorcioIds } },
+    }),
     prisma.unidad.count({ where: unidadWhere }),
     prisma.persona.count({
       where: access.isSuperAdmin
