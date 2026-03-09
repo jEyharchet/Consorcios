@@ -190,6 +190,10 @@ export default async function LiquidacionWizardPaso3Page({
   async function guardarProrrateo() {
     "use server";
 
+    if (!snapshot) {
+      redirect("/liquidaciones");
+    }
+
     const current = await prisma.liquidacion.findUnique({
       where: { id: snapshot.liquidacion.id },
       select: { id: true, consorcioId: true, estado: true },
@@ -216,6 +220,10 @@ export default async function LiquidacionWizardPaso3Page({
 
   async function confirmarProrrateoYContinuar() {
     "use server";
+
+    if (!snapshot) {
+      redirect("/liquidaciones");
+    }
 
     const current = await prisma.liquidacion.findUnique({
       where: { id: snapshot.liquidacion.id },
