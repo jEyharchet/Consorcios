@@ -3,6 +3,7 @@ import Link from "next/link";
 
 import { auth, signOut } from "../../auth";
 import { getActiveConsorcioContext } from "../lib/consorcio-activo";
+import { getDerivedNotifications } from "../lib/notifications";
 import { onboardingRequired } from "../lib/onboarding";
 import AppSidebar from "./AppSidebar";
 
@@ -21,12 +22,24 @@ export default async function RootLayout({
   const session = await auth();
 
   let sidebarContext: Awaited<ReturnType<typeof getActiveConsorcioContext>> | null = null;
+  let notificationCount = 0;
+
   if (session?.user) {
-    sidebarContext = await getActiveConsorcioContext();
+    const [activeContext, notifications] = await Promise.all([
+      getActiveConsorcioContext(),
+      getDerivedNotifications(),
+    ]);
+
+    sidebarContext = activeContext;
+    notificationCount = notifications.pendingCount;
   }
 
   const isSuperAdmin = session?.user?.role === "SUPER_ADMIN";
   const shouldShowSidebar = session?.user && sidebarContext ? !onboardingRequired(sidebarContext.access) : false;
+  const notificationClass =
+    notificationCount > 0
+      ? "border-red-600 bg-red-600 text-white"
+      : "border-slate-300 bg-white text-slate-500";
 
   return (
     <html lang="es">
@@ -40,6 +53,14 @@ export default async function RootLayout({
                 </Link>
                 <div className="flex items-center gap-3">
                   <span className="text-sm text-slate-600">{session.user.email ?? "Usuario"}</span>
+                  <Link
+                    href="/notificaciones"
+                    className={`inline-flex h-9 min-w-9 items-center justify-center rounded-md border px-2 text-sm font-semibold transition hover:border-slate-400 ${notificationClass}`}
+                    title={notificationCount > 0 ? `${notificationCount} notificaciones pendientes` : "Sin notificaciones pendientes"}
+                    aria-label={notificationCount > 0 ? `${notificationCount} notificaciones pendientes` : "Sin notificaciones pendientes"}
+                  >
+                    {notificationCount > 0 ? notificationCount : ""}
+                  </Link>
                   <form
                     action={async () => {
                       "use server";
