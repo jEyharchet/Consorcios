@@ -25,6 +25,19 @@ function buildOnboardingUrl(params: Record<string, string | null | undefined>) {
   return query ? `${ONBOARDING_PATH}?${query}` : ONBOARDING_PATH;
 }
 
+function buildSolicitudesUrl(consorcioId: number, params: Record<string, string | null | undefined>) {
+  const search = new URLSearchParams();
+
+  for (const [key, value] of Object.entries(params)) {
+    if (value && value.trim().length > 0) {
+      search.set(key, value);
+    }
+  }
+
+  const query = search.toString();
+  return query ? `/consorcios/${consorcioId}/solicitudes?${query}` : `/consorcios/${consorcioId}/solicitudes`;
+}
+
 function cleanValue(formData: FormData, key: string) {
   return (formData.get(key)?.toString() ?? "").trim();
 }
@@ -229,63 +242,102 @@ export async function createConsorcioFromOnboarding(formData: FormData) {
 async function resolveSolicitud(params: {
   requestId: number;
   consorcioId: number;
-  estado: string;
+  estado: typeof ESTADO_APROBADA | typeof ESTADO_RECHAZADA;
 }) {
   const actor = await requireAuth();
   await requireConsorcioRole(params.consorcioId, ["ADMIN"]);
 
-  const solicitud = await prisma.solicitudAccesoConsorcio.findUnique({
-    where: { id: params.requestId },
-    select: {
-      id: true,
-      consorcioId: true,
-      userId: true,
-      estado: true,
-    },
-  });
-
-  if (!solicitud || solicitud.consorcioId !== params.consorcioId) {
-    redirect(`/consorcios/${params.consorcioId}/solicitudes?error=not_found`);
-  }
-
-  if (solicitud.estado !== ESTADO_PENDIENTE) {
-    redirect(`/consorcios/${params.consorcioId}/solicitudes?error=already_resolved`);
-  }
-
-  await prisma.$transaction(async (tx) => {
-    if (params.estado === ESTADO_APROBADA) {
-      const membership = await tx.userConsorcio.findUnique({
-        where: {
-          userId_consorcioId: {
-            userId: solicitud.userId,
-            consorcioId: solicitud.consorcioId,
-          },
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      const solicitud = await tx.solicitudAccesoConsorcio.findUnique({
+        where: { id: params.requestId },
+        select: {
+          id: true,
+          consorcioId: true,
+          userId: true,
+          estado: true,
         },
+      });
+
+      if (!solicitud || solicitud.consorcioId !== params.consorcioId) {
+        return { status: "not_found" as const };
+      }
+
+      if (solicitud.estado !== ESTADO_PENDIENTE) {
+        return { status: "already_resolved" as const };
+      }
+
+      const requester = await tx.user.findUnique({
+        where: { id: solicitud.userId },
         select: { id: true },
       });
 
-      if (!membership) {
-        await tx.userConsorcio.create({
-          data: {
+      if (!requester) {
+        return { status: "user_not_found" as const };
+      }
+
+      if (params.estado === ESTADO_APROBADA) {
+        await tx.userConsorcio.upsert({
+          where: {
+            userId_consorcioId: {
+              userId: solicitud.userId,
+              consorcioId: solicitud.consorcioId,
+            },
+          },
+          update: {},
+          create: {
             userId: solicitud.userId,
             consorcioId: solicitud.consorcioId,
             role: "LECTURA",
           },
         });
       }
+
+      const updated = await tx.solicitudAccesoConsorcio.updateMany({
+        where: {
+          id: solicitud.id,
+          estado: ESTADO_PENDIENTE,
+        },
+        data: {
+          estado: params.estado,
+          resolvedAt: new Date(),
+          resolvedByUserId: actor.id,
+        },
+      });
+
+      if (updated.count === 0) {
+        return { status: "already_resolved" as const };
+      }
+
+      return { status: "ok" as const };
+    });
+
+    if (result.status === "not_found") {
+      redirect(buildSolicitudesUrl(params.consorcioId, { error: "not_found" }));
     }
 
-    await tx.solicitudAccesoConsorcio.update({
-      where: { id: solicitud.id },
-      data: {
-        estado: params.estado,
-        resolvedAt: new Date(),
-        resolvedByUserId: actor.id,
-      },
-    });
-  });
+    if (result.status === "already_resolved") {
+      redirect(buildSolicitudesUrl(params.consorcioId, { error: "already_resolved" }));
+    }
 
-  redirect(`/consorcios/${params.consorcioId}/solicitudes?ok=${params.estado === ESTADO_APROBADA ? "approved" : "rejected"}`);
+    if (result.status === "user_not_found") {
+      redirect(buildSolicitudesUrl(params.consorcioId, { error: "user_not_found" }));
+    }
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      if (error.code === "P2003" || error.code === "P2025") {
+        redirect(buildSolicitudesUrl(params.consorcioId, { error: "user_not_found" }));
+      }
+    }
+
+    redirect(
+      buildSolicitudesUrl(params.consorcioId, {
+        error: params.estado === ESTADO_APROBADA ? "approval_failed" : "rejection_failed",
+      })
+    );
+  }
+
+  redirect(buildSolicitudesUrl(params.consorcioId, { ok: params.estado === ESTADO_APROBADA ? "approved" : "rejected" }));
 }
 
 export async function approveAccessRequest(formData: FormData) {

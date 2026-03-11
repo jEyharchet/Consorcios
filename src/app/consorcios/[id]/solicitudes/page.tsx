@@ -3,6 +3,7 @@ import Link from "next/link";
 import { requireConsorcioRole } from "../../../../lib/auth";
 import { prisma } from "../../../../lib/prisma";
 import { approveAccessRequest, rejectAccessRequest } from "../../../onboarding/actions";
+import DecisionSubmitButton from "./DecisionSubmitButton";
 
 type SolicitudesPageProps = {
   params: { id: string };
@@ -11,7 +12,10 @@ type SolicitudesPageProps = {
 
 function getMessage(error?: string, ok?: string) {
   if (error === "not_found") return { type: "error", text: "La solicitud indicada no existe para este consorcio." };
-  if (error === "already_resolved") return { type: "error", text: "La solicitud ya fue resuelta previamente." };
+  if (error === "already_resolved") return { type: "error", text: "La solicitud ya fue resuelta previamente o por otro administrador." };
+  if (error === "user_not_found") return { type: "error", text: "El usuario solicitante ya no existe o no esta disponible para asignarle acceso." };
+  if (error === "approval_failed") return { type: "error", text: "No se pudo aprobar la solicitud. Intenta nuevamente en unos segundos." };
+  if (error === "rejection_failed") return { type: "error", text: "No se pudo rechazar la solicitud. Intenta nuevamente en unos segundos." };
   if (ok === "approved") return { type: "ok", text: "Solicitud aprobada y acceso asignado con rol LECTURA." };
   if (ok === "rejected") return { type: "ok", text: "Solicitud rechazada correctamente." };
 
@@ -128,17 +132,13 @@ export default async function ConsorcioSolicitudesPage({ params, searchParams }:
                       <form action={approveAccessRequest}>
                         <input type="hidden" name="requestId" value={solicitud.id} />
                         <input type="hidden" name="consorcioId" value={consorcioId} />
-                        <button type="submit" className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800">
-                          Aprobar
-                        </button>
+                        <DecisionSubmitButton idleLabel="Aprobar" pendingLabel="Aprobando..." tone="primary" />
                       </form>
 
                       <form action={rejectAccessRequest}>
                         <input type="hidden" name="requestId" value={solicitud.id} />
                         <input type="hidden" name="consorcioId" value={consorcioId} />
-                        <button type="submit" className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
-                          Rechazar
-                        </button>
+                        <DecisionSubmitButton idleLabel="Rechazar" pendingLabel="Rechazando..." tone="secondary" />
                       </form>
                     </div>
                   </div>
