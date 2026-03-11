@@ -1,15 +1,16 @@
-﻿import type { Metadata } from "next";
+import type { Metadata } from "next";
 import Link from "next/link";
 
 import { auth, signOut } from "../../auth";
 import { getActiveConsorcioContext } from "../lib/consorcio-activo";
+import { onboardingRequired } from "../lib/onboarding";
 import AppSidebar from "./AppSidebar";
 
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Administracion de Consorcios",
-  description: "Base del proyecto web para administracion de consorcios.",
+  title: "AmiConsorcio",
+  description: "Gestion operativa para administracion de consorcios.",
 };
 
 export default async function RootLayout({
@@ -25,6 +26,7 @@ export default async function RootLayout({
   }
 
   const isSuperAdmin = session?.user?.role === "SUPER_ADMIN";
+  const shouldShowSidebar = session?.user && sidebarContext ? !onboardingRequired(sidebarContext.access) : false;
 
   return (
     <html lang="es">
@@ -34,7 +36,7 @@ export default async function RootLayout({
             <header className="sticky top-0 z-30 shrink-0 border-b border-slate-200 bg-white">
               <div className="mx-auto flex w-full max-w-none items-center justify-between px-6 py-3">
                 <Link href="/" className="text-sm font-medium text-slate-700 hover:text-slate-900">
-                  Administracion de Consorcios
+                  AmiConsorcio
                 </Link>
                 <div className="flex items-center gap-3">
                   <span className="text-sm text-slate-600">{session.user.email ?? "Usuario"}</span>
@@ -56,12 +58,14 @@ export default async function RootLayout({
             </header>
 
             <div className="flex min-h-0 flex-1">
-              <AppSidebar
-                canSeeUsuarios={isSuperAdmin}
-                consorcios={sidebarContext?.consorcios ?? []}
-                activeConsorcioId={sidebarContext?.activeConsorcioId ?? null}
-                shouldPersistActive={sidebarContext?.shouldPersist ?? false}
-              />
+              {shouldShowSidebar ? (
+                <AppSidebar
+                  canSeeUsuarios={Boolean(isSuperAdmin)}
+                  consorcios={sidebarContext?.consorcios ?? []}
+                  activeConsorcioId={sidebarContext?.activeConsorcioId ?? null}
+                  shouldPersistActive={sidebarContext?.shouldPersist ?? false}
+                />
+              ) : null}
               <main className="min-w-0 flex-1 overflow-y-auto">{children}</main>
             </div>
           </div>

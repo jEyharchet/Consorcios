@@ -1,7 +1,8 @@
-﻿import Link from "next/link";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { requireConsorcioRole } from "../../../lib/auth";
+import { redirectToOnboardingIfNoConsorcios } from "../../../lib/onboarding";
 import { getActiveConsorcioContext } from "../../../lib/consorcio-activo";
 import { getPeriodoVariants, normalizePeriodo } from "../../../lib/periodo";
 import { prisma } from "../../../lib/prisma";
@@ -26,6 +27,7 @@ export default async function NuevoGastoPage({
   searchParams?: { consorcioId?: string; error?: string };
 }) {
   const { access, activeConsorcioId } = await getActiveConsorcioContext();
+  redirectToOnboardingIfNoConsorcios(access);
   const canManage =
     access.isSuperAdmin || access.assignments.some((assignment) => assignment.role === "ADMIN" || assignment.role === "OPERADOR");
 
@@ -47,15 +49,7 @@ export default async function NuevoGastoPage({
     );
   }
 
-  if (!access.isSuperAdmin && access.allowedConsorcioIds.length === 0) {
-    return (
-      <main className="mx-auto w-full max-w-3xl px-6 py-10">
-        <p className="rounded-md bg-amber-50 px-4 py-3 text-amber-800">
-          Tu cuenta aun no tiene acceso asignado. Contacta al administrador.
-        </p>
-      </main>
-    );
-  }
+  redirectToOnboardingIfNoConsorcios(access);
 
   const [consorcios, proveedores] = await Promise.all([
     prisma.consorcio.findMany({
@@ -291,3 +285,9 @@ export default async function NuevoGastoPage({
     </main>
   );
 }
+
+
+
+
+
+

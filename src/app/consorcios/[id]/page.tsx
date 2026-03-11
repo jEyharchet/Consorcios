@@ -1,4 +1,4 @@
-﻿import Link from "next/link";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Fragment } from "react";
 
@@ -15,7 +15,7 @@ export default async function ConsorcioDetallePage({
   searchParams?: { finalizarAdmin?: string; error?: string };
 }) {
   const id = Number(params.id);
-  await requireConsorcioAccess(id);
+  const access = await requireConsorcioAccess(id);
   const finalizarAdminId = Number(searchParams?.finalizarAdmin);
   const error = searchParams?.error;
 
@@ -156,6 +156,9 @@ export default async function ConsorcioDetallePage({
       return b.desde.getTime() - a.desde.getTime();
     });
 
+  const assignmentRole = access.isSuperAdmin ? "ADMIN" : access.assignments.find((assignment) => assignment.consorcioId === id)?.role;
+  const canManageRequests = access.isSuperAdmin || assignmentRole === "ADMIN";
+
   const errorMessage =
     error === "fin_requerido"
       ? "Tenes que indicar fecha de fin o adjuntar un acta."
@@ -229,12 +232,22 @@ export default async function ConsorcioDetallePage({
 
       <div className="mt-8 flex items-center justify-between gap-4">
         <h2 className="text-xl font-semibold">Administradores</h2>
-        <Link
-          href={`/consorcios/${consorcio.id}/administradores/nuevo`}
-          className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
-        >
-          Agregar administrador
-        </Link>
+        <div className="flex items-center gap-3">
+          {canManageRequests ? (
+            <Link
+              href={`/consorcios/${consorcio.id}/solicitudes`}
+              className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              Ver solicitudes de acceso
+            </Link>
+          ) : null}
+          <Link
+            href={`/consorcios/${consorcio.id}/administradores/nuevo`}
+            className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
+          >
+            Agregar administrador
+          </Link>
+        </div>
       </div>
 
       {errorMessage ? (
@@ -416,6 +429,8 @@ export default async function ConsorcioDetallePage({
     </div>
   );
 }
+
+
 
 
 

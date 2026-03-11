@@ -1,6 +1,7 @@
-﻿import Link from "next/link";
+import Link from "next/link";
 
 import { getAccessContext } from "../lib/auth";
+import { redirectToOnboardingIfNoConsorcios } from "../lib/onboarding";
 import { normalizeDate } from "../lib/relaciones";
 import { prisma } from "../lib/prisma";
 
@@ -23,21 +24,7 @@ const accesosRapidos = [
 
 export default async function Home() {
   const access = await getAccessContext();
-
-  if (!access.isSuperAdmin && access.allowedConsorcioIds.length === 0) {
-    return (
-      <main className="mx-auto min-h-screen w-full max-w-3xl px-6 py-10">
-        <header className="mb-6 space-y-2">
-          <h1 className="text-3xl font-bold tracking-tight text-slate-900">Administracion de Consorcios</h1>
-          <p className="text-slate-600">Bienvenido, {access.user.name ?? access.user.email ?? "usuario"}.</p>
-        </header>
-
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-800">
-          Tu cuenta aun no tiene acceso asignado. Contacta al administrador.
-        </div>
-      </main>
-    );
-  }
+  redirectToOnboardingIfNoConsorcios(access);
 
   const today = normalizeDate(new Date());
   const unidadWhere = access.isSuperAdmin ? undefined : { consorcioId: { in: access.allowedConsorcioIds } };
@@ -79,7 +66,7 @@ export default async function Home() {
   return (
     <main className="mx-auto min-h-screen w-full max-w-6xl px-6 py-10">
       <header className="mb-8 space-y-2">
-        <h1 className="text-4xl font-bold tracking-tight text-slate-900 sm:text-5xl">Administracion de Consorcios</h1>
+        <h1 className="text-4xl font-bold tracking-tight text-slate-900 sm:text-5xl">AmiConsorcio</h1>
         <p className="text-lg text-slate-600">Panel general del sistema</p>
       </header>
 

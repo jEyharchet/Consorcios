@@ -1,8 +1,9 @@
-﻿import Link from "next/link";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { getActiveConsorcioContext } from "../../lib/consorcio-activo";
 import { requireConsorcioRole } from "../../lib/auth";
+import { redirectToOnboardingIfNoConsorcios } from "../../lib/onboarding";
 import { prisma } from "../../lib/prisma";
 import RegenerarArchivosButton from "./_components/RegenerarArchivosButton";
 
@@ -446,6 +447,9 @@ export default async function LiquidacionesPage({
     </main>
   );
 }
+
+
+
 
 
 

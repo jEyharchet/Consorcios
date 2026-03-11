@@ -8,16 +8,21 @@
     "start": "next start",
     "lint": "next lint",
     "backup:db": "powershell -ExecutionPolicy Bypass -File ./scripts/backup-db.ps1",
-    "reset:liquidaciones": "tsx scripts/reset-liquidaciones.ts"
+    "reset:liquidaciones": "tsx scripts/reset-liquidaciones.ts",
+    "migrate:sqlite": "tsx scripts/migrate-sqlite-to-postgres.ts",
+    "test:email": "tsx scripts/test-email.ts"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.7.4",
     "@prisma/client": "5.19.1",
+    "better-sqlite3": "^11.8.1",
+    "dotenv": "^16.6.1",
     "next": "14.2.5",
     "next-auth": "^5.0.0-beta.30",
     "puppeteer": "^24.0.0",
     "react": "18.3.1",
-    "react-dom": "18.3.1"
+    "react-dom": "18.3.1",
+    "resend": "^6.9.3"
   },
   "devDependencies": {
     "@types/node": "20.14.10",

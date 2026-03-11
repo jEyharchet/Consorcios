@@ -61,6 +61,7 @@ model Persona {
 
   unidades                UnidadPersona[]
   consorciosAdministrados ConsorcioAdministrador[]
+  usuarios                User[]
 
   @@index([apellido, nombre])
   @@index([email])
@@ -339,12 +340,19 @@ model User {
   image         String?
   role          String   @default("USER")
   activo        Boolean  @default(true)
+  personaId     Int?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
   accounts       Account[]
   sessions       Session[]
   userConsorcios UserConsorcio[]
+
+  persona                    Persona?                    @relation(fields: [personaId], references: [id], onDelete: SetNull)
+  solicitudesAccesoConsorcio SolicitudAccesoConsorcio[] @relation("SolicitudAccesoSolicitante")
+  solicitudesResueltas       SolicitudAccesoConsorcio[] @relation("SolicitudAccesoResueltaPor")
+
+  @@index([personaId])
 }
 
 model Account {
@@ -396,6 +404,26 @@ model UserConsorcio {
   @@unique([userId, consorcioId])
   @@index([consorcioId])
 }
+
+model SolicitudAccesoConsorcio {
+  id               Int      @id @default(autoincrement())
+  userId           String
+  consorcioId      Int
+  estado           String   @default("PENDIENTE")
+  mensaje          String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  resolvedAt       DateTime?
+  resolvedByUserId String?
+
+  user           User      @relation("SolicitudAccesoSolicitante", fields: [userId], references: [id], onDelete: Cascade)
+  consorcio      Consorcio @relation(fields: [consorcioId], references: [id], onDelete: Cascade)
+  resolvedByUser User?     @relation("SolicitudAccesoResueltaPor", fields: [resolvedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([userId, estado])
+  @@index([consorcioId, estado])
+  @@index([resolvedByUserId])
+}
 model LiquidacionArchivo {
   id                  Int      @id @default(autoincrement())
   liquidacionId       Int
@@ -439,6 +467,9 @@ model LiquidacionRegeneracionJob {
   @@index([status])
   @@index([liquidacionId, createdAt])
 }
+
+
+
 
 
 

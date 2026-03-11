@@ -1,24 +1,13 @@
-﻿import Link from "next/link";
+import Link from "next/link";
 
 import { getAccessContext } from "../../lib/auth";
+import { redirectToOnboardingIfNoConsorcios } from "../../lib/onboarding";
 import { prisma } from "../../lib/prisma";
 
 export default async function PersonasPage() {
   const access = await getAccessContext();
 
-  if (!access.isSuperAdmin && access.allowedConsorcioIds.length === 0) {
-    return (
-      <main className="mx-auto w-full max-w-6xl px-6 py-10">
-        <Link href="/" className="mb-4 inline-block text-blue-600 hover:underline">
-          Volver al inicio
-        </Link>
-        <h1 className="text-2xl font-semibold">Personas</h1>
-        <p className="mt-4 rounded-md bg-amber-50 px-4 py-3 text-amber-800">
-          Tu cuenta aun no tiene acceso asignado. Contacta al administrador.
-        </p>
-      </main>
-    );
-  }
+  redirectToOnboardingIfNoConsorcios(access);
 
   const personas = await prisma.persona.findMany({
     where: access.isSuperAdmin
@@ -96,3 +85,6 @@ export default async function PersonasPage() {
     </main>
   );
 }
+
+
+

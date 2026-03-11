@@ -1,22 +1,14 @@
-﻿import Link from "next/link";
+import Link from "next/link";
 
-import { getAccessContext, hasNoConsorcios } from "../../../lib/auth";
+import { getAccessContext } from "../../../lib/auth";
+import { redirectToOnboardingIfNoConsorcios } from "../../../lib/onboarding";
 import { getCurrentPeriodo, getPeriodoVariants } from "../../../lib/periodo";
 import { prisma } from "../../../lib/prisma";
 
 export default async function ReporteGastosPage() {
   const access = await getAccessContext();
 
-  if (hasNoConsorcios(access)) {
-    return (
-      <main className="mx-auto w-full max-w-6xl px-6 py-10">
-        <header className="mb-6 space-y-2">
-          <h1 className="text-2xl font-semibold">Reporte de gastos</h1>
-          <p className="text-slate-600">Tu cuenta aun no tiene acceso asignado. Contacta al administrador.</p>
-        </header>
-      </main>
-    );
-  }
+  redirectToOnboardingIfNoConsorcios(access);
 
   const whereBase = access.isSuperAdmin ? {} : { consorcioId: { in: access.allowedConsorcioIds } };
   const periodoActual = getCurrentPeriodo();
@@ -126,5 +118,8 @@ export default async function ReporteGastosPage() {
     </main>
   );
 }
+
+
+
 
 

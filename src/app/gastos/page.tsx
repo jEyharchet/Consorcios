@@ -1,9 +1,10 @@
-﻿import Link from "next/link";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import ConfirmSubmitButton from "../liquidaciones/_components/ConfirmSubmitButton";
 import { getActiveConsorcioContext } from "../../lib/consorcio-activo";
 import { requireConsorcioRole } from "../../lib/auth";
+import { redirectToOnboardingIfNoConsorcios } from "../../lib/onboarding";
 import { prisma } from "../../lib/prisma";
 import { getPeriodoVariants, normalizePeriodo } from "../../lib/periodo";
 import { formatDateAR } from "../../lib/relaciones";
@@ -30,16 +31,7 @@ export default async function GastosPage({
   const canManage =
     access.isSuperAdmin || access.assignments.some((assignment) => assignment.role === "ADMIN" || assignment.role === "OPERADOR");
 
-  if (!access.isSuperAdmin && access.allowedConsorcioIds.length === 0) {
-    return (
-      <main className="mx-auto w-full max-w-7xl px-6 py-10">
-        <h1 className="text-2xl font-semibold">Gastos</h1>
-        <p className="mt-4 rounded-md bg-amber-50 px-4 py-3 text-amber-800">
-          Tu cuenta aun no tiene acceso asignado. Contacta al administrador.
-        </p>
-      </main>
-    );
-  }
+  redirectToOnboardingIfNoConsorcios(access);
 
   async function eliminarGasto(formData: FormData) {
     "use server";
@@ -288,3 +280,6 @@ export default async function GastosPage({
     </main>
   );
 }
+
+
+

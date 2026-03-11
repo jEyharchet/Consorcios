@@ -1,7 +1,8 @@
-﻿import Link from "next/link";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { getActiveConsorcioContext } from "../../lib/consorcio-activo";
+import { redirectToOnboardingIfNoConsorcios } from "../../lib/onboarding";
 import { prisma } from "../../lib/prisma";
 import { formatDateAR, isVigente, normalizeDate } from "../../lib/relaciones";
 
@@ -12,16 +13,7 @@ export default async function ProveedoresPage({
 }) {
   const { access, activeConsorcioId } = await getActiveConsorcioContext();
 
-  if (!access.isSuperAdmin && access.allowedConsorcioIds.length === 0) {
-    return (
-      <main className="mx-auto w-full max-w-6xl px-6 py-10">
-        <h1 className="text-2xl font-semibold">Proveedores</h1>
-        <p className="mt-4 rounded-md bg-amber-50 px-4 py-3 text-amber-800">
-          Tu cuenta aun no tiene acceso asignado. Contacta al administrador.
-        </p>
-      </main>
-    );
-  }
+  redirectToOnboardingIfNoConsorcios(access);
 
   const rawConsorcioIdParam = (searchParams?.consorcioId ?? "").trim();
   const consorcioIdParam = rawConsorcioIdParam || (activeConsorcioId ? String(activeConsorcioId) : "");
@@ -208,3 +200,6 @@ export default async function ProveedoresPage({
     </main>
   );
 }
+
+
+
