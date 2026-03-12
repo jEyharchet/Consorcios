@@ -14,12 +14,20 @@ function getMessage(error?: string, ok?: string) {
   if (error === "not_found") return { type: "error", text: "La solicitud indicada no existe para este consorcio." };
   if (error === "already_resolved") return { type: "error", text: "La solicitud ya fue resuelta previamente o por otro administrador." };
   if (error === "user_not_found") return { type: "error", text: "El usuario solicitante ya no existe o no esta disponible para asignarle acceso." };
+  if (error === "persona_not_found") return { type: "error", text: "La persona solicitante ya no esta disponible o no pudo vincularse correctamente." };
+  if (error === "unidad_required") return { type: "error", text: "Selecciona una unidad antes de aprobar la integracion." };
+  if (error === "unidad_invalid") return { type: "error", text: "La unidad elegida no corresponde a este consorcio." };
   if (error === "approval_failed") return { type: "error", text: "No se pudo aprobar la solicitud. Intenta nuevamente en unos segundos." };
   if (error === "rejection_failed") return { type: "error", text: "No se pudo rechazar la solicitud. Intenta nuevamente en unos segundos." };
-  if (ok === "approved") return { type: "ok", text: "Solicitud aprobada y acceso asignado con rol LECTURA." };
+  if (ok === "approved") return { type: "ok", text: "Solicitud aprobada y persona integrada a la unidad seleccionada." };
   if (ok === "rejected") return { type: "ok", text: "Solicitud rechazada correctamente." };
 
   return null;
+}
+
+function formatUnidadLabel(unidad: { identificador: string; piso: string | null; departamento: string | null }) {
+  const extras = [unidad.piso, unidad.departamento].filter(Boolean).join(" ");
+  return extras ? `${unidad.identificador} (${extras})` : unidad.identificador;
 }
 
 export default async function ConsorcioSolicitudesPage({ params, searchParams }: SolicitudesPageProps) {
@@ -28,7 +36,19 @@ export default async function ConsorcioSolicitudesPage({ params, searchParams }:
 
   const consorcio = await prisma.consorcio.findUnique({
     where: { id: consorcioId },
-    select: { id: true, nombre: true },
+    select: {
+      id: true,
+      nombre: true,
+      unidades: {
+        orderBy: [{ piso: "asc" }, { departamento: "asc" }, { identificador: "asc" }],
+        select: {
+          id: true,
+          identificador: true,
+          piso: true,
+          departamento: true,
+        },
+      },
+    },
   });
 
   if (!consorcio) {
@@ -42,6 +62,15 @@ export default async function ConsorcioSolicitudesPage({ params, searchParams }:
         estado: "PENDIENTE",
       },
       include: {
+        persona: {
+          select: {
+            id: true,
+            nombre: true,
+            apellido: true,
+            telefono: true,
+            email: true,
+          },
+        },
         user: {
           select: {
             id: true,
@@ -65,6 +94,17 @@ export default async function ConsorcioSolicitudesPage({ params, searchParams }:
         estado: { in: ["APROBADA", "RECHAZADA"] },
       },
       include: {
+        persona: {
+          select: {
+            nombre: true,
+            apellido: true,
+          },
+        },
+        unidad: {
+          select: {
+            identificador: true,
+          },
+        },
         user: {
           select: {
             name: true,
@@ -91,7 +131,7 @@ export default async function ConsorcioSolicitudesPage({ params, searchParams }:
         <Link href={`/consorcios/${consorcioId}`} className="text-blue-600 hover:underline">
           Volver al consorcio
         </Link>
-        <h1 className="text-3xl font-semibold text-slate-900">Solicitudes de acceso</h1>
+        <h1 className="text-3xl font-semibold text-slate-900">Solicitudes de integracion</h1>
         <p className="text-slate-600">Consorcio: {consorcio.nombre}</p>
       </header>
 
@@ -109,10 +149,12 @@ export default async function ConsorcioSolicitudesPage({ params, searchParams }:
 
         {pendientes.length === 0 ? (
           <p className="text-sm text-slate-500">No hay solicitudes pendientes para este consorcio.</p>
+        ) : consorcio.unidades.length === 0 ? (
+          <p className="text-sm text-amber-700">Este consorcio no tiene unidades cargadas. Crea al menos una unidad antes de aprobar integraciones.</p>
         ) : (
           <div className="space-y-4">
             {pendientes.map((solicitud) => {
-              const persona = solicitud.user.persona;
+              const persona = solicitud.persona ?? solicitud.user.persona;
               const nombreCompleto = persona
                 ? `${persona.apellido}, ${persona.nombre}`
                 : solicitud.user.name ?? solicitud.user.email ?? `Usuario ${solicitud.user.id}`;
@@ -122,16 +164,36 @@ export default async function ConsorcioSolicitudesPage({ params, searchParams }:
                   <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                     <div className="space-y-1 text-sm text-slate-600">
                       <p className="text-base font-semibold text-slate-900">{nombreCompleto}</p>
-                      <p>{solicitud.user.email ?? "Sin email"}</p>
+                      <p>{solicitud.persona?.email ?? solicitud.user.email ?? "Sin email"}</p>
                       {persona?.telefono ? <p>{persona.telefono}</p> : null}
                       <p>Solicitada el {solicitud.createdAt.toLocaleDateString()}</p>
                       {solicitud.mensaje ? <p className="rounded-lg bg-slate-50 px-3 py-2 text-slate-700">{solicitud.mensaje}</p> : null}
                     </div>
 
-                    <div className="flex gap-3">
-                      <form action={approveAccessRequest}>
+                    <div className="flex w-full max-w-md flex-col gap-3">
+                      <form action={approveAccessRequest} className="space-y-3 rounded-lg border border-slate-200 p-3">
                         <input type="hidden" name="requestId" value={solicitud.id} />
                         <input type="hidden" name="consorcioId" value={consorcioId} />
+                        <div className="space-y-1">
+                          <label htmlFor={`unidad-${solicitud.id}`} className="text-sm font-medium text-slate-700">
+                            Asociar a unidad
+                          </label>
+                          <select
+                            id={`unidad-${solicitud.id}`}
+                            name="unidadId"
+                            defaultValue=""
+                            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none ring-slate-400 focus:ring-2"
+                          >
+                            <option value="" disabled>
+                              Seleccionar unidad
+                            </option>
+                            {consorcio.unidades.map((unidad) => (
+                              <option key={unidad.id} value={unidad.id}>
+                                {formatUnidadLabel(unidad)}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
                         <DecisionSubmitButton idleLabel="Aprobar" pendingLabel="Aprobando..." tone="primary" />
                       </form>
 
@@ -159,8 +221,9 @@ export default async function ConsorcioSolicitudesPage({ params, searchParams }:
             <table className="w-full border-collapse text-sm">
               <thead className="bg-slate-50 text-left text-slate-600">
                 <tr>
-                  <th className="px-4 py-3 font-medium">Usuario</th>
+                  <th className="px-4 py-3 font-medium">Persona</th>
                   <th className="px-4 py-3 font-medium">Estado</th>
+                  <th className="px-4 py-3 font-medium">Unidad</th>
                   <th className="px-4 py-3 font-medium">Resuelta por</th>
                   <th className="px-4 py-3 font-medium">Fecha</th>
                 </tr>
@@ -168,8 +231,9 @@ export default async function ConsorcioSolicitudesPage({ params, searchParams }:
               <tbody>
                 {recientes.map((solicitud) => (
                   <tr key={solicitud.id} className="border-t border-slate-100 text-slate-700">
-                    <td className="px-4 py-3">{solicitud.user.name ?? solicitud.user.email ?? "Usuario"}</td>
+                    <td className="px-4 py-3">{solicitud.persona ? `${solicitud.persona.apellido}, ${solicitud.persona.nombre}` : solicitud.user.name ?? solicitud.user.email ?? "Usuario"}</td>
                     <td className="px-4 py-3">{solicitud.estado}</td>
+                    <td className="px-4 py-3">{solicitud.unidad?.identificador ?? "-"}</td>
                     <td className="px-4 py-3">{solicitud.resolvedByUser?.name ?? solicitud.resolvedByUser?.email ?? "-"}</td>
                     <td className="px-4 py-3">{solicitud.resolvedAt?.toLocaleDateString() ?? "-"}</td>
                   </tr>

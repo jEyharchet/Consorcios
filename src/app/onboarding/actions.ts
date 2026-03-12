@@ -3,7 +3,7 @@
 import { Prisma } from "@prisma/client";
 import { redirect } from "next/navigation";
 
-import { requireAuth, requireConsorcioRole } from "../../lib/auth";
+import { getAccessContext, requireAuth, requireConsorcioRole } from "../../lib/auth";
 import { updateActiveConsorcio } from "../../lib/consorcio-activo";
 import { ONBOARDING_PATH } from "../../lib/onboarding";
 import { prisma } from "../../lib/prisma";
@@ -43,21 +43,17 @@ function cleanValue(formData: FormData, key: string) {
 }
 
 async function requireUserWithoutConsorcios() {
-  const user = await requireAuth();
+  const access = await getAccessContext();
 
-  if (user.role === "SUPER_ADMIN") {
+  if (access.user.role === "SUPER_ADMIN") {
     redirect("/");
   }
 
-  const membershipCount = await prisma.userConsorcio.count({
-    where: { userId: user.id },
-  });
-
-  if (membershipCount > 0) {
+  if (access.allowedConsorcioIds.length > 0) {
     redirect("/");
   }
 
-  return user;
+  return access.user;
 }
 
 async function resolveOrCreatePersonaTx(
@@ -97,6 +93,38 @@ async function resolveOrCreatePersonaTx(
     });
   }
 
+  if (personaEmail) {
+    const matchingPersona = await tx.persona.findFirst({
+      where: {
+        email: {
+          equals: personaEmail,
+          mode: "insensitive",
+        },
+      },
+      orderBy: { id: "asc" },
+      select: { id: true },
+    });
+
+    if (matchingPersona) {
+      await tx.persona.update({
+        where: { id: matchingPersona.id },
+        data: {
+          nombre: params.nombre,
+          apellido: params.apellido,
+          email: personaEmail,
+          telefono: params.telefono,
+        },
+      });
+
+      await tx.user.update({
+        where: { id: params.userId },
+        data: { personaId: matchingPersona.id },
+      });
+
+      return matchingPersona;
+    }
+  }
+
   const persona = await tx.persona.create({
     data: {
       nombre: params.nombre,
@@ -115,30 +143,56 @@ async function resolveOrCreatePersonaTx(
   return persona;
 }
 
+export async function createPersonaForOnboarding(formData: FormData) {
+  const user = await requireUserWithoutConsorcios();
+
+  if (user.personaId) {
+    redirect(buildOnboardingUrl({ tab: "join" }));
+  }
+
+  const nombre = cleanValue(formData, "nombre");
+  const apellido = cleanValue(formData, "apellido");
+  const email = cleanValue(formData, "email");
+  const telefono = cleanValue(formData, "telefono");
+
+  if (!nombre || !apellido) {
+    redirect(buildOnboardingUrl({ error: "missing_persona_fields" }));
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await resolveOrCreatePersonaTx(tx, {
+      userId: user.id,
+      nombre,
+      apellido,
+      email: email || null,
+      telefono: telefono || null,
+    });
+  });
+
+  redirect(buildOnboardingUrl({ ok: "persona_ready", tab: "join" }));
+}
+
 export async function requestConsorcioAccess(formData: FormData) {
   const user = await requireUserWithoutConsorcios();
   const consorcioId = Number(formData.get("consorcioId"));
   const q = cleanValue(formData, "q");
   const mensaje = cleanValue(formData, "mensaje");
 
+  if (!user.personaId) {
+    redirect(buildOnboardingUrl({ error: "persona_required" }));
+  }
+
   if (!Number.isInteger(consorcioId) || consorcioId <= 0) {
     redirect(buildOnboardingUrl({ tab: "join", q, error: "consorcio_invalido" }));
   }
 
-  const [consorcio, membership, pendingRequest] = await Promise.all([
+  const access = await getAccessContext();
+
+  const [consorcio, pendingRequest] = await Promise.all([
     prisma.consorcio.findUnique({ where: { id: consorcioId }, select: { id: true } }),
-    prisma.userConsorcio.findUnique({
-      where: {
-        userId_consorcioId: {
-          userId: user.id,
-          consorcioId,
-        },
-      },
-      select: { id: true },
-    }),
     prisma.solicitudAccesoConsorcio.findFirst({
       where: {
-        userId: user.id,
+        personaId: user.personaId,
         consorcioId,
         estado: ESTADO_PENDIENTE,
       },
@@ -150,7 +204,7 @@ export async function requestConsorcioAccess(formData: FormData) {
     redirect(buildOnboardingUrl({ tab: "join", q, error: "consorcio_invalido" }));
   }
 
-  if (membership) {
+  if (access.allowedConsorcioIds.includes(consorcioId)) {
     redirect(buildOnboardingUrl({ tab: "join", q, error: "already_member" }));
   }
 
@@ -162,6 +216,7 @@ export async function requestConsorcioAccess(formData: FormData) {
     await prisma.solicitudAccesoConsorcio.create({
       data: {
         userId: user.id,
+        personaId: user.personaId,
         consorcioId,
         estado: ESTADO_PENDIENTE,
         mensaje: mensaje || null,
@@ -218,12 +273,6 @@ export async function createConsorcioFromOnboarding(formData: FormData) {
         codigoPostal: codigoPostal || null,
         cuit: cuit || null,
         fechaCreacion: now,
-        userConsorcios: {
-          create: {
-            userId: user.id,
-            role: "ADMIN",
-          },
-        },
         administradores: {
           create: {
             personaId: persona.id,
@@ -243,6 +292,7 @@ async function resolveSolicitud(params: {
   requestId: number;
   consorcioId: number;
   estado: typeof ESTADO_APROBADA | typeof ESTADO_RECHAZADA;
+  unidadId?: number | null;
 }) {
   const actor = await requireAuth();
   await requireConsorcioRole(params.consorcioId, ["ADMIN"]);
@@ -255,7 +305,14 @@ async function resolveSolicitud(params: {
           id: true,
           consorcioId: true,
           userId: true,
+          personaId: true,
           estado: true,
+          user: {
+            select: {
+              id: true,
+              personaId: true,
+            },
+          },
         },
       });
 
@@ -269,28 +326,51 @@ async function resolveSolicitud(params: {
 
       const requester = await tx.user.findUnique({
         where: { id: solicitud.userId },
-        select: { id: true },
+        select: { id: true, personaId: true },
       });
 
       if (!requester) {
         return { status: "user_not_found" as const };
       }
 
+      const personaId = solicitud.personaId ?? requester.personaId ?? solicitud.user.personaId;
+      if (!personaId) {
+        return { status: "persona_not_found" as const };
+      }
+
       if (params.estado === ESTADO_APROBADA) {
-        await tx.userConsorcio.upsert({
-          where: {
-            userId_consorcioId: {
-              userId: solicitud.userId,
-              consorcioId: solicitud.consorcioId,
-            },
-          },
-          update: {},
-          create: {
-            userId: solicitud.userId,
-            consorcioId: solicitud.consorcioId,
-            role: "LECTURA",
-          },
+        if (!params.unidadId || !Number.isInteger(params.unidadId) || params.unidadId <= 0) {
+          return { status: "unidad_required" as const };
+        }
+
+        const unidad = await tx.unidad.findUnique({
+          where: { id: params.unidadId },
+          select: { id: true, consorcioId: true },
         });
+
+        if (!unidad || unidad.consorcioId !== solicitud.consorcioId) {
+          return { status: "unidad_invalid" as const };
+        }
+
+        const now = new Date();
+        const existingRelation = await tx.unidadPersona.findFirst({
+          where: {
+            unidadId: unidad.id,
+            personaId,
+            OR: [{ hasta: null }, { hasta: { gte: now } }],
+          },
+          select: { id: true },
+        });
+
+        if (!existingRelation) {
+          await tx.unidadPersona.create({
+            data: {
+              unidadId: unidad.id,
+              personaId,
+              desde: now,
+            },
+          });
+        }
       }
 
       const updated = await tx.solicitudAccesoConsorcio.updateMany({
@@ -299,6 +379,8 @@ async function resolveSolicitud(params: {
           estado: ESTADO_PENDIENTE,
         },
         data: {
+          personaId,
+          unidadId: params.estado === ESTADO_APROBADA ? params.unidadId ?? null : null,
           estado: params.estado,
           resolvedAt: new Date(),
           resolvedByUserId: actor.id,
@@ -323,6 +405,18 @@ async function resolveSolicitud(params: {
     if (result.status === "user_not_found") {
       redirect(buildSolicitudesUrl(params.consorcioId, { error: "user_not_found" }));
     }
+
+    if (result.status === "persona_not_found") {
+      redirect(buildSolicitudesUrl(params.consorcioId, { error: "persona_not_found" }));
+    }
+
+    if (result.status === "unidad_required") {
+      redirect(buildSolicitudesUrl(params.consorcioId, { error: "unidad_required" }));
+    }
+
+    if (result.status === "unidad_invalid") {
+      redirect(buildSolicitudesUrl(params.consorcioId, { error: "unidad_invalid" }));
+    }
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError) {
       if (error.code === "P2003" || error.code === "P2025") {
@@ -343,12 +437,14 @@ async function resolveSolicitud(params: {
 export async function approveAccessRequest(formData: FormData) {
   const requestId = Number(formData.get("requestId"));
   const consorcioId = Number(formData.get("consorcioId"));
+  const unidadIdValue = formData.get("unidadId");
+  const unidadId = unidadIdValue === null ? null : Number(unidadIdValue);
 
   if (!Number.isInteger(requestId) || requestId <= 0 || !Number.isInteger(consorcioId) || consorcioId <= 0) {
     redirect("/");
   }
 
-  await resolveSolicitud({ requestId, consorcioId, estado: ESTADO_APROBADA });
+  await resolveSolicitud({ requestId, consorcioId, unidadId, estado: ESTADO_APROBADA });
 }
 
 export async function rejectAccessRequest(formData: FormData) {

@@ -4,7 +4,7 @@ import { getDerivedNotifications } from "../../lib/notifications";
 
 function formatNotificationType(type: "SOLICITUD_ACCESO") {
   if (type === "SOLICITUD_ACCESO") {
-    return "Solicitud de acceso";
+    return "Solicitud de integracion";
   }
 
   return type;
@@ -38,7 +38,7 @@ export default async function NotificacionesPage() {
                   </p>
                   <h2 className="text-lg font-semibold text-slate-900">{notification.consorcioNombre}</h2>
                   <p className="text-sm text-slate-600">
-                    Usuario solicitante: {notification.requesterName ?? notification.requesterEmail ?? "Usuario no disponible"}
+                    Persona solicitante: {notification.requesterName ?? notification.requesterEmail ?? "Usuario no disponible"}
                   </p>
                   <p className="text-sm text-slate-500">Fecha: {notification.requestedAt.toLocaleDateString()}</p>
                 </div>
@@ -47,7 +47,7 @@ export default async function NotificacionesPage() {
                   href={notification.href}
                   className="inline-flex rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
                 >
-                  Gestionar solicitud
+                  Gestionar integracion
                 </Link>
               </div>
             </article>
@@ -57,3 +57,4 @@ export default async function NotificacionesPage() {
     </main>
   );
 }
+

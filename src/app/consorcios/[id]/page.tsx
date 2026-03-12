@@ -51,6 +51,31 @@ export default async function ConsorcioDetallePage({
     await requireConsorcioRole(consorcioId, ["ADMIN"]);
     const relacionId = Number(formData.get("relacionId"));
 
+    const relacion = await prisma.consorcioAdministrador.findUnique({
+      where: { id: relacionId },
+      select: { id: true, desde: true, hasta: true },
+    });
+
+    if (!relacion) {
+      redirect(`/consorcios/${consorcioId}?error=relacion_no_encontrada`);
+    }
+
+    const today = normalizeDate(new Date());
+    if (isVigente(relacion.desde, relacion.hasta, today)) {
+      const otrosActivos = await prisma.consorcioAdministrador.count({
+        where: {
+          consorcioId,
+          id: { not: relacionId },
+          desde: { lte: today },
+          OR: [{ hasta: null }, { hasta: { gte: today } }],
+        },
+      });
+
+      if (otrosActivos === 0) {
+        redirect(`/consorcios/${consorcioId}?error=ultimo_admin`);
+      }
+    }
+
     await prisma.consorcioAdministrador.delete({
       where: { id: relacionId },
     });
@@ -98,6 +123,21 @@ export default async function ConsorcioDetallePage({
       const hasta = new Date(hastaRaw);
       if (hasta < relacion.desde) {
         redirect(`/consorcios/${consorcioId}?error=fin_menor_desde&finalizarAdmin=${relacionId}`);
+      }
+
+      if (hasta <= today) {
+        const otrosActivos = await prisma.consorcioAdministrador.count({
+          where: {
+            consorcioId,
+            id: { not: relacionId },
+            desde: { lte: today },
+            OR: [{ hasta: null }, { hasta: { gte: today } }],
+          },
+        });
+
+        if (otrosActivos === 0) {
+          redirect(`/consorcios/${consorcioId}?error=ultimo_admin&finalizarAdmin=${relacionId}`);
+        }
       }
 
       data.hasta = hasta;
@@ -168,7 +208,9 @@ export default async function ConsorcioDetallePage({
           ? "La relacion ya estaba finalizada."
           : error === "relacion_no_encontrada"
             ? "No se encontro la relacion de administrador."
-            : error === "invalid_type"
+            : error === "ultimo_admin"
+              ? "El consorcio debe conservar al menos un administrador activo."
+              : error === "invalid_type"
               ? actaValidationMessages.invalid_type
               : error === "max_size"
                 ? actaValidationMessages.max_size
@@ -238,7 +280,7 @@ export default async function ConsorcioDetallePage({
               href={`/consorcios/${consorcio.id}/solicitudes`}
               className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
             >
-              Ver solicitudes de acceso
+              Ver solicitudes de integracion
             </Link>
           ) : null}
           <Link
@@ -429,6 +471,9 @@ export default async function ConsorcioDetallePage({
     </div>
   );
 }
+
+
+
 
 
 

@@ -1,37 +1,12 @@
 import { auth } from '../../../../../../auth';
 
+import { hasConsorcioAccessForUserId } from '@/lib/auth';
 import { getRegeneracionJob } from '@/lib/liquidacion-regeneracion-job';
-import { prisma } from '@/lib/prisma';
 
 export const runtime = 'nodejs';
 
 function json(data: unknown, status = 200) {
   return Response.json(data, { status });
-}
-
-async function userHasAccess(userId: string, consorcioId: number) {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { id: true, role: true, activo: true },
-  });
-
-  if (!user || !user.activo) {
-    return false;
-  }
-
-  if (user.role === 'SUPER_ADMIN') {
-    return true;
-  }
-
-  const assignment = await prisma.userConsorcio.findFirst({
-    where: {
-      userId: user.id,
-      consorcioId,
-    },
-    select: { id: true },
-  });
-
-  return Boolean(assignment);
 }
 
 export async function GET(_req: Request, { params }: { params: { jobId: string } }) {
@@ -53,7 +28,7 @@ export async function GET(_req: Request, { params }: { params: { jobId: string }
     return json({ ok: false, reason: 'job_inexistente' }, 404);
   }
 
-  const hasAccess = await userHasAccess(userId, job.liquidacion.consorcioId);
+  const hasAccess = await hasConsorcioAccessForUserId(userId, job.liquidacion.consorcioId);
   if (!hasAccess) {
     return json({ ok: false, reason: 'sin_permiso' }, 403);
   }
@@ -78,4 +53,3 @@ export async function GET(_req: Request, { params }: { params: { jobId: string }
     },
   });
 }
-

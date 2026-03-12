@@ -40,6 +40,13 @@ export async function getDerivedNotifications() {
           nombre: true,
         },
       },
+      persona: {
+        select: {
+          nombre: true,
+          apellido: true,
+          email: true,
+        },
+      },
       user: {
         select: {
           id: true,
@@ -58,8 +65,9 @@ export async function getDerivedNotifications() {
   });
 
   const notifications = pendingRequests.map((request) => {
-    const requesterName = request.user.persona
-      ? `${request.user.persona.apellido}, ${request.user.persona.nombre}`
+    const requesterPersona = request.persona ?? request.user.persona;
+    const requesterName = requesterPersona
+      ? `${requesterPersona.apellido}, ${requesterPersona.nombre}`
       : request.user.name ?? request.user.email ?? null;
 
     return {
@@ -70,7 +78,7 @@ export async function getDerivedNotifications() {
       solicitudId: request.id,
       requestedAt: request.createdAt,
       requesterName,
-      requesterEmail: request.user.email ?? null,
+      requesterEmail: request.persona?.email ?? request.user.email ?? null,
       href: `/consorcios/${request.consorcioId}/solicitudes`,
     };
   });

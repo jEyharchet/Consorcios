@@ -1,9 +1,9 @@
-﻿import puppeteer from "puppeteer";
+import puppeteer from "puppeteer";
 
 import { auth } from "../../../../../../auth";
+import { hasConsorcioAccessForUserId } from "@/lib/auth";
 import { buildLiquidacionPdfHtml } from "../../../../../lib/liquidacion-pdf-html";
 import { getLiquidacionPaso4Data } from "../../../../../lib/liquidacion-paso4";
-import { prisma } from "../../../../../lib/prisma";
 
 export const runtime = "nodejs";
 
@@ -28,27 +28,9 @@ export async function GET(
     return new Response("Liquidacion no encontrada", { status: 404 });
   }
 
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { id: true, role: true, activo: true },
-  });
-
-  if (!user || !user.activo) {
-    return new Response("No autorizado", { status: 401 });
-  }
-
-  if (user.role !== "SUPER_ADMIN") {
-    const assignment = await prisma.userConsorcio.findFirst({
-      where: {
-        userId: user.id,
-        consorcioId: data.liquidacion.consorcioId,
-      },
-      select: { id: true },
-    });
-
-    if (!assignment) {
-      return new Response("Sin acceso a este consorcio", { status: 403 });
-    }
+  const allowed = await hasConsorcioAccessForUserId(userId, data.liquidacion.consorcioId);
+  if (!allowed) {
+    return new Response("Sin acceso a este consorcio", { status: 403 });
   }
 
   const html = buildLiquidacionPdfHtml(data);

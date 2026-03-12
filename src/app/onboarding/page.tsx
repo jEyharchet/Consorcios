@@ -4,18 +4,21 @@ import { redirect } from "next/navigation";
 import { getAccessContext } from "../../lib/auth";
 import { ONBOARDING_PATH } from "../../lib/onboarding";
 import { prisma } from "../../lib/prisma";
-import { createConsorcioFromOnboarding, requestConsorcioAccess } from "./actions";
+import { createConsorcioFromOnboarding, createPersonaForOnboarding, requestConsorcioAccess } from "./actions";
 
 type OnboardingPageProps = {
   searchParams?: { tab?: string; q?: string; error?: string; ok?: string };
 };
 
 function getMessage(error?: string, ok?: string) {
-  if (error === "consorcio_invalido") return { type: "error", text: "Selecciona un consorcio valido para solicitar acceso." };
-  if (error === "already_member") return { type: "error", text: "Ya perteneces a ese consorcio." };
+  if (error === "missing_persona_fields") return { type: "error", text: "Completa al menos nombre y apellido para crear tu persona." };
+  if (error === "persona_required") return { type: "error", text: "Primero necesitamos vincular tu usuario a una persona." };
+  if (error === "consorcio_invalido") return { type: "error", text: "Selecciona un consorcio valido para solicitar integracion." };
+  if (error === "already_member") return { type: "error", text: "Tu persona ya tiene una relacion valida con ese consorcio." };
   if (error === "duplicate_pending") return { type: "error", text: "Ya existe una solicitud pendiente para ese consorcio." };
   if (error === "missing_fields") return { type: "error", text: "Completa los datos personales y los datos basicos del consorcio." };
-  if (ok === "request_sent") return { type: "ok", text: "La solicitud se registro y quedo pendiente de aprobacion." };
+  if (ok === "persona_ready") return { type: "ok", text: "Tu persona quedo vinculada correctamente. Ahora puedes solicitar integracion o crear un consorcio." };
+  if (ok === "request_sent") return { type: "ok", text: "La solicitud de integracion se registro y quedo pendiente de aprobacion." };
 
   return null;
 }
@@ -38,6 +41,7 @@ export default async function OnboardingPage({ searchParams }: OnboardingPagePro
       name: true,
       persona: {
         select: {
+          id: true,
           nombre: true,
           apellido: true,
           email: true,
@@ -46,6 +50,73 @@ export default async function OnboardingPage({ searchParams }: OnboardingPagePro
       },
     },
   });
+
+  const [defaultNombre, defaultApellido] = (() => {
+    if (user?.persona?.nombre && user.persona.apellido) {
+      return [user.persona.nombre, user.persona.apellido];
+    }
+
+    const rawName = user?.name?.trim() ?? "";
+    if (!rawName) {
+      return ["", ""];
+    }
+
+    const [first, ...rest] = rawName.split(/\s+/);
+    return [first ?? "", rest.join(" ")];
+  })();
+
+  if (!user?.persona) {
+    return (
+      <main className="mx-auto min-h-screen w-full max-w-3xl px-6 py-10">
+        <header className="space-y-3">
+          <p className="text-sm font-medium uppercase tracking-[0.2em] text-slate-500">AmiConsorcio</p>
+          <h1 className="text-4xl font-bold tracking-tight text-slate-900">Primero vinculemos tu persona</h1>
+          <p className="text-lg text-slate-600">
+            El acceso a los consorcios ahora se determina por la persona y sus relaciones reales. Antes de continuar, necesitamos crear o completar tu persona.
+          </p>
+        </header>
+
+        {message ? (
+          <div
+            className={`mt-6 rounded-lg border px-4 py-3 text-sm ${
+              message.type === "error"
+                ? "border-red-200 bg-red-50 text-red-700"
+                : "border-emerald-200 bg-emerald-50 text-emerald-700"
+            }`}
+          >
+            {message.text}
+          </div>
+        ) : null}
+
+        <section className="mt-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <form action={createPersonaForOnboarding} className="space-y-6">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-1">
+                <label htmlFor="nombre" className="text-sm font-medium text-slate-700">Nombre</label>
+                <input id="nombre" name="nombre" required defaultValue={defaultNombre} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none ring-slate-400 focus:ring-2" />
+              </div>
+              <div className="space-y-1">
+                <label htmlFor="apellido" className="text-sm font-medium text-slate-700">Apellido</label>
+                <input id="apellido" name="apellido" required defaultValue={defaultApellido} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none ring-slate-400 focus:ring-2" />
+              </div>
+              <div className="space-y-1">
+                <label htmlFor="email" className="text-sm font-medium text-slate-700">Email</label>
+                <input id="email" name="email" type="email" defaultValue={user.email ?? ""} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none ring-slate-400 focus:ring-2" />
+              </div>
+              <div className="space-y-1">
+                <label htmlFor="telefono" className="text-sm font-medium text-slate-700">Telefono</label>
+                <input id="telefono" name="telefono" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none ring-slate-400 focus:ring-2" />
+              </div>
+            </div>
+
+            <button type="submit" className="rounded-lg bg-slate-900 px-5 py-3 text-sm font-medium text-white hover:bg-slate-800">
+              Guardar persona y continuar
+            </button>
+          </form>
+        </section>
+      </main>
+    );
+  }
 
   const consorcios =
     q.length < 2
@@ -73,42 +144,16 @@ export default async function OnboardingPage({ searchParams }: OnboardingPagePro
       : (
           await prisma.solicitudAccesoConsorcio.findMany({
             where: {
-              userId: access.user.id,
               estado: "PENDIENTE",
               consorcioId: { in: consorcios.map((consorcio) => consorcio.id) },
+              OR: [{ personaId: user.persona.id }, { userId: access.user.id }],
             },
             select: { consorcioId: true },
           })
         ).map((item) => item.consorcioId)
   );
 
-  const assignedConsorcioIds = new Set(
-    consorcios.length === 0
-      ? []
-      : (
-          await prisma.userConsorcio.findMany({
-            where: {
-              userId: access.user.id,
-              consorcioId: { in: consorcios.map((consorcio) => consorcio.id) },
-            },
-            select: { consorcioId: true },
-          })
-        ).map((item) => item.consorcioId)
-  );
-
-  const [defaultNombre, defaultApellido] = (() => {
-    if (user?.persona?.nombre && user.persona.apellido) {
-      return [user.persona.nombre, user.persona.apellido];
-    }
-
-    const rawName = user?.name?.trim() ?? "";
-    if (!rawName) {
-      return ["", ""];
-    }
-
-    const [first, ...rest] = rawName.split(/\s+/);
-    return [first ?? "", rest.join(" ")];
-  })();
+  const assignedConsorcioIds = new Set(access.allowedConsorcioIds);
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-6xl px-6 py-10">
@@ -116,7 +161,7 @@ export default async function OnboardingPage({ searchParams }: OnboardingPagePro
         <p className="text-sm font-medium uppercase tracking-[0.2em] text-slate-500">AmiConsorcio</p>
         <h1 className="text-4xl font-bold tracking-tight text-slate-900">Configura tu primer acceso</h1>
         <p className="text-lg text-slate-600">
-          Tu usuario ya esta autenticado, pero todavia no tiene acceso a ningun consorcio. Puedes solicitar acceso a uno existente o crear uno nuevo como administrador.
+          Tu persona ya esta vinculada, pero todavia no tiene una relacion valida con ningun consorcio. Puedes solicitar integracion a uno existente o crear uno nuevo como administrador.
         </p>
       </header>
 
@@ -142,7 +187,7 @@ export default async function OnboardingPage({ searchParams }: OnboardingPagePro
                 tab === "join" ? "border-slate-900 bg-slate-900 text-white" : "border-slate-200 text-slate-700 hover:border-slate-300"
               }`}
             >
-              Quiero unirme a un consorcio
+              Quiero integrarme a un consorcio
             </Link>
             <Link
               href={`${ONBOARDING_PATH}?tab=create`}
@@ -159,7 +204,7 @@ export default async function OnboardingPage({ searchParams }: OnboardingPagePro
           <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
             <header className="space-y-2">
               <h2 className="text-2xl font-semibold text-slate-900">Buscar un consorcio existente</h2>
-              <p className="text-sm text-slate-600">Escribe al menos 2 letras del nombre y envia una solicitud para que un administrador la revise.</p>
+              <p className="text-sm text-slate-600">Escribe al menos 2 letras del nombre y envia una solicitud para que un administrador pueda integrar tu persona a una unidad.</p>
             </header>
 
             <form method="GET" className="mt-6 flex flex-col gap-3 sm:flex-row">
@@ -217,7 +262,7 @@ export default async function OnboardingPage({ searchParams }: OnboardingPagePro
                                 : "bg-slate-900 text-white hover:bg-slate-800"
                             }`}
                           >
-                            {alreadyAssigned ? "Ya tienes acceso" : hasPending ? "Solicitud pendiente" : "Solicitar acceso"}
+                            {alreadyAssigned ? "Ya tienes acceso" : hasPending ? "Solicitud pendiente" : "Solicitar integracion"}
                           </button>
                         </form>
                       </div>
@@ -231,7 +276,7 @@ export default async function OnboardingPage({ searchParams }: OnboardingPagePro
           <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
             <header className="space-y-2">
               <h2 className="text-2xl font-semibold text-slate-900">Crear un consorcio nuevo</h2>
-              <p className="text-sm text-slate-600">Completaremos tu persona, crearemos el consorcio y te asignaremos acceso como administrador.</p>
+              <p className="text-sm text-slate-600">Actualizaremos tu persona si hace falta, crearemos el consorcio y te asociaremos como administradora o administrador.</p>
             </header>
 
             <form action={createConsorcioFromOnboarding} className="mt-6 space-y-6">
@@ -240,19 +285,19 @@ export default async function OnboardingPage({ searchParams }: OnboardingPagePro
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-1">
                     <label htmlFor="nombre" className="text-sm font-medium text-slate-700">Nombre</label>
-                    <input id="nombre" name="nombre" required defaultValue={defaultNombre} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none ring-slate-400 focus:ring-2" />
+                    <input id="nombre" name="nombre" required defaultValue={user.persona.nombre} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none ring-slate-400 focus:ring-2" />
                   </div>
                   <div className="space-y-1">
                     <label htmlFor="apellido" className="text-sm font-medium text-slate-700">Apellido</label>
-                    <input id="apellido" name="apellido" required defaultValue={defaultApellido} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none ring-slate-400 focus:ring-2" />
+                    <input id="apellido" name="apellido" required defaultValue={user.persona.apellido} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none ring-slate-400 focus:ring-2" />
                   </div>
                   <div className="space-y-1">
                     <label htmlFor="email" className="text-sm font-medium text-slate-700">Email</label>
-                    <input id="email" name="email" type="email" defaultValue={user?.persona?.email ?? user?.email ?? ""} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none ring-slate-400 focus:ring-2" />
+                    <input id="email" name="email" type="email" defaultValue={user.persona.email ?? user.email ?? ""} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none ring-slate-400 focus:ring-2" />
                   </div>
                   <div className="space-y-1">
                     <label htmlFor="telefono" className="text-sm font-medium text-slate-700">Telefono</label>
-                    <input id="telefono" name="telefono" defaultValue={user?.persona?.telefono ?? ""} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none ring-slate-400 focus:ring-2" />
+                    <input id="telefono" name="telefono" defaultValue={user.persona.telefono ?? ""} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none ring-slate-400 focus:ring-2" />
                   </div>
                 </div>
               </section>

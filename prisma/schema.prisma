@@ -42,9 +42,10 @@ model Unidad {
   updatedAt DateTime @updatedAt
 
   consorcio  Consorcio                    @relation(fields: [consorcioId], references: [id], onDelete: Cascade)
-  personas   UnidadPersona[]
-  expensas   Expensa[]
-  prorrateos LiquidacionProrrateoUnidad[]
+  personas           UnidadPersona[]
+  expensas           Expensa[]
+  prorrateos         LiquidacionProrrateoUnidad[]
+  solicitudesAcceso  SolicitudAccesoConsorcio[]
 
   @@unique([consorcioId, identificador])
   @@index([consorcioId])
@@ -63,6 +64,7 @@ model Persona {
   unidades                UnidadPersona[]
   consorciosAdministrados ConsorcioAdministrador[]
   usuarios                User[]
+  solicitudesAcceso       SolicitudAccesoConsorcio[]
 
   @@index([apellido, nombre])
   @@index([email])
@@ -409,7 +411,9 @@ model UserConsorcio {
 model SolicitudAccesoConsorcio {
   id               Int       @id @default(autoincrement())
   userId           String
+  personaId        Int?
   consorcioId      Int
+  unidadId         Int?
   estado           String    @default("PENDIENTE")
   mensaje          String?
   createdAt        DateTime  @default(now())
@@ -418,11 +422,15 @@ model SolicitudAccesoConsorcio {
   resolvedByUserId String?
 
   user           User      @relation("SolicitudAccesoSolicitante", fields: [userId], references: [id], onDelete: Cascade)
+  persona        Persona?  @relation(fields: [personaId], references: [id], onDelete: SetNull)
   consorcio      Consorcio @relation(fields: [consorcioId], references: [id], onDelete: Cascade)
+  unidad         Unidad?   @relation(fields: [unidadId], references: [id], onDelete: SetNull)
   resolvedByUser User?     @relation("SolicitudAccesoResueltaPor", fields: [resolvedByUserId], references: [id], onDelete: SetNull)
 
   @@index([userId, estado])
+  @@index([personaId, estado])
   @@index([consorcioId, estado])
+  @@index([unidadId])
   @@index([resolvedByUserId])
 }
 
@@ -468,3 +476,4 @@ model LiquidacionRegeneracionJob {
   @@index([status])
   @@index([liquidacionId, createdAt])
 }
+

@@ -1,5 +1,6 @@
 import { auth } from '../../../../../../../auth';
 
+import { hasConsorcioAccessForUserId } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 
 export const runtime = 'nodejs';
@@ -27,31 +28,6 @@ function parseBody(value: unknown): DownloadRequestBody {
     .filter((id) => Number.isInteger(id) && id > 0);
 
   return { archivoIds: Array.from(new Set(sanitized)) };
-}
-
-async function userHasConsorcioAccess(userId: string, consorcioId: number) {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { id: true, role: true, activo: true },
-  });
-
-  if (!user || !user.activo) {
-    return false;
-  }
-
-  if (user.role === 'SUPER_ADMIN') {
-    return true;
-  }
-
-  const assignment = await prisma.userConsorcio.findFirst({
-    where: {
-      userId: user.id,
-      consorcioId,
-    },
-    select: { id: true },
-  });
-
-  return Boolean(assignment);
 }
 
 export async function POST(req: Request, { params }: { params: { id: string } }) {
@@ -86,7 +62,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     return json({ ok: false, reason: 'liquidacion_inexistente' }, 404);
   }
 
-  const allowed = await userHasConsorcioAccess(userId, liquidacion.consorcioId);
+  const allowed = await hasConsorcioAccessForUserId(userId, liquidacion.consorcioId);
   if (!allowed) {
     return json({ ok: false, reason: 'sin_permiso' }, 403);
   }

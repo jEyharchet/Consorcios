@@ -1,5 +1,6 @@
-﻿import { auth } from '../../../../../../auth';
+import { auth } from '../../../../../../auth';
 
+import { hasConsorcioRoleForUserId } from '@/lib/auth';
 import { startFinalizacionLiquidacionJob } from '@/lib/liquidacion-regeneracion-job';
 import { prisma } from '@/lib/prisma';
 
@@ -16,33 +17,12 @@ function normalizeText(value: unknown) {
 }
 
 async function requireOperativeAccess(userId: string, consorcioId: number) {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { id: true, role: true, activo: true },
-  });
-
-  if (!user || !user.activo) {
-    return { ok: false as const, status: 401, reason: 'no_autorizado' };
-  }
-
-  if (user.role === 'SUPER_ADMIN') {
-    return { ok: true as const, userId: user.id };
-  }
-
-  const assignment = await prisma.userConsorcio.findFirst({
-    where: {
-      userId: user.id,
-      consorcioId,
-      role: { in: ['ADMIN', 'OPERADOR'] },
-    },
-    select: { id: true },
-  });
-
-  if (!assignment) {
+  const allowed = await hasConsorcioRoleForUserId(userId, consorcioId, ['ADMIN', 'OPERADOR']);
+  if (!allowed) {
     return { ok: false as const, status: 403, reason: 'sin_permiso' };
   }
 
-  return { ok: true as const, userId: user.id };
+  return { ok: true as const, userId };
 }
 
 export async function POST(req: Request, { params }: { params: { id: string } }) {
