@@ -23,7 +23,7 @@ export async function getDerivedNotifications() {
   noStore();
 
   const access = await getAccessContext();
-  const adminConsorcioIds = access.isSuperAdmin ? [] : getAdminConsorcioIdsFromAccess(access.assignments);
+  const adminConsorcioIds = getAdminConsorcioIdsFromAccess(access.assignments);
 
   if (adminConsorcioIds.length === 0) {
     return {
@@ -92,3 +92,4 @@ export async function getDerivedNotifications() {
     notifications,
   };
 }
+
