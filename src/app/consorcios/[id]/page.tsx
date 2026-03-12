@@ -8,7 +8,7 @@ import { requireConsorcioAccess, requireConsorcioRole } from "../../../lib/auth"
 import { formatDateAR, isVigente, normalizeDate } from "../../../lib/relaciones";
 
 function formatLocation(parts: Array<string | null | undefined>) {
-  return parts.filter((part) => part && part.trim().length > 0).join(" • ");
+  return parts.filter((part) => part && part.trim().length > 0).join(" â€¢ ");
 }
 
 function getAdminStatus(rel: { desde: Date; hasta: Date | null }, today: Date) {
