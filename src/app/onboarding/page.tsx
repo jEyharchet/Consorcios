@@ -65,6 +65,8 @@ export default async function OnboardingPage({ searchParams }: OnboardingPagePro
     return [first ?? "", rest.join(" ")];
   })();
 
+  const defaultUserEmail = user?.email ?? "";
+
   if (!user?.persona) {
     return (
       <main className="mx-auto min-h-screen w-full max-w-3xl px-6 py-10">
@@ -101,7 +103,7 @@ export default async function OnboardingPage({ searchParams }: OnboardingPagePro
               </div>
               <div className="space-y-1">
                 <label htmlFor="email" className="text-sm font-medium text-slate-700">Email</label>
-                <input id="email" name="email" type="email" defaultValue={user.email ?? ""} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none ring-slate-400 focus:ring-2" />
+                <input id="email" name="email" type="email" defaultValue={defaultUserEmail} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none ring-slate-400 focus:ring-2" />
               </div>
               <div className="space-y-1">
                 <label htmlFor="telefono" className="text-sm font-medium text-slate-700">Telefono</label>
@@ -346,3 +348,4 @@ export default async function OnboardingPage({ searchParams }: OnboardingPagePro
     </main>
   );
 }
+
