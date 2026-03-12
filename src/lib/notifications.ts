@@ -1,4 +1,7 @@
-import { getAccessContext } from "./auth";
+import { unstable_noStore as noStore } from "next/cache";
+
+import { requireAuth } from "./auth";
+import { normalizeDate } from "./relaciones";
 import { prisma } from "./prisma";
 
 export type DerivedNotification = {
@@ -13,13 +16,54 @@ export type DerivedNotification = {
   href: string;
 };
 
-function getAdminConsorcioIds(assignments: Array<{ consorcioId: number; role: string }>) {
-  return assignments.filter((assignment) => assignment.role === "ADMIN").map((assignment) => assignment.consorcioId);
+async function getAdminConsorcioIdsForCurrentUser() {
+  const user = await requireAuth();
+
+  if (user.role === "SUPER_ADMIN") {
+    return [] as number[];
+  }
+
+  const today = normalizeDate(new Date());
+  const consorcioIds = new Set<number>();
+
+  if (user.personaId) {
+    const adminRelations = await prisma.consorcioAdministrador.findMany({
+      where: {
+        personaId: user.personaId,
+        desde: { lte: today },
+        OR: [{ hasta: null }, { hasta: { gte: today } }],
+      },
+      select: {
+        consorcioId: true,
+      },
+    });
+
+    for (const relation of adminRelations) {
+      consorcioIds.add(relation.consorcioId);
+    }
+  }
+
+  const legacyAdminAssignments = await prisma.userConsorcio.findMany({
+    where: {
+      userId: user.id,
+      role: "ADMIN",
+    },
+    select: {
+      consorcioId: true,
+    },
+  });
+
+  for (const assignment of legacyAdminAssignments) {
+    consorcioIds.add(assignment.consorcioId);
+  }
+
+  return Array.from(consorcioIds);
 }
 
 export async function getDerivedNotifications() {
-  const access = await getAccessContext();
-  const adminConsorcioIds = access.isSuperAdmin ? [] : getAdminConsorcioIds(access.assignments);
+  noStore();
+
+  const adminConsorcioIds = await getAdminConsorcioIdsForCurrentUser();
 
   if (adminConsorcioIds.length === 0) {
     return {
