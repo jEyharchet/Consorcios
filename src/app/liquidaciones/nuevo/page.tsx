@@ -261,7 +261,7 @@ export default async function NuevaLiquidacionPage({
           <h2 className="text-lg font-semibold">Pagos del periodo</h2>
           <p className="mt-2 text-sm text-slate-600">Egresos reales del consorcio</p>
           <div className="mt-4 rounded-lg border border-dashed border-slate-300 p-4 text-sm text-slate-500">
-            Sin datos disponibles en esta version. El modulo de pagos de gastos se incorporara en la siguiente etapa.
+            Los pagos de gastos ya se gestionan desde el modulo de Gastos y su impacto se refleja en Tesoreria.
           </div>
           <button type="button" disabled className="mt-4 rounded-md bg-slate-200 px-3 py-2 text-sm font-medium text-slate-500">
             Registrar pagos

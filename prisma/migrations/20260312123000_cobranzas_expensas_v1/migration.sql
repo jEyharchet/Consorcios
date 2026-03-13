@@ -1,4 +1,4 @@
-ALTER TABLE "Pago"
+﻿ALTER TABLE "Pago"
   ADD COLUMN "capitalPendientePrevio" DOUBLE PRECISION,
   ADD COLUMN "interesDevengado" DOUBLE PRECISION,
   ADD COLUMN "totalAdeudadoPrevio" DOUBLE PRECISION,

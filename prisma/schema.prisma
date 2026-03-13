@@ -28,6 +28,7 @@ model Consorcio {
   solicitudesAcceso   SolicitudAccesoConsorcio[]
   cuentasBancarias    ConsorcioCuentaBancaria[]
   movimientosFondo    MovimientoFondo[]
+  pagosGasto          PagoGasto[]
 }
 
 model Unidad {
@@ -303,6 +304,7 @@ model Gasto {
   consorcio   Consorcio    @relation(fields: [consorcioId], references: [id], onDelete: Cascade)
   proveedor   Proveedor?   @relation(fields: [proveedorId], references: [id], onDelete: SetNull)
   liquidacion Liquidacion? @relation(fields: [liquidacionId], references: [id], onDelete: SetNull)
+  pagosGasto  PagoGasto[]
 
   @@index([consorcioId])
   @@index([proveedorId])
@@ -354,6 +356,7 @@ model ConsorcioCuentaBancaria {
 
   consorcio        Consorcio        @relation(fields: [consorcioId], references: [id], onDelete: Cascade)
   pagos            Pago[]
+  pagosGasto       PagoGasto[]
   movimientosFondo MovimientoFondo[]
 
   @@index([consorcioId])
@@ -364,6 +367,7 @@ model MovimientoFondo {
   id                       Int      @id @default(autoincrement())
   consorcioId              Int
   pagoId                   Int?     @unique
+  pagoGastoId              Int?     @unique
   consorcioCuentaBancariaId Int?
   fechaMovimiento          DateTime
   tipoOrigen               String
@@ -377,11 +381,36 @@ model MovimientoFondo {
 
   consorcio              Consorcio              @relation(fields: [consorcioId], references: [id], onDelete: Cascade)
   pago                   Pago?                  @relation(fields: [pagoId], references: [id], onDelete: Cascade)
+  pagoGasto              PagoGasto?             @relation(fields: [pagoGastoId], references: [id], onDelete: Cascade)
   consorcioCuentaBancaria ConsorcioCuentaBancaria? @relation(fields: [consorcioCuentaBancariaId], references: [id], onDelete: SetNull)
 
   @@index([consorcioId])
+  @@index([pagoGastoId])
   @@index([consorcioCuentaBancariaId])
   @@index([fechaMovimiento])
+}
+
+model PagoGasto {
+  id                       Int      @id @default(autoincrement())
+  gastoId                  Int
+  consorcioId              Int
+  fechaPago                DateTime @default(now())
+  monto                    Float
+  medioPago                String   @default("TRANSFERENCIA")
+  consorcioCuentaBancariaId Int?
+  observacion              String?
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+
+  gasto                   Gasto                   @relation(fields: [gastoId], references: [id], onDelete: Cascade)
+  consorcio              Consorcio              @relation(fields: [consorcioId], references: [id], onDelete: Cascade)
+  consorcioCuentaBancaria ConsorcioCuentaBancaria? @relation(fields: [consorcioCuentaBancariaId], references: [id], onDelete: SetNull)
+  movimientoFondo        MovimientoFondo?
+
+  @@index([gastoId])
+  @@index([consorcioId])
+  @@index([fechaPago])
+  @@index([consorcioCuentaBancariaId])
 }
 
 model User {

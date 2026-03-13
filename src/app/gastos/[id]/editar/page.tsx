@@ -33,6 +33,9 @@ export default async function EditarGastoPage({
     include: {
       consorcio: { select: { nombre: true } },
       liquidacion: { select: { estado: true } },
+      pagosGasto: {
+        select: { monto: true },
+      },
     },
   });
 
@@ -120,6 +123,15 @@ export default async function EditarGastoPage({
       redirect(`/gastos/${id}/editar?error=monto_invalido`);
     }
 
+    const totalPagado = await prisma.pagoGasto.aggregate({
+      where: { gastoId: id },
+      _sum: { monto: true },
+    });
+
+    if (monto < (totalPagado._sum.monto ?? 0)) {
+      redirect(`/gastos/${id}/editar?error=monto_menor_a_pagado`);
+    }
+
     const liquidacionBloqueante = await prisma.liquidacion.findFirst({
       where: {
         consorcioId: gastoActual.consorcioId,
@@ -200,6 +212,8 @@ export default async function EditarGastoPage({
                   ? "El proveedor debe estar asociado al mismo consorcio y vigente para la fecha del gasto."
                   : searchParams?.error === "liquidacion_bloqueada"
                     ? "El gasto no se puede editar porque la liquidacion del periodo esta emitida o cerrada."
+                    : searchParams?.error === "monto_menor_a_pagado"
+                      ? "El monto total del gasto no puede quedar por debajo de lo ya pagado."
                     : null;
 
   return (
