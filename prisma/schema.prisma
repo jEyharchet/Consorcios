@@ -94,6 +94,7 @@ model ConsorcioAdministrador {
   actaNombreOriginal String?
   actaMimeType       String?
   actaPath           String?
+  actaContenido      Bytes?
   actaSubidaAt       DateTime?
 
   consorcio Consorcio @relation(fields: [consorcioId], references: [id], onDelete: Cascade)
@@ -211,18 +212,31 @@ model Pago {
   id        Int @id @default(autoincrement())
   expensaId Int
 
-  fechaPago  DateTime @default(now())
-  monto      Float
-  medioPago  String   @default("TRANSFERENCIA")
-  referencia String?
-  nota       String?
+  fechaPago                 DateTime @default(now())
+  monto                     Float
+  capitalPendientePrevio    Float?
+  interesDevengado          Float?
+  totalAdeudadoPrevio       Float?
+  montoCapital              Float?
+  montoInteres              Float?
+  saldoResultante           Float?
+  medioPago                 String   @default("TRANSFERENCIA")
+  referencia                String?
+  nota                      String?
+  comprobanteNombreOriginal String?
+  comprobanteMimeType       String?
+  comprobanteContenido      Bytes?
+  comprobanteSubidoAt       DateTime?
+  registradoPorUserId       String?
 
   createdAt DateTime @default(now())
 
-  expensa Expensa @relation(fields: [expensaId], references: [id], onDelete: Cascade)
+  expensa           Expensa @relation(fields: [expensaId], references: [id], onDelete: Cascade)
+  registradoPorUser User?   @relation("PagoRegistradoPor", fields: [registradoPorUserId], references: [id], onDelete: SetNull)
 
   @@index([expensaId])
   @@index([fechaPago])
+  @@index([registradoPorUserId])
 }
 
 model Proveedor {
@@ -347,9 +361,10 @@ model User {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  accounts       Account[]
-  sessions       Session[]
-  userConsorcios UserConsorcio[]
+  accounts         Account[]
+  sessions         Session[]
+  userConsorcios   UserConsorcio[]
+  pagosRegistrados Pago[] @relation("PagoRegistradoPor")
 
   persona                    Persona?                   @relation(fields: [personaId], references: [id], onDelete: SetNull)
   solicitudesAccesoConsorcio SolicitudAccesoConsorcio[] @relation("SolicitudAccesoSolicitante")
@@ -476,4 +491,5 @@ model LiquidacionRegeneracionJob {
   @@index([status])
   @@index([liquidacionId, createdAt])
 }
+
 

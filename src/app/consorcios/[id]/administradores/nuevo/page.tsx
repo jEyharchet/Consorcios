@@ -1,10 +1,19 @@
-﻿import Link from "next/link";
+import type { Buffer } from "node:buffer";
+
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireConsorcioRole } from "../../../../../lib/auth";
 
 import { prisma } from "../../../../../../lib/prisma";
-import { saveActaFile, isFileProvided, actaValidationMessages } from "../../../../../lib/actas";
+import { buildAdministradorActaPath, saveActaFile, isFileProvided, actaValidationMessages } from "../../../../../lib/actas";
 import { validateNoOverlap } from "../../../../../lib/relaciones";
+
+type ActaPayload = {
+  actaNombreOriginal: string;
+  actaMimeType: string;
+  actaSubidaAt: Date;
+  actaContenido: Buffer;
+};
 
 export default async function NuevoAdministradorPage({
   params,
@@ -85,12 +94,7 @@ export default async function NuevoAdministradorPage({
       redirect(`/consorcios/${consorcioId}/administradores/nuevo?${qs.toString()}`);
     }
 
-    let actaData: {
-      actaNombreOriginal: string;
-      actaMimeType: string;
-      actaPath: string;
-      actaSubidaAt: Date;
-    } | null = null;
+    let actaData: ActaPayload | null = null;
 
     if (isFileProvided(acta)) {
       const saveResult = await saveActaFile(acta);
@@ -101,17 +105,29 @@ export default async function NuevoAdministradorPage({
       actaData = saveResult.data;
     }
 
-    await prisma.consorcioAdministrador.create({
-      data: {
-        consorcioId,
-        personaId,
-        desde,
-        hasta,
-        actaNombreOriginal: actaData?.actaNombreOriginal ?? null,
-        actaMimeType: actaData?.actaMimeType ?? null,
-        actaPath: actaData?.actaPath ?? null,
-        actaSubidaAt: actaData?.actaSubidaAt ?? null,
-      },
+    await prisma.$transaction(async (tx) => {
+      const relacion = await tx.consorcioAdministrador.create({
+        data: {
+          consorcioId,
+          personaId,
+          desde,
+          hasta,
+        },
+        select: { id: true },
+      });
+
+      if (actaData) {
+        await tx.consorcioAdministrador.update({
+          where: { id: relacion.id },
+          data: {
+            actaNombreOriginal: actaData.actaNombreOriginal,
+            actaMimeType: actaData.actaMimeType,
+            actaPath: buildAdministradorActaPath(relacion.id),
+            actaContenido: actaData.actaContenido,
+            actaSubidaAt: actaData.actaSubidaAt,
+          },
+        });
+      }
     });
 
     redirect(`/consorcios/${consorcioId}`);
@@ -244,5 +260,3 @@ export default async function NuevoAdministradorPage({
     </main>
   );
 }
-
-

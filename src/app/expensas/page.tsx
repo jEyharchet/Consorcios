@@ -153,8 +153,7 @@ export default async function ExpensasPage({
                           Ver
                         </Link>
                         {access.isSuperAdmin ||
-                        rolesByConsorcio.get(expensa.liquidacion.consorcio.id) === "ADMIN" ||
-                        rolesByConsorcio.get(expensa.liquidacion.consorcio.id) === "OPERADOR" ? (
+                        rolesByConsorcio.get(expensa.liquidacion.consorcio.id) === "ADMIN" ? (
                           expensa.estado !== "PAGADA" ? (
                             <Link href={`/expensas/${expensa.id}/pago`} className="text-blue-600 hover:underline">
                               Registrar cobranza

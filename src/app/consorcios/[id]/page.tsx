@@ -1,14 +1,16 @@
+import type { Buffer } from "node:buffer";
+
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Fragment } from "react";
 
 import { prisma } from "../../../../lib/prisma";
-import { actaValidationMessages, isFileProvided, saveActaFile } from "../../../lib/actas";
+import { actaValidationMessages, buildAdministradorActaPath, isFileProvided, saveActaFile } from "../../../lib/actas";
 import { requireConsorcioAccess, requireConsorcioRole } from "../../../lib/auth";
-import { formatDateAR, isVigente, normalizeDate } from "../../../lib/relaciones";
+import { formatDateAR, isVigente, normalizeDate, validateNoOverlap } from "../../../lib/relaciones";
 
 function formatLocation(parts: Array<string | null | undefined>) {
-  return parts.filter((part) => part && part.trim().length > 0).join(" • ");
+  return parts.filter((part) => part && part.trim().length > 0).join(" - ");
 }
 
 function getAdminStatus(rel: { desde: Date; hasta: Date | null }, today: Date) {
@@ -49,11 +51,12 @@ export default async function ConsorcioDetallePage({
   searchParams,
 }: {
   params: { id: string };
-  searchParams?: { finalizarAdmin?: string; error?: string };
+  searchParams?: { finalizarAdmin?: string; editarAdmin?: string; error?: string };
 }) {
   const id = Number(params.id);
   const access = await requireConsorcioAccess(id);
   const finalizarAdminId = Number(searchParams?.finalizarAdmin);
+  const editarAdminId = Number(searchParams?.editarAdmin);
   const error = searchParams?.error;
 
   const [consorcio, pendingRequestsCount] = await Promise.all([
@@ -82,10 +85,7 @@ export default async function ConsorcioDetallePage({
     const id = Number(formData.get("id"));
     await requireConsorcioRole(id, ["ADMIN"]);
 
-    await prisma.consorcio.delete({
-      where: { id },
-    });
-
+    await prisma.consorcio.delete({ where: { id } });
     redirect("/consorcios");
   }
 
@@ -93,8 +93,8 @@ export default async function ConsorcioDetallePage({
     "use server";
 
     const consorcioId = Number(formData.get("consorcioId"));
-    await requireConsorcioRole(consorcioId, ["ADMIN"]);
     const relacionId = Number(formData.get("relacionId"));
+    await requireConsorcioRole(consorcioId, ["ADMIN"]);
 
     const relacion = await prisma.consorcioAdministrador.findUnique({
       where: { id: relacionId },
@@ -121,10 +121,7 @@ export default async function ConsorcioDetallePage({
       }
     }
 
-    await prisma.consorcioAdministrador.delete({
-      where: { id: relacionId },
-    });
-
+    await prisma.consorcioAdministrador.delete({ where: { id: relacionId } });
     redirect(`/consorcios/${consorcioId}`);
   }
 
@@ -132,10 +129,10 @@ export default async function ConsorcioDetallePage({
     "use server";
 
     const consorcioId = Number(formData.get("consorcioId"));
-    await requireConsorcioRole(consorcioId, ["ADMIN"]);
     const relacionId = Number(formData.get("relacionId"));
     const hastaRaw = (formData.get("hasta")?.toString() ?? "").trim();
     const acta = formData.get("acta");
+    await requireConsorcioRole(consorcioId, ["ADMIN"]);
 
     const hasFile = isFileProvided(acta);
     if (!hastaRaw && !hasFile) {
@@ -156,6 +153,7 @@ export default async function ConsorcioDetallePage({
       actaNombreOriginal?: string | null;
       actaMimeType?: string | null;
       actaPath?: string | null;
+      actaContenido?: Buffer | null;
       actaSubidaAt?: Date | null;
     } = {};
 
@@ -196,7 +194,8 @@ export default async function ConsorcioDetallePage({
 
       data.actaNombreOriginal = saveResult.data.actaNombreOriginal;
       data.actaMimeType = saveResult.data.actaMimeType;
-      data.actaPath = saveResult.data.actaPath;
+      data.actaPath = buildAdministradorActaPath(relacionId);
+      data.actaContenido = saveResult.data.actaContenido;
       data.actaSubidaAt = saveResult.data.actaSubidaAt;
     }
 
@@ -205,6 +204,92 @@ export default async function ConsorcioDetallePage({
       data,
     });
 
+    redirect(`/consorcios/${consorcioId}`);
+  }
+
+  async function editarAdministrador(formData: FormData) {
+    "use server";
+
+    const consorcioId = Number(formData.get("consorcioId"));
+    const relacionId = Number(formData.get("relacionId"));
+    const desdeRaw = (formData.get("desde")?.toString() ?? "").trim();
+    const hastaRaw = (formData.get("hasta")?.toString() ?? "").trim();
+    const acta = formData.get("acta");
+    await requireConsorcioRole(consorcioId, ["ADMIN"]);
+
+    if (!desdeRaw) {
+      redirect(`/consorcios/${consorcioId}?error=desde_requerido&editarAdmin=${relacionId}`);
+    }
+
+    const relacion = await prisma.consorcioAdministrador.findUnique({
+      where: { id: relacionId },
+      select: { id: true, personaId: true, desde: true, hasta: true },
+    });
+
+    if (!relacion) {
+      redirect(`/consorcios/${consorcioId}?error=relacion_no_encontrada`);
+    }
+
+    const desde = new Date(desdeRaw);
+    const hasta = hastaRaw ? new Date(hastaRaw) : null;
+
+    if (hasta && hasta < desde) {
+      redirect(`/consorcios/${consorcioId}?error=fin_menor_desde&editarAdmin=${relacionId}`);
+    }
+
+    const existentes = await prisma.consorcioAdministrador.findMany({
+      where: {
+        consorcioId,
+        personaId: relacion.personaId,
+        id: { not: relacionId },
+      },
+      select: { desde: true, hasta: true },
+    });
+
+    const validacion = validateNoOverlap(existentes, { desde, hasta });
+    if (!validacion.ok) {
+      redirect(`/consorcios/${consorcioId}?error=solape&editarAdmin=${relacionId}`);
+    }
+
+    const today = normalizeDate(new Date());
+    const seguiraActivoHoy = isVigente(desde, hasta, today);
+    const otrosActivos = await prisma.consorcioAdministrador.count({
+      where: {
+        consorcioId,
+        id: { not: relacionId },
+        desde: { lte: today },
+        OR: [{ hasta: null }, { hasta: { gte: today } }],
+      },
+    });
+
+    if (!seguiraActivoHoy && otrosActivos === 0) {
+      redirect(`/consorcios/${consorcioId}?error=ultimo_admin&editarAdmin=${relacionId}`);
+    }
+
+    const data: {
+      desde: Date;
+      hasta: Date | null;
+      actaNombreOriginal?: string | null;
+      actaMimeType?: string | null;
+      actaPath?: string | null;
+      actaContenido?: Buffer | null;
+      actaSubidaAt?: Date | null;
+    } = { desde, hasta };
+
+    if (isFileProvided(acta)) {
+      const saveResult = await saveActaFile(acta);
+      if (!saveResult.ok) {
+        redirect(`/consorcios/${consorcioId}?error=${saveResult.code}&editarAdmin=${relacionId}`);
+      }
+
+      data.actaNombreOriginal = saveResult.data.actaNombreOriginal;
+      data.actaMimeType = saveResult.data.actaMimeType;
+      data.actaPath = buildAdministradorActaPath(relacionId);
+      data.actaContenido = saveResult.data.actaContenido;
+      data.actaSubidaAt = saveResult.data.actaSubidaAt;
+    }
+
+    await prisma.consorcioAdministrador.update({ where: { id: relacionId }, data });
     redirect(`/consorcios/${consorcioId}`);
   }
 
@@ -223,7 +308,6 @@ export default async function ConsorcioDetallePage({
     .sort((a, b) => {
       const pisoDiff = parseFloor(a.piso) - parseFloor(b.piso);
       if (pisoDiff !== 0) return pisoDiff;
-
       return (a.departamento ?? "").localeCompare(b.departamento ?? "");
     });
 
@@ -233,11 +317,7 @@ export default async function ConsorcioDetallePage({
     .sort((a, b) => {
       const aVigente = isVigente(a.desde, a.hasta, today);
       const bVigente = isVigente(b.desde, b.hasta, today);
-
-      if (aVigente !== bVigente) {
-        return aVigente ? -1 : 1;
-      }
-
+      if (aVigente !== bVigente) return aVigente ? -1 : 1;
       return b.desde.getTime() - a.desde.getTime();
     });
 
@@ -254,21 +334,25 @@ export default async function ConsorcioDetallePage({
   const errorMessage =
     error === "fin_requerido"
       ? "Tenes que indicar fecha de fin o adjuntar un acta."
-      : error === "fin_menor_desde"
-        ? "La fecha de fin no puede ser anterior a la fecha de inicio."
-        : error === "ya_finalizada"
-          ? "La relacion ya estaba finalizada."
-          : error === "relacion_no_encontrada"
-            ? "No se encontro la relacion de administrador."
-            : error === "ultimo_admin"
-              ? "El consorcio debe conservar al menos un administrador activo."
-              : error === "invalid_type"
-                ? actaValidationMessages.invalid_type
-                : error === "max_size"
-                  ? actaValidationMessages.max_size
-                  : error === "write_error"
-                    ? actaValidationMessages.write_error
-                    : null;
+      : error === "desde_requerido"
+        ? "Tenes que indicar una fecha de inicio."
+        : error === "fin_menor_desde"
+          ? "La fecha de fin no puede ser anterior a la fecha de inicio."
+          : error === "ya_finalizada"
+            ? "La relacion ya estaba finalizada."
+            : error === "relacion_no_encontrada"
+              ? "No se encontro la relacion de administrador."
+              : error === "ultimo_admin"
+                ? "El consorcio debe conservar al menos un administrador activo."
+                : error === "solape"
+                  ? "La relacion se solapa con otra existente para la misma persona."
+                  : error === "invalid_type"
+                    ? actaValidationMessages.invalid_type
+                    : error === "max_size"
+                      ? actaValidationMessages.max_size
+                      : error === "write_error"
+                        ? actaValidationMessages.write_error
+                        : null;
 
   return (
     <main className="mx-auto w-full max-w-7xl px-6 py-8">
@@ -283,93 +367,45 @@ export default async function ConsorcioDetallePage({
               <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-600">
                 Consorcio
               </span>
-              {consorcio.tituloLegal ? (
-                <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-600">
-                  {consorcio.tituloLegal}
-                </span>
-              ) : null}
+              {consorcio.tituloLegal ? <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-600">{consorcio.tituloLegal}</span> : null}
             </div>
             <div>
               <h1 className="text-3xl font-semibold tracking-tight text-slate-950 sm:text-4xl">{consorcio.nombre}</h1>
               <p className="mt-2 text-sm text-slate-600 sm:text-base">{heroSubtitle}</p>
             </div>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Unidades</p>
-                <p className="mt-2 text-2xl font-semibold text-slate-900">{consorcio.unidades.length}</p>
-              </div>
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Administradores</p>
-                <p className="mt-2 text-2xl font-semibold text-slate-900">{administradoresOrdenados.length}</p>
-              </div>
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Solicitudes</p>
-                <p className="mt-2 text-2xl font-semibold text-slate-900">{pendingRequestsCount}</p>
-              </div>
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Creado</p>
-                <p className="mt-2 text-sm font-semibold text-slate-900">{consorcio.fechaCreacion.toLocaleDateString()}</p>
-              </div>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Unidades</p><p className="mt-2 text-2xl font-semibold text-slate-900">{consorcio.unidades.length}</p></div>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Administradores</p><p className="mt-2 text-2xl font-semibold text-slate-900">{administradoresOrdenados.length}</p></div>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Solicitudes</p><p className="mt-2 text-2xl font-semibold text-slate-900">{pendingRequestsCount}</p></div>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3"><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Creado</p><p className="mt-2 text-sm font-semibold text-slate-900">{consorcio.fechaCreacion.toLocaleDateString()}</p></div>
             </div>
           </div>
 
           <div className="flex w-full max-w-sm flex-col gap-3 xl:items-stretch">
-            <Link
-              href={`/consorcios/${consorcio.id}/editar`}
-              className="inline-flex items-center justify-center rounded-xl bg-slate-950 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-800"
-            >
-              Editar consorcio
-            </Link>
-
+            <Link href={`/consorcios/${consorcio.id}/editar`} className="inline-flex items-center justify-center rounded-xl bg-slate-950 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-800">Editar consorcio</Link>
             {canManageRequests ? (
-              <Link
-                href={`/consorcios/${consorcio.id}/solicitudes`}
-                className="inline-flex items-center justify-between rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-              >
+              <Link href={`/consorcios/${consorcio.id}/solicitudes`} className="inline-flex items-center justify-between rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
                 <span>Ver solicitudes de integracion</span>
-                <span className={`ml-3 inline-flex min-w-6 items-center justify-center rounded-full px-2 py-0.5 text-xs font-semibold ${pendingRequestsCount > 0 ? "bg-red-600 text-white" : "bg-slate-100 text-slate-600"}`}>
-                  {pendingRequestsCount}
-                </span>
+                <span className={`ml-3 inline-flex min-w-6 items-center justify-center rounded-full px-2 py-0.5 text-xs font-semibold ${pendingRequestsCount > 0 ? "bg-red-600 text-white" : "bg-slate-100 text-slate-600"}`}>{pendingRequestsCount}</span>
               </Link>
             ) : null}
-
             <div className="flex flex-col gap-3 sm:flex-row xl:flex-col">
-              <Link
-                href={`/consorcios/${consorcio.id}/administradores/nuevo`}
-                className="inline-flex flex-1 items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-              >
-                Agregar administrador
-              </Link>
-
+              <Link href={`/consorcios/${consorcio.id}/administradores/nuevo`} className="inline-flex flex-1 items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50">Agregar administrador</Link>
               <form action={deleteConsorcio} className="flex-1">
                 <input type="hidden" name="id" value={consorcio.id} />
-                <button
-                  type="submit"
-                  className="inline-flex w-full items-center justify-center rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700 transition hover:bg-red-100"
-                >
-                  Eliminar consorcio
-                </button>
+                <button type="submit" className="inline-flex w-full items-center justify-center rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700 transition hover:bg-red-100">Eliminar consorcio</button>
               </form>
             </div>
           </div>
         </div>
       </section>
 
-      {errorMessage ? (
-        <div className="mt-6 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 shadow-sm">
-          {errorMessage}
-        </div>
-      ) : null}
+      {errorMessage ? <div className="mt-6 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 shadow-sm">{errorMessage}</div> : null}
 
       <section className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
         <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <h2 className="text-xl font-semibold text-slate-950">Resumen del consorcio</h2>
-              <p className="mt-1 text-sm text-slate-500">Datos generales y fiscales del edificio.</p>
-            </div>
-          </div>
-
+          <h2 className="text-xl font-semibold text-slate-950">Resumen del consorcio</h2>
+          <p className="mt-1 text-sm text-slate-500">Datos generales y fiscales del edificio.</p>
           <div className="mt-5 grid gap-3 sm:grid-cols-2">
             <SummaryItem label="Direccion" value={consorcio.direccion} />
             <SummaryItem label="Ciudad" value={consorcio.ciudad ?? "-"} />
@@ -377,9 +413,7 @@ export default async function ConsorcioDetallePage({
             <SummaryItem label="Codigo postal" value={consorcio.codigoPostal ?? "-"} />
             <SummaryItem label="CUIT" value={consorcio.cuit ?? "-"} />
             <SummaryItem label="Fecha de creacion" value={consorcio.fechaCreacion.toLocaleDateString()} />
-            <div className="sm:col-span-2">
-              <SummaryItem label="Titulo legal" value={consorcio.tituloLegal ?? "-"} />
-            </div>
+            <div className="sm:col-span-2"><SummaryItem label="Titulo legal" value={consorcio.tituloLegal ?? "-"} /></div>
           </div>
         </div>
 
@@ -387,17 +421,13 @@ export default async function ConsorcioDetallePage({
           <div className="flex items-center justify-between gap-3">
             <div>
               <h2 className="text-xl font-semibold text-slate-950">Administradores</h2>
-              <p className="mt-1 text-sm text-slate-500">Relacion historica y vigencia actual del consorcio.</p>
+              <p className="mt-1 text-sm text-slate-500">Relacion historica, vigencia y actas cargadas.</p>
             </div>
-            <span className="rounded-full bg-slate-100 px-3 py-1 text-sm font-medium text-slate-600">
-              {administradoresOrdenados.length}
-            </span>
+            <span className="rounded-full bg-slate-100 px-3 py-1 text-sm font-medium text-slate-600">{administradoresOrdenados.length}</span>
           </div>
 
           {administradoresOrdenados.length === 0 ? (
-            <p className="mt-5 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
-              Este consorcio aun no tiene administradores.
-            </p>
+            <p className="mt-5 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">Este consorcio aun no tiene administradores.</p>
           ) : (
             <div className="mt-5 overflow-hidden rounded-2xl border border-slate-200">
               <div className="overflow-x-auto">
@@ -417,60 +447,58 @@ export default async function ConsorcioDetallePage({
                     {administradoresOrdenados.map((rel) => {
                       const status = getAdminStatus(rel, today);
                       const vigente = status.label === "Activo";
+                      const actaDisponible = Boolean(rel.actaPath || rel.actaNombreOriginal);
 
                       return (
                         <Fragment key={rel.id}>
                           <tr className={`border-t border-slate-100 align-top ${status.rowClassName}`}>
-                            <td className="px-4 py-4">
-                              <div>
-                                <p className="font-semibold text-slate-900">
-                                  {rel.persona.apellido}, {rel.persona.nombre}
-                                </p>
-                              </div>
-                            </td>
-                            <td className="px-4 py-4">
-                              <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${status.className}`}>
-                                {status.label}
-                              </span>
-                            </td>
-                            <td className="px-4 py-4 text-slate-600">
-                              <div className="space-y-1">
-                                <p>{rel.persona.email ?? "Sin email"}</p>
-                                <p>{rel.persona.telefono ?? "Sin telefono"}</p>
-                              </div>
-                            </td>
+                            <td className="px-4 py-4"><p className="font-semibold text-slate-900">{rel.persona.apellido}, {rel.persona.nombre}</p></td>
+                            <td className="px-4 py-4"><span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${status.className}`}>{status.label}</span></td>
+                            <td className="px-4 py-4 text-slate-600"><div className="space-y-1"><p>{rel.persona.email ?? "Sin email"}</p><p>{rel.persona.telefono ?? "Sin telefono"}</p></div></td>
                             <td className="px-4 py-4 text-slate-700">{formatDateAR(rel.desde)}</td>
                             <td className="px-4 py-4 text-slate-700">{formatDateAR(rel.hasta)}</td>
                             <td className="px-4 py-4">
-                              {rel.actaPath ? (
-                                <a href={rel.actaPath} target="_blank" rel="noreferrer" className="font-medium text-blue-600 hover:underline">
-                                  Ver acta
-                                </a>
+                              {actaDisponible ? (
+                                <div className="space-y-1">
+                                  <a href={buildAdministradorActaPath(rel.id)} target="_blank" rel="noreferrer" className="font-medium text-blue-600 hover:underline">Ver acta</a>
+                                  <p className="text-xs text-slate-500">{rel.actaNombreOriginal ?? "Acta cargada"}</p>
+                                </div>
                               ) : (
-                                <span className="text-slate-400">-</span>
+                                <span className="inline-flex rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700">Falta acta</span>
                               )}
                             </td>
                             <td className="px-4 py-4">
                               <div className="flex items-center justify-end gap-3 whitespace-nowrap">
-                                <form action={desasociarAdministrador}>
-                                  <input type="hidden" name="consorcioId" value={consorcio.id} />
-                                  <input type="hidden" name="relacionId" value={rel.id} />
-                                  <button type="submit" className="font-medium text-red-600 hover:text-red-700 hover:underline">
-                                    Desasociar
-                                  </button>
-                                </form>
-
-                                {vigente ? (
-                                  <Link
-                                    href={`/consorcios/${consorcio.id}?finalizarAdmin=${rel.id}`}
-                                    className="font-medium text-slate-700 hover:text-slate-900 hover:underline"
-                                  >
-                                    Finalizar
-                                  </Link>
-                                ) : null}
+                                <Link href={`/consorcios/${consorcio.id}?editarAdmin=${rel.id}`} className="font-medium text-blue-600 hover:underline">{actaDisponible ? "Editar" : "Completar acta"}</Link>
+                                <form action={desasociarAdministrador}><input type="hidden" name="consorcioId" value={consorcio.id} /><input type="hidden" name="relacionId" value={rel.id} /><button type="submit" className="font-medium text-red-600 hover:text-red-700 hover:underline">Desasociar</button></form>
+                                {vigente ? <Link href={`/consorcios/${consorcio.id}?finalizarAdmin=${rel.id}`} className="font-medium text-slate-700 hover:text-slate-900 hover:underline">Finalizar</Link> : null}
                               </div>
                             </td>
                           </tr>
+
+                          {editarAdminId === rel.id ? (
+                            <tr className="border-t border-slate-100 bg-slate-50/50">
+                              <td className="px-4 py-4" colSpan={7}>
+                                <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                                  <form action={editarAdministrador} className="space-y-4" encType="multipart/form-data">
+                                    <input type="hidden" name="consorcioId" value={consorcio.id} />
+                                    <input type="hidden" name="relacionId" value={rel.id} />
+                                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                      <div className="space-y-1"><label className="text-sm font-medium text-slate-700">Desde</label><input type="date" name="desde" defaultValue={rel.desde.toISOString().slice(0, 10)} className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none ring-blue-500 focus:ring-2" /></div>
+                                      <div className="space-y-1"><label className="text-sm font-medium text-slate-700">Hasta</label><input type="date" name="hasta" defaultValue={rel.hasta ? rel.hasta.toISOString().slice(0, 10) : ""} className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none ring-blue-500 focus:ring-2" /></div>
+                                    </div>
+                                    <div className="space-y-1">
+                                      <label className="text-sm font-medium text-slate-700">Acta de designacion</label>
+                                      <input type="file" name="acta" accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp" className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm" />
+                                      <p className="text-xs text-slate-500">Si subes un archivo nuevo, reemplazara el acta actual.</p>
+                                    </div>
+                                    {actaDisponible ? <p className="text-xs text-slate-600">Acta actual: <a href={buildAdministradorActaPath(rel.id)} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">{rel.actaNombreOriginal ?? "Ver acta"}</a></p> : <p className="text-xs text-amber-700">Esta designacion aun no tiene acta cargada.</p>}
+                                    <div className="flex items-center gap-3"><button type="submit" className="rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-medium text-white hover:bg-slate-800">Guardar cambios</button><Link href={`/consorcios/${consorcio.id}`} className="text-sm font-medium text-slate-700 hover:underline">Cancelar</Link></div>
+                                  </form>
+                                </div>
+                              </td>
+                            </tr>
+                          ) : null}
 
                           {vigente && finalizarAdminId === rel.id ? (
                             <tr className="border-t border-slate-100 bg-slate-50/50">
@@ -479,49 +507,13 @@ export default async function ConsorcioDetallePage({
                                   <form action={finalizarAdministrador} className="space-y-4" encType="multipart/form-data">
                                     <input type="hidden" name="consorcioId" value={consorcio.id} />
                                     <input type="hidden" name="relacionId" value={rel.id} />
-
                                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                                      <div className="space-y-1">
-                                        <label className="text-sm font-medium text-slate-700">Fecha fin</label>
-                                        <input
-                                          type="date"
-                                          name="hasta"
-                                          className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none ring-blue-500 focus:ring-2"
-                                        />
-                                      </div>
-                                      <div className="space-y-1">
-                                        <label className="text-sm font-medium text-slate-700">Acta de designacion</label>
-                                        <input
-                                          type="file"
-                                          name="acta"
-                                          accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp"
-                                          className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm"
-                                        />
-                                      </div>
+                                      <div className="space-y-1"><label className="text-sm font-medium text-slate-700">Fecha fin</label><input type="date" name="hasta" className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none ring-blue-500 focus:ring-2" /></div>
+                                      <div className="space-y-1"><label className="text-sm font-medium text-slate-700">Acta de designacion</label><input type="file" name="acta" accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp" className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm" /></div>
                                     </div>
-
-                                    {rel.actaPath ? (
-                                      <p className="text-xs text-slate-600">
-                                        Acta actual:{" "}
-                                        <a href={rel.actaPath} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">
-                                          Ver acta
-                                        </a>
-                                      </p>
-                                    ) : null}
-
+                                    {actaDisponible ? <p className="text-xs text-slate-600">Acta actual: <a href={buildAdministradorActaPath(rel.id)} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">{rel.actaNombreOriginal ?? "Ver acta"}</a></p> : null}
                                     <p className="text-xs text-slate-500">Formatos permitidos: PDF, JPG, PNG, WEBP. Maximo 10 MB.</p>
-
-                                    <div className="flex items-center gap-3">
-                                      <button
-                                        type="submit"
-                                        className="rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-medium text-white hover:bg-slate-800"
-                                      >
-                                        Guardar cambios
-                                      </button>
-                                      <Link href={`/consorcios/${consorcio.id}`} className="text-sm font-medium text-slate-700 hover:underline">
-                                        Cancelar
-                                      </Link>
-                                    </div>
+                                    <div className="flex items-center gap-3"><button type="submit" className="rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-medium text-white hover:bg-slate-800">Guardar cambios</button><Link href={`/consorcios/${consorcio.id}`} className="text-sm font-medium text-slate-700 hover:underline">Cancelar</Link></div>
                                   </form>
                                 </div>
                               </td>
@@ -544,18 +536,11 @@ export default async function ConsorcioDetallePage({
             <h2 className="text-xl font-semibold text-slate-950">Unidades</h2>
             <p className="mt-1 text-sm text-slate-500">Vista general de las unidades cargadas para este consorcio.</p>
           </div>
-          <Link
-            href={`/consorcios/${consorcio.id}/unidades/nueva`}
-            className="inline-flex items-center justify-center rounded-xl bg-slate-950 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-800"
-          >
-            Nueva unidad
-          </Link>
+          <Link href={`/consorcios/${consorcio.id}/unidades/nueva`} className="inline-flex items-center justify-center rounded-xl bg-slate-950 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-800">Nueva unidad</Link>
         </div>
 
         {unidadesOrdenadas.length === 0 ? (
-          <p className="mt-5 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">
-            Este consorcio aun no tiene unidades.
-          </p>
+          <p className="mt-5 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-500">Este consorcio aun no tiene unidades.</p>
         ) : (
           <div className="mt-5 overflow-hidden rounded-2xl border border-slate-200">
             <div className="overflow-x-auto">
@@ -573,11 +558,7 @@ export default async function ConsorcioDetallePage({
                 <tbody className="text-sm text-slate-800">
                   {unidadesOrdenadas.map((unidad) => (
                     <tr key={unidad.id} className="border-t border-slate-100 hover:bg-slate-50/60">
-                      <td className="px-4 py-4">
-                        <Link href={`/unidades/${unidad.id}`} className="font-medium text-blue-600 hover:underline">
-                          {unidad.identificador}
-                        </Link>
-                      </td>
+                      <td className="px-4 py-4"><Link href={`/unidades/${unidad.id}`} className="font-medium text-blue-600 hover:underline">{unidad.identificador}</Link></td>
                       <td className="px-4 py-4 text-slate-700">{unidad.tipo}</td>
                       <td className="px-4 py-4 text-slate-700">{unidad.piso ?? "-"}</td>
                       <td className="px-4 py-4 text-slate-700">{unidad.departamento ?? "-"}</td>
