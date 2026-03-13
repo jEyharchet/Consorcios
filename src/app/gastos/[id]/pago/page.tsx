@@ -189,6 +189,8 @@ export default async function PagoGastoPage({
   const errorMessage =
     searchParams?.error === "fecha_requerida"
       ? "La fecha de pago es obligatoria."
+      : searchParams?.error === "fecha_anterior_a_pago_existente"
+        ? "No se puede registrar un pago con fecha anterior a otro pago ya cargado para este gasto."
       : searchParams?.error === "monto_invalido"
         ? "El monto debe ser mayor a 0."
         : searchParams?.error === "gasto_inexistente"

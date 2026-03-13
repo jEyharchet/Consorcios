@@ -238,7 +238,7 @@ export default async function TesoreriaPage({
   }
 
   const cuentasActivas = consorcio.cuentasBancarias.filter((cuenta) => cuenta.activa);
-  const saldoTotalBancos = consorcio.cuentasBancarias.reduce((acc, cuenta) => acc + cuenta.saldoActual, 0);
+  const saldoTotalBancos = cuentasActivas.reduce((acc, cuenta) => acc + cuenta.saldoActual, 0);
   const saldoTotalDisponible = consorcio.saldoCajaActual + saldoTotalBancos;
   const selectedCuenta =
     selectedCuentaId !== null
@@ -540,7 +540,7 @@ export default async function TesoreriaPage({
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div>
                         <p className="text-sm font-medium text-slate-900">
-                          {movimiento.tipoOrigen} · {movimiento.tipoDestino}
+                          {movimiento.tipoOrigen} - {movimiento.tipoDestino}
                         </p>
                         <p className="mt-1 text-sm text-slate-600">
                           {movimiento.descripcion ?? "-"}

@@ -121,6 +121,11 @@ export async function registrarPagoGasto(params: {
       throw new PagoGastoError("gasto_inexistente");
     }
 
+    const hasFuturePayments = snapshot.pagosGasto.some((pago) => pago.fechaPago > params.fechaPago);
+    if (hasFuturePayments) {
+      throw new PagoGastoError("fecha_anterior_a_pago_existente");
+    }
+
     const { saldoPendiente } = buildGastoPagoSummary({
       montoTotal: snapshot.monto,
       pagos: snapshot.pagosGasto,

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { Prisma } from "@prisma/client";
 
 import { requireConsorcioRole } from "../../../lib/auth";
 import { redirectToOnboardingIfNoConsorcios } from "../../../lib/onboarding";
@@ -20,6 +21,47 @@ const RUBROS = [
   "Seguros",
   "Otros",
 ] as const;
+
+async function createGastoWithSequenceRecovery(data: {
+  consorcioId: number;
+  proveedorId: number | null;
+  fecha: Date;
+  periodo: string;
+  concepto: string;
+  descripcion: string | null;
+  tipoExpensa: string;
+  rubroExpensa: string;
+  monto: number;
+}) {
+  try {
+    return await prisma.gasto.create({ data });
+  } catch (error) {
+    const target = (error instanceof Prisma.PrismaClientKnownRequestError
+      ? (error.meta as { target?: unknown } | undefined)?.target
+      : undefined);
+    const targetIncludesId =
+      (Array.isArray(target) && target.includes("id")) ||
+      (typeof target === "string" && target.includes("id"));
+    const isDuplicatedId =
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2002" &&
+      targetIncludesId;
+
+    if (!isDuplicatedId) {
+      throw error;
+    }
+
+    await prisma.$executeRawUnsafe(`
+      SELECT setval(
+        pg_get_serial_sequence('"Gasto"', 'id'),
+        COALESCE((SELECT MAX(id) FROM "Gasto"), 1),
+        true
+      );
+    `);
+
+    return prisma.gasto.create({ data });
+  }
+}
 
 export default async function NuevoGastoPage({
   searchParams,
@@ -140,18 +182,16 @@ export default async function NuevoGastoPage({
       }
     }
 
-    await prisma.gasto.create({
-      data: {
-        consorcioId,
-        proveedorId,
-        fecha,
-        periodo,
-        concepto,
-        descripcion: descripcionRaw || null,
-        tipoExpensa,
-        rubroExpensa,
-        monto,
-      },
+    await createGastoWithSequenceRecovery({
+      consorcioId,
+      proveedorId,
+      fecha,
+      periodo,
+      concepto,
+      descripcion: descripcionRaw || null,
+      tipoExpensa,
+      rubroExpensa,
+      monto,
     });
 
     redirect("/gastos");
