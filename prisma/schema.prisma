@@ -297,6 +297,10 @@ model Gasto {
   rubroExpensa    String
   monto           Float
   comprobantePath String?
+  comprobanteContenido      Bytes?
+  comprobanteMimeType       String?
+  comprobanteNombreOriginal String?
+  comprobanteSubidoAt       DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

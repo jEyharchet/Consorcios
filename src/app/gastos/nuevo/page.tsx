@@ -1,3 +1,4 @@
+import { Buffer } from "node:buffer";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Prisma } from "@prisma/client";
@@ -21,6 +22,8 @@ const RUBROS = [
   "Seguros",
   "Otros",
 ] as const;
+const MAX_COMPROBANTE_SIZE_BYTES = 5 * 1024 * 1024;
+const ALLOWED_COMPROBANTE_TYPES = ["application/pdf", "image/jpeg", "image/png", "image/webp"] as const;
 
 async function createGastoWithSequenceRecovery(data: {
   consorcioId: number;
@@ -32,6 +35,10 @@ async function createGastoWithSequenceRecovery(data: {
   tipoExpensa: string;
   rubroExpensa: string;
   monto: number;
+  comprobanteContenido: Buffer | null;
+  comprobanteMimeType: string | null;
+  comprobanteNombreOriginal: string | null;
+  comprobanteSubidoAt: Date | null;
 }) {
   try {
     return await prisma.gasto.create({ data });
@@ -128,6 +135,7 @@ export default async function NuevoGastoPage({
     const rubroExpensa = (formData.get("rubroExpensa")?.toString() ?? "").trim();
     const proveedorIdRaw = (formData.get("proveedorId")?.toString() ?? "").trim();
     const montoRaw = (formData.get("monto")?.toString() ?? "").trim();
+    const comprobante = formData.get("comprobante");
 
     if (!consorcioId) redirect("/gastos/nuevo?error=consorcio_requerido");
     if (!fechaRaw) redirect(`/gastos/nuevo?error=fecha_requerida&consorcioId=${consorcioId}`);
@@ -149,6 +157,27 @@ export default async function NuevoGastoPage({
     const monto = Number(montoRaw);
     if (!montoRaw || Number.isNaN(monto) || monto <= 0) {
       redirect(`/gastos/nuevo?error=monto_invalido&consorcioId=${consorcioId}`);
+    }
+
+    let comprobanteContenido: Buffer | null = null;
+    let comprobanteMimeType: string | null = null;
+    let comprobanteNombreOriginal: string | null = null;
+    let comprobanteSubidoAt: Date | null = null;
+
+    if (comprobante instanceof File && comprobante.size > 0) {
+      if (comprobante.size > MAX_COMPROBANTE_SIZE_BYTES) {
+        redirect(`/gastos/nuevo?error=comprobante_muy_pesado&consorcioId=${consorcioId}`);
+      }
+
+      if (!ALLOWED_COMPROBANTE_TYPES.includes(comprobante.type as (typeof ALLOWED_COMPROBANTE_TYPES)[number])) {
+        redirect(`/gastos/nuevo?error=comprobante_tipo_invalido&consorcioId=${consorcioId}`);
+      }
+
+      const arrayBuffer = await comprobante.arrayBuffer();
+      comprobanteContenido = Buffer.from(arrayBuffer);
+      comprobanteMimeType = comprobante.type;
+      comprobanteNombreOriginal = comprobante.name;
+      comprobanteSubidoAt = new Date();
     }
 
     const liquidacionCerrada = await prisma.liquidacion.findFirst({
@@ -192,6 +221,10 @@ export default async function NuevoGastoPage({
       tipoExpensa,
       rubroExpensa,
       monto,
+      comprobanteContenido,
+      comprobanteMimeType,
+      comprobanteNombreOriginal,
+      comprobanteSubidoAt,
     });
 
     redirect("/gastos");
@@ -216,6 +249,10 @@ export default async function NuevoGastoPage({
                     ? "El monto debe ser mayor a 0."
                     : searchParams?.error === "proveedor_invalido"
                       ? "El proveedor debe estar asociado al mismo consorcio y vigente para la fecha del gasto."
+                      : searchParams?.error === "comprobante_muy_pesado"
+                        ? "El comprobante no puede superar los 5 MB."
+                        : searchParams?.error === "comprobante_tipo_invalido"
+                          ? "El comprobante debe ser PDF, JPG, PNG o WEBP."
                       : searchParams?.error === "periodo_bloqueado"
                         ? "No se puede registrar el gasto porque el periodo ya esta emitido o cerrado."
                         : null;
@@ -246,7 +283,7 @@ export default async function NuevoGastoPage({
         </div>
       </form>
 
-      <form action={crearGasto} className="space-y-4 rounded-lg border border-slate-200 bg-white p-6">
+      <form action={crearGasto} encType="multipart/form-data" className="space-y-4 rounded-lg border border-slate-200 bg-white p-6">
         <div className="space-y-1">
           <label htmlFor="consorcioId" className="text-sm font-medium text-slate-700">Consorcio</label>
           <select id="consorcioId" name="consorcioId" required defaultValue={selectedConsorcioParam} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none ring-blue-500 focus:ring-2">
@@ -316,8 +353,14 @@ export default async function NuevoGastoPage({
 
         <div className="space-y-1">
           <label htmlFor="comprobante" className="text-sm font-medium text-slate-700">Comprobante (opcional)</label>
-          <input id="comprobante" name="comprobante" type="file" disabled className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-500" />
-          <p className="text-xs text-slate-500">Campo preparado para implementacion futura de upload.</p>
+          <input
+            id="comprobante"
+            name="comprobante"
+            type="file"
+            accept="application/pdf,image/*"
+            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700"
+          />
+          <p className="text-xs text-slate-500">Formatos permitidos: PDF, JPG, PNG o WEBP. Maximo 5 MB.</p>
         </div>
 
         <button type="submit" className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800">Guardar</button>
