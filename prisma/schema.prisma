@@ -16,6 +16,7 @@ model Consorcio {
   provincia     String?
   codigoPostal  String?
   cuit          String?
+  saldoCajaActual Float   @default(0)
   fechaCreacion DateTime @default(now())
 
   unidades            Unidad[]
@@ -26,6 +27,7 @@ model Consorcio {
   userConsorcios      UserConsorcio[]
   solicitudesAcceso   SolicitudAccesoConsorcio[]
   cuentasBancarias    ConsorcioCuentaBancaria[]
+  movimientosFondo    MovimientoFondo[]
 }
 
 model Unidad {
@@ -211,6 +213,7 @@ model LiquidacionProrrateoUnidad {
 model Pago {
   id        Int @id @default(autoincrement())
   expensaId Int
+  consorcioCuentaBancariaId Int?
 
   fechaPago                 DateTime @default(now())
   monto                     Float
@@ -231,12 +234,15 @@ model Pago {
 
   createdAt DateTime @default(now())
 
-  expensa           Expensa @relation(fields: [expensaId], references: [id], onDelete: Cascade)
-  registradoPorUser User?   @relation("PagoRegistradoPor", fields: [registradoPorUserId], references: [id], onDelete: SetNull)
+  expensa                 Expensa                 @relation(fields: [expensaId], references: [id], onDelete: Cascade)
+  consorcioCuentaBancaria ConsorcioCuentaBancaria? @relation(fields: [consorcioCuentaBancariaId], references: [id], onDelete: SetNull)
+  registradoPorUser       User?                   @relation("PagoRegistradoPor", fields: [registradoPorUserId], references: [id], onDelete: SetNull)
+  movimientoFondo         MovimientoFondo?
 
   @@index([expensaId])
   @@index([fechaPago])
   @@index([registradoPorUserId])
+  @@index([consorcioCuentaBancariaId])
 }
 
 model Proveedor {
@@ -329,11 +335,14 @@ model ConsorcioCuentaBancaria {
   id                Int      @id @default(autoincrement())
   consorcioId       Int
   banco             String
+  tipoCuenta        String?
   titular           String
+  numeroCuenta      String?
   cbu               String
   alias             String?
   cuitTitular       String?
   activa            Boolean  @default(true)
+  saldoActual       Float    @default(0)
   esCuentaExpensas  Boolean  @default(false)
   qrEnabled         Boolean  @default(false)
   qrMode            String?
@@ -343,10 +352,35 @@ model ConsorcioCuentaBancaria {
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
-  consorcio Consorcio @relation(fields: [consorcioId], references: [id], onDelete: Cascade)
+  consorcio        Consorcio        @relation(fields: [consorcioId], references: [id], onDelete: Cascade)
+  pagos            Pago[]
+  movimientosFondo MovimientoFondo[]
 
   @@index([consorcioId])
   @@index([consorcioId, esCuentaExpensas])
+}
+
+model MovimientoFondo {
+  id                       Int      @id @default(autoincrement())
+  consorcioId              Int
+  pagoId                   Int      @unique
+  consorcioCuentaBancariaId Int?
+  fechaMovimiento          DateTime
+  tipoOrigen               String
+  tipoDestino              String
+  descripcion              String?
+  monto                    Float
+  saldoAnterior            Float
+  saldoPosterior           Float
+  createdAt                DateTime @default(now())
+
+  consorcio              Consorcio              @relation(fields: [consorcioId], references: [id], onDelete: Cascade)
+  pago                   Pago                   @relation(fields: [pagoId], references: [id], onDelete: Cascade)
+  consorcioCuentaBancaria ConsorcioCuentaBancaria? @relation(fields: [consorcioCuentaBancariaId], references: [id], onDelete: SetNull)
+
+  @@index([consorcioId])
+  @@index([consorcioCuentaBancariaId])
+  @@index([fechaMovimiento])
 }
 
 model User {

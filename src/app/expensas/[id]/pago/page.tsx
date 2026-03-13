@@ -1,6 +1,7 @@
-﻿import Link from "next/link";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { PagoAcreditacionFields } from "../../_components/PagoAcreditacionFields";
 import { requireAuth, requireConsorcioRole } from "../../../../lib/auth";
 import {
   CobranzaError,
@@ -13,6 +14,12 @@ import {
   isFileProvided,
   saveComprobantePagoFile,
 } from "../../../../lib/comprobantes-pago";
+import {
+  formatCuentaBancariaDestino,
+  getAcreditacionMessage,
+  isMedioPagoExpensa,
+  type MedioPagoExpensa,
+} from "../../../../lib/fondos";
 import { prisma } from "../../../../lib/prisma";
 
 function toDateInput(date: Date) {
@@ -52,6 +59,7 @@ function buildReturnQuery(values: {
   fechaPago?: string;
   monto?: string;
   medioPago?: string;
+  consorcioCuentaBancariaId?: string;
   referencia?: string;
   nota?: string;
   error?: string;
@@ -61,6 +69,7 @@ function buildReturnQuery(values: {
   if (values.fechaPago) params.set("fechaPago", values.fechaPago);
   if (values.monto) params.set("monto", values.monto);
   if (values.medioPago) params.set("medioPago", values.medioPago);
+  if (values.consorcioCuentaBancariaId) params.set("consorcioCuentaBancariaId", values.consorcioCuentaBancariaId);
   if (values.referencia) params.set("referencia", values.referencia);
   if (values.nota) params.set("nota", values.nota);
   if (values.error) params.set("error", values.error);
@@ -79,6 +88,7 @@ export default async function RegistrarPagoPage({
     fechaPago?: string;
     monto?: string;
     medioPago?: string;
+    consorcioCuentaBancariaId?: string;
     referencia?: string;
     nota?: string;
   };
@@ -105,10 +115,38 @@ export default async function RegistrarPagoPage({
 
   await requireConsorcioRole(expensa.liquidacion.consorcioId, ["ADMIN"]);
 
+  const cuentasBancariasActivas = await prisma.consorcioCuentaBancaria.findMany({
+    where: {
+      consorcioId: expensa.liquidacion.consorcioId,
+      activa: true,
+    },
+    orderBy: [{ esCuentaExpensas: "desc" }, { banco: "asc" }, { id: "asc" }],
+    select: {
+      id: true,
+      banco: true,
+      tipoCuenta: true,
+      titular: true,
+      numeroCuenta: true,
+      cbu: true,
+      alias: true,
+      saldoActual: true,
+    },
+  });
+
   const authUser = await requireAuth();
   const defaultFechaPago = searchParams?.fechaPago?.trim() || toDateInput(new Date());
   const defaultMonto = searchParams?.monto?.trim() ?? "";
-  const defaultMedioPago = searchParams?.medioPago?.trim() || "TRANSFERENCIA";
+  const medioPagoParam = searchParams?.medioPago?.trim() ?? "";
+  const defaultMedioPago: MedioPagoExpensa = isMedioPagoExpensa(medioPagoParam) ? medioPagoParam : "TRANSFERENCIA";
+  const defaultCuentaBancariaIdRaw = searchParams?.consorcioCuentaBancariaId?.trim() ?? "";
+  const requestedCuentaBancariaId = defaultCuentaBancariaIdRaw && /^\d+$/.test(defaultCuentaBancariaIdRaw)
+    ? Number(defaultCuentaBancariaIdRaw)
+    : null;
+  const defaultCuentaBancariaId = requestedCuentaBancariaId && cuentasBancariasActivas.some((cuenta) => cuenta.id === requestedCuentaBancariaId)
+    ? requestedCuentaBancariaId
+    : cuentasBancariasActivas.length === 1
+      ? cuentasBancariasActivas[0].id
+      : null;
   const defaultReferencia = searchParams?.referencia?.trim() ?? "";
   const defaultNota = searchParams?.nota?.trim() ?? "";
 
@@ -120,7 +158,9 @@ export default async function RegistrarPagoPage({
   }
 
   const montoPreview = defaultMonto ? Number(defaultMonto) : null;
-  const previewError = defaultMonto && (montoPreview === null || Number.isNaN(montoPreview) || montoPreview <= 0) ? "monto_invalido" : null;
+  const previewError = defaultMonto && (montoPreview === null || Number.isNaN(montoPreview) || montoPreview <= 0)
+    ? "monto_invalido"
+    : null;
   const estimacion = !previewError && montoPreview !== null
     ? (() => {
         try {
@@ -141,6 +181,7 @@ export default async function RegistrarPagoPage({
     const fechaPagoRaw = (formData.get("fechaPago")?.toString() ?? "").trim();
     const montoRaw = (formData.get("monto")?.toString() ?? "").trim();
     const medioPago = (formData.get("medioPago")?.toString() ?? "").trim() || "TRANSFERENCIA";
+    const consorcioCuentaBancariaIdRaw = (formData.get("consorcioCuentaBancariaId")?.toString() ?? "").trim();
     const referencia = (formData.get("referencia")?.toString() ?? "").trim();
     const nota = (formData.get("nota")?.toString() ?? "").trim();
     const comprobante = formData.get("comprobante");
@@ -163,20 +204,55 @@ export default async function RegistrarPagoPage({
 
     const fechaPago = parseDateInput(fechaPagoRaw);
     if (!fechaPago) {
-      redirect(`/expensas/${expensaId}/pago${buildReturnQuery({ fechaPago: fechaPagoRaw, monto: montoRaw, medioPago, referencia, nota, error: "fecha_requerida" })}`);
+      redirect(
+        `/expensas/${expensaId}/pago${buildReturnQuery({
+          fechaPago: fechaPagoRaw,
+          monto: montoRaw,
+          medioPago,
+          consorcioCuentaBancariaId: consorcioCuentaBancariaIdRaw,
+          referencia,
+          nota,
+          error: "fecha_requerida",
+        })}`,
+      );
     }
 
     const monto = Number(montoRaw);
     if (!montoRaw || Number.isNaN(monto) || monto <= 0) {
-      redirect(`/expensas/${expensaId}/pago${buildReturnQuery({ fechaPago: fechaPagoRaw, monto: montoRaw, medioPago, referencia, nota, error: "monto_invalido" })}`);
+      redirect(
+        `/expensas/${expensaId}/pago${buildReturnQuery({
+          fechaPago: fechaPagoRaw,
+          monto: montoRaw,
+          medioPago,
+          consorcioCuentaBancariaId: consorcioCuentaBancariaIdRaw,
+          referencia,
+          nota,
+          error: "monto_invalido",
+        })}`,
+      );
     }
+
+    const consorcioCuentaBancariaId =
+      consorcioCuentaBancariaIdRaw && /^\d+$/.test(consorcioCuentaBancariaIdRaw)
+        ? Number(consorcioCuentaBancariaIdRaw)
+        : null;
 
     let comprobanteData: NonNullable<Parameters<typeof registrarPagoExpensa>[0]["comprobante"]> | null = null;
 
     if (isFileProvided(comprobante)) {
       const saved = await saveComprobantePagoFile(comprobante);
       if (!saved.ok) {
-        redirect(`/expensas/${expensaId}/pago${buildReturnQuery({ fechaPago: fechaPagoRaw, monto: montoRaw, medioPago, referencia, nota, error: saved.code })}`);
+        redirect(
+          `/expensas/${expensaId}/pago${buildReturnQuery({
+            fechaPago: fechaPagoRaw,
+            monto: montoRaw,
+            medioPago,
+            consorcioCuentaBancariaId: consorcioCuentaBancariaIdRaw,
+            referencia,
+            nota,
+            error: saved.code,
+          })}`,
+        );
       }
       comprobanteData = saved.data;
     }
@@ -187,6 +263,7 @@ export default async function RegistrarPagoPage({
         fechaPago,
         monto,
         medioPago,
+        consorcioCuentaBancariaId,
         referencia: referencia || null,
         nota: nota || null,
         registradoPorUserId: actor.id,
@@ -194,7 +271,17 @@ export default async function RegistrarPagoPage({
       });
     } catch (error) {
       if (error instanceof CobranzaError) {
-        redirect(`/expensas/${expensaId}/pago${buildReturnQuery({ fechaPago: fechaPagoRaw, monto: montoRaw, medioPago, referencia, nota, error: error.code })}`);
+        redirect(
+          `/expensas/${expensaId}/pago${buildReturnQuery({
+            fechaPago: fechaPagoRaw,
+            monto: montoRaw,
+            medioPago,
+            consorcioCuentaBancariaId: consorcioCuentaBancariaIdRaw,
+            referencia,
+            nota,
+            error: error.code,
+          })}`,
+        );
       }
 
       throw error;
@@ -215,13 +302,32 @@ export default async function RegistrarPagoPage({
             ? "El importe no puede superar el total adeudado al momento del pago."
             : errorCode === "fecha_anterior_a_pago_existente"
               ? "La fecha de pago no puede ser anterior a una cobranza ya registrada para esta expensa."
-              : errorCode === "invalid_type"
-              ? comprobantePagoValidationMessages.invalid_type
-              : errorCode === "max_size"
-                ? comprobantePagoValidationMessages.max_size
-                : errorCode === "write_error"
-                  ? comprobantePagoValidationMessages.write_error
-                  : null;
+              : errorCode === "medio_pago_invalido"
+                ? "El medio de pago seleccionado no es valido."
+                : errorCode === "transferencia_sin_cuentas_activas"
+                  ? "No hay cuentas bancarias activas para acreditar transferencias en este consorcio."
+                  : errorCode === "cuenta_bancaria_requerida"
+                    ? "Debes seleccionar la cuenta bancaria destino para acreditar la transferencia."
+                    : errorCode === "consorcio_inexistente"
+                      ? "No se encontro el consorcio asociado a la expensa."
+                      : errorCode === "invalid_type"
+                        ? comprobantePagoValidationMessages.invalid_type
+                        : errorCode === "max_size"
+                          ? comprobantePagoValidationMessages.max_size
+                          : errorCode === "write_error"
+                            ? comprobantePagoValidationMessages.write_error
+                            : null;
+
+  const cuentaBancariaSeleccionada =
+    defaultCuentaBancariaId !== null
+      ? cuentasBancariasActivas.find((cuenta) => cuenta.id === defaultCuentaBancariaId) ?? null
+      : cuentasBancariasActivas.length === 1
+        ? cuentasBancariasActivas[0]
+        : null;
+  const acreditacionMessage = getAcreditacionMessage({
+    medioPago: defaultMedioPago,
+    cuentaBancaria: defaultMedioPago === "TRANSFERENCIA" ? cuentaBancariaSeleccionada : null,
+  });
 
   const currentSummary = [
     { label: "Capital original", value: formatCurrency(snapshot.capitalOriginal) },
@@ -260,7 +366,7 @@ export default async function RegistrarPagoPage({
         <section className="space-y-6">
           <div className="rounded-xl border border-slate-200 bg-white p-6">
             <h2 className="text-lg font-semibold text-slate-900">Datos de la expensa</h2>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2 text-sm text-slate-700">
+            <div className="mt-4 grid gap-3 text-sm text-slate-700 sm:grid-cols-2">
               <p><span className="font-medium">Consorcio:</span> {snapshot.consorcio.nombre}</p>
               <p><span className="font-medium">Liquidacion:</span> {snapshot.liquidacion.periodo}</p>
               <p><span className="font-medium">Unidad:</span> {snapshot.unidad.identificador} ({snapshot.unidad.tipo})</p>
@@ -270,24 +376,47 @@ export default async function RegistrarPagoPage({
 
           <form method="GET" className="rounded-xl border border-slate-200 bg-white p-6">
             <h2 className="text-lg font-semibold text-slate-900">Vista previa del cobro</h2>
-            <p className="mt-1 text-sm text-slate-500">Actualiza fecha e importe para estimar intereses, imputacion y saldo resultante antes de guardar.</p>
+            <p className="mt-1 text-sm text-slate-500">
+              Actualiza fecha e importe para estimar intereses, imputacion y saldo resultante antes de guardar.
+            </p>
 
             <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-1">
                 <label htmlFor="preview-fechaPago" className="text-sm font-medium text-slate-700">Fecha de pago</label>
-                <input id="preview-fechaPago" name="fechaPago" type="date" defaultValue={defaultFechaPago} required className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none ring-blue-500 focus:ring-2" />
+                <input
+                  id="preview-fechaPago"
+                  name="fechaPago"
+                  type="date"
+                  defaultValue={defaultFechaPago}
+                  required
+                  className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none ring-blue-500 focus:ring-2"
+                />
               </div>
               <div className="space-y-1">
                 <label htmlFor="preview-monto" className="text-sm font-medium text-slate-700">Importe a registrar</label>
-                <input id="preview-monto" name="monto" type="number" step="0.01" min="0.01" defaultValue={defaultMonto} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none ring-blue-500 focus:ring-2" />
+                <input
+                  id="preview-monto"
+                  name="monto"
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  defaultValue={defaultMonto}
+                  className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none ring-blue-500 focus:ring-2"
+                />
               </div>
             </div>
 
             <input type="hidden" name="medioPago" value={defaultMedioPago} />
+            {defaultCuentaBancariaId ? (
+              <input type="hidden" name="consorcioCuentaBancariaId" value={defaultCuentaBancariaId} />
+            ) : null}
             <input type="hidden" name="referencia" value={defaultReferencia} />
             <input type="hidden" name="nota" value={defaultNota} />
 
-            <button type="submit" className="mt-4 rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+            <button
+              type="submit"
+              className="mt-4 rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
               Actualizar resumen
             </button>
           </form>
@@ -298,40 +427,67 @@ export default async function RegistrarPagoPage({
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-1">
                 <label htmlFor="fechaPago" className="text-sm font-medium text-slate-700">Fecha de pago</label>
-                <input id="fechaPago" name="fechaPago" type="date" defaultValue={defaultFechaPago} required className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none ring-blue-500 focus:ring-2" />
+                <input
+                  id="fechaPago"
+                  name="fechaPago"
+                  type="date"
+                  defaultValue={defaultFechaPago}
+                  required
+                  className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none ring-blue-500 focus:ring-2"
+                />
               </div>
               <div className="space-y-1">
                 <label htmlFor="monto" className="text-sm font-medium text-slate-700">Importe a registrar</label>
-                <input id="monto" name="monto" type="number" step="0.01" min="0.01" defaultValue={defaultMonto} required className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none ring-blue-500 focus:ring-2" />
+                <input
+                  id="monto"
+                  name="monto"
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  defaultValue={defaultMonto}
+                  required
+                  className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none ring-blue-500 focus:ring-2"
+                />
               </div>
             </div>
 
-            <div className="space-y-1">
-              <label htmlFor="medioPago" className="text-sm font-medium text-slate-700">Medio de pago</label>
-              <select id="medioPago" name="medioPago" defaultValue={defaultMedioPago} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none ring-blue-500 focus:ring-2">
-                <option value="TRANSFERENCIA">TRANSFERENCIA</option>
-                <option value="EFECTIVO">EFECTIVO</option>
-                <option value="DEBITO">DEBITO</option>
-                <option value="CREDITO">CREDITO</option>
-                <option value="CHEQUE">CHEQUE</option>
-                <option value="OTRO">OTRO</option>
-              </select>
-            </div>
+            <PagoAcreditacionFields
+              cuentasBancarias={cuentasBancariasActivas}
+              defaultMedioPago={defaultMedioPago}
+              defaultCuentaBancariaId={defaultCuentaBancariaId}
+            />
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-1">
                 <label htmlFor="referencia" className="text-sm font-medium text-slate-700">Referencia / nro. de operacion</label>
-                <input id="referencia" name="referencia" defaultValue={defaultReferencia} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none ring-blue-500 focus:ring-2" />
+                <input
+                  id="referencia"
+                  name="referencia"
+                  defaultValue={defaultReferencia}
+                  className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none ring-blue-500 focus:ring-2"
+                />
               </div>
               <div className="space-y-1">
                 <label htmlFor="comprobante" className="text-sm font-medium text-slate-700">Comprobante (opcional)</label>
-                <input id="comprobante" name="comprobante" type="file" accept="application/pdf,image/jpeg,image/png,image/webp" className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700" />
+                <input
+                  id="comprobante"
+                  name="comprobante"
+                  type="file"
+                  accept="application/pdf,image/jpeg,image/png,image/webp"
+                  className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700"
+                />
               </div>
             </div>
 
             <div className="space-y-1">
               <label htmlFor="nota" className="text-sm font-medium text-slate-700">Observaciones</label>
-              <textarea id="nota" name="nota" rows={3} defaultValue={defaultNota} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none ring-blue-500 focus:ring-2" />
+              <textarea
+                id="nota"
+                name="nota"
+                rows={3}
+                defaultValue={defaultNota}
+                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none ring-blue-500 focus:ring-2"
+              />
             </div>
 
             <div className="rounded-lg bg-slate-50 px-4 py-3 text-sm text-slate-600">
@@ -351,7 +507,7 @@ export default async function RegistrarPagoPage({
               {currentSummary.map((item) => (
                 <div key={item.label} className="flex items-center justify-between gap-4 border-b border-slate-100 pb-3 last:border-b-0 last:pb-0">
                   <span className="text-slate-600">{item.label}</span>
-                  <span className="font-medium text-slate-900 text-right">{item.value}</span>
+                  <span className="text-right font-medium text-slate-900">{item.value}</span>
                 </div>
               ))}
             </div>
@@ -364,12 +520,25 @@ export default async function RegistrarPagoPage({
                 previewSummary.map((item) => (
                   <div key={item.label} className="flex items-center justify-between gap-4 border-b border-slate-100 pb-3 last:border-b-0 last:pb-0">
                     <span className="text-slate-600">{item.label}</span>
-                    <span className="font-medium text-slate-900 text-right">{item.value}</span>
+                    <span className="text-right font-medium text-slate-900">{item.value}</span>
                   </div>
                 ))
               ) : (
                 <p className="text-slate-500">Ingresa fecha e importe y usa “Actualizar resumen” para ver la imputacion estimada antes de guardar.</p>
               )}
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-white p-6">
+            <h2 className="text-lg font-semibold text-slate-900">Acreditacion</h2>
+            <div className="mt-4 space-y-3 text-sm text-slate-600">
+              <p>{acreditacionMessage}.</p>
+              {defaultMedioPago === "TRANSFERENCIA" && cuentasBancariasActivas.length > 1 ? (
+                <p>Si el consorcio tiene mas de una cuenta activa, debes elegir la cuenta destino al guardar.</p>
+              ) : null}
+              {defaultMedioPago === "TRANSFERENCIA" && cuentaBancariaSeleccionada ? (
+                <p className="font-medium text-slate-900">{formatCuentaBancariaDestino(cuentaBancariaSeleccionada)}</p>
+              ) : null}
             </div>
           </div>
         </aside>

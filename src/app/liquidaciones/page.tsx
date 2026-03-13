@@ -287,9 +287,7 @@ export default async function LiquidacionesPage({
           <h2 className="text-lg font-semibold text-slate-900">Saldos</h2>
           <div className="mt-4 space-y-2 text-sm">
             <div className="flex items-center justify-between"><span className="text-slate-600">Caja</span><span className="font-medium">{formatCurrency(pagosAbiertos.filter((p) => p.medioPago === "EFECTIVO").reduce((a, p) => a + p.monto, 0))}</span></div>
-            <div className="flex items-center justify-between"><span className="text-slate-600">Cuenta bancaria principal</span><span className="font-medium">{formatCurrency(pagosAbiertos.filter((p) => p.medioPago === "TRANSFERENCIA" || p.medioPago === "DEBITO" || p.medioPago === "CREDITO").reduce((a, p) => a + p.monto, 0))}</span></div>
-            <div className="flex items-center justify-between"><span className="text-slate-600">Cheques de terceros</span><span className="font-medium">{formatCurrency(pagosAbiertos.filter((p) => p.medioPago === "CHEQUE").reduce((a, p) => a + p.monto, 0))}</span></div>
-            <div className="flex items-center justify-between"><span className="text-slate-600">Otros fondos</span><span className="font-medium">{formatCurrency(pagosAbiertos.filter((p) => p.medioPago === "OTRO").reduce((a, p) => a + p.monto, 0))}</span></div>
+            <div className="flex items-center justify-between"><span className="text-slate-600">Cuentas bancarias</span><span className="font-medium">{formatCurrency(pagosAbiertos.filter((p) => p.medioPago !== "EFECTIVO").reduce((a, p) => a + p.monto, 0))}</span></div>
           </div>
           <div className="mt-4 border-t border-slate-200 pt-3">
             <div className="flex items-center justify-between text-sm font-semibold">

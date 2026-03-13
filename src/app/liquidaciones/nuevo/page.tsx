@@ -118,11 +118,9 @@ export default async function NuevaLiquidacionPage({
     .filter((c) => c.medioPago === "EFECTIVO")
     .reduce((acc, c) => acc + c.monto, 0);
   const cuentaBancaria = cobranzasPeriodo
-    .filter((c) => c.medioPago === "TRANSFERENCIA" || c.medioPago === "DEBITO" || c.medioPago === "CREDITO")
+    .filter((c) => c.medioPago !== "EFECTIVO")
     .reduce((acc, c) => acc + c.monto, 0);
-  const cheques = cobranzasPeriodo.filter((c) => c.medioPago === "CHEQUE").reduce((acc, c) => acc + c.monto, 0);
-  const otrosFondos = cobranzasPeriodo.filter((c) => c.medioPago === "OTRO").reduce((acc, c) => acc + c.monto, 0);
-  const totalSaldos = caja + cuentaBancaria + cheques + otrosFondos;
+  const totalSaldos = caja + cuentaBancaria;
 
   const gastosSueldosTotal = sueldos.reduce((acc, s) => acc + s.monto, 0);
 
@@ -275,9 +273,7 @@ export default async function NuevaLiquidacionPage({
           <p className="mt-2 text-sm text-slate-600">Estimado segun cobranzas registradas</p>
           <div className="mt-4 space-y-2 text-sm">
             <div className="flex items-center justify-between"><span>Caja</span><span className="font-medium">{formatCurrency(caja)}</span></div>
-            <div className="flex items-center justify-between"><span>Cuenta bancaria principal</span><span className="font-medium">{formatCurrency(cuentaBancaria)}</span></div>
-            <div className="flex items-center justify-between"><span>Cheques de terceros</span><span className="font-medium">{formatCurrency(cheques)}</span></div>
-            <div className="flex items-center justify-between"><span>Otros fondos</span><span className="font-medium">{formatCurrency(otrosFondos)}</span></div>
+            <div className="flex items-center justify-between"><span>Cuentas bancarias</span><span className="font-medium">{formatCurrency(cuentaBancaria)}</span></div>
             <div className="border-t border-slate-200 pt-2 flex items-center justify-between font-semibold"><span>Total</span><span>{formatCurrency(totalSaldos)}</span></div>
           </div>
           <button type="button" disabled className="mt-4 rounded-md bg-slate-200 px-3 py-2 text-sm font-medium text-slate-500">
@@ -338,5 +334,3 @@ export default async function NuevaLiquidacionPage({
     </main>
   );
 }
-
-

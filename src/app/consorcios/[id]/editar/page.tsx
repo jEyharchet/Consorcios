@@ -46,6 +46,14 @@ function isValidCbu(value: string) {
   return /^\d{22}$/.test(value);
 }
 
+function formatCurrency(value: number) {
+  return new Intl.NumberFormat("es-AR", {
+    style: "currency",
+    currency: "ARS",
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
 function getQrConfigFromForm(formData: FormData) {
   const qrEnabled = parseCheckbox(formData, "qrEnabled");
   const qrMode = normalizeQrMode(formData, "qrMode");
@@ -181,7 +189,9 @@ export default async function EditarConsorcioPage({
     await requireConsorcioRole(consorcioId, ["ADMIN"]);
 
     const banco = formData.get("banco")?.toString().trim() ?? "";
+    const tipoCuenta = normalizeOptional(formData, "tipoCuenta");
     const titular = formData.get("titular")?.toString().trim() ?? "";
+    const numeroCuenta = normalizeOptional(formData, "numeroCuenta");
     const cbu = normalizeCbu(formData.get("cbu")?.toString() ?? "");
     const alias = normalizeOptional(formData, "alias");
     const cuitTitular = normalizeOptional(formData, "cuitTitular");
@@ -205,7 +215,9 @@ export default async function EditarConsorcioPage({
     const cuentaData = {
       consorcioId,
       banco,
+      tipoCuenta,
       titular,
+      numeroCuenta,
       cbu,
       alias,
       cuitTitular,
@@ -247,7 +259,9 @@ export default async function EditarConsorcioPage({
     }
 
     const banco = formData.get("banco")?.toString().trim() ?? "";
+    const tipoCuenta = normalizeOptional(formData, "tipoCuenta");
     const titular = formData.get("titular")?.toString().trim() ?? "";
+    const numeroCuenta = normalizeOptional(formData, "numeroCuenta");
     const cbu = normalizeCbu(formData.get("cbu")?.toString() ?? "");
     const alias = normalizeOptional(formData, "alias");
     const cuitTitular = normalizeOptional(formData, "cuitTitular");
@@ -279,7 +293,9 @@ export default async function EditarConsorcioPage({
 
     const cuentaData = {
       banco,
+      tipoCuenta,
       titular,
+      numeroCuenta,
       cbu,
       alias,
       cuitTitular,
@@ -457,6 +473,10 @@ export default async function EditarConsorcioPage({
           <summary className="cursor-pointer text-base font-semibold text-slate-900">CUENTAS BANCARIAS</summary>
 
           <div className="mt-4 space-y-4">
+            <div className="rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+              <span className="font-medium text-slate-900">Caja actual:</span> {formatCurrency(consorcio.saldoCajaActual ?? 0)}
+            </div>
+
             {cuentaFeedback ? (
               <div
                 className={`rounded-md px-3 py-2 text-sm ${
@@ -474,9 +494,11 @@ export default async function EditarConsorcioPage({
                 <thead className="bg-slate-50 text-left text-slate-600">
                   <tr>
                     <th className="px-3 py-2 font-medium">Banco</th>
+                    <th className="px-3 py-2 font-medium">Tipo / numero</th>
                     <th className="px-3 py-2 font-medium">Titular</th>
                     <th className="px-3 py-2 font-medium">CBU</th>
                     <th className="px-3 py-2 font-medium">Alias</th>
+                    <th className="px-3 py-2 font-medium">Saldo</th>
                     <th className="px-3 py-2 font-medium">Cuenta de expensas</th>
                     <th className="px-3 py-2 font-medium">QR</th>
                     <th className="px-3 py-2 font-medium">Acciones</th>
@@ -485,7 +507,7 @@ export default async function EditarConsorcioPage({
                 <tbody className="divide-y divide-slate-100">
                   {consorcio.cuentasBancarias.length === 0 ? (
                     <tr>
-                      <td className="px-3 py-3 text-slate-500" colSpan={7}>
+                      <td className="px-3 py-3 text-slate-500" colSpan={9}>
                         No hay cuentas bancarias cargadas.
                       </td>
                     </tr>
@@ -502,6 +524,22 @@ export default async function EditarConsorcioPage({
                               defaultValue={cuenta.banco}
                               required
                               className="w-44 rounded border border-slate-300 px-2 py-1 text-sm"
+                            />
+                          </td>
+                          <td className="px-3 py-3">
+                            <input
+                              name="tipoCuenta"
+                              form={formId}
+                              defaultValue={cuenta.tipoCuenta ?? ""}
+                              placeholder="Caja de ahorro"
+                              className="w-40 rounded border border-slate-300 px-2 py-1 text-sm"
+                            />
+                            <input
+                              name="numeroCuenta"
+                              form={formId}
+                              defaultValue={cuenta.numeroCuenta ?? ""}
+                              placeholder="Numero de cuenta"
+                              className="mt-2 w-40 rounded border border-slate-300 px-2 py-1 text-sm"
                             />
                           </td>
                           <td className="px-3 py-3">
@@ -538,6 +576,9 @@ export default async function EditarConsorcioPage({
                               placeholder="CUIT titular"
                               className="mt-2 w-40 rounded border border-slate-300 px-2 py-1 text-sm"
                             />
+                          </td>
+                          <td className="px-3 py-3 text-sm font-medium text-slate-700">
+                            {formatCurrency(cuenta.saldoActual ?? 0)}
                           </td>
                           <td className="px-3 py-3">
                             <label className="flex items-center gap-2 text-xs text-slate-700">
@@ -626,8 +667,18 @@ export default async function EditarConsorcioPage({
                 </div>
 
                 <div className="space-y-1">
+                  <label className="text-xs font-medium text-slate-700">Tipo de cuenta</label>
+                  <input name="tipoCuenta" className="w-full rounded border border-slate-300 px-3 py-2 text-sm" />
+                </div>
+
+                <div className="space-y-1">
                   <label className="text-xs font-medium text-slate-700">Titular</label>
                   <input name="titular" required className="w-full rounded border border-slate-300 px-3 py-2 text-sm" />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-slate-700">Numero de cuenta</label>
+                  <input name="numeroCuenta" className="w-full rounded border border-slate-300 px-3 py-2 text-sm" />
                 </div>
 
                 <div className="space-y-1">

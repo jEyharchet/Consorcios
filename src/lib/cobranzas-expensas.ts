@@ -2,6 +2,7 @@ import { Buffer } from "node:buffer";
 import { Prisma } from "@prisma/client";
 
 import { calcularInteresCapitalizadoPorTasas, type LiquidacionTasa } from "./liquidacion-deudas";
+import { type MedioPagoExpensa, isMedioPagoExpensa } from "./fondos";
 import { prisma } from "./prisma";
 
 const FINAL_ESTADO = "PAGADA";
@@ -312,6 +313,7 @@ export async function registrarPagoExpensa(params: {
   fechaPago: Date;
   monto: number;
   medioPago: string;
+  consorcioCuentaBancariaId?: number | null;
   referencia?: string | null;
   nota?: string | null;
   registradoPorUserId: string;
@@ -334,11 +336,57 @@ export async function registrarPagoExpensa(params: {
       throw new CobranzaError("fecha_anterior_a_pago_existente");
     }
 
+    if (!isMedioPagoExpensa(params.medioPago)) {
+      throw new CobranzaError("medio_pago_invalido");
+    }
+
+    const medioPago: MedioPagoExpensa = params.medioPago;
+    const cuentasActivas = medioPago === "TRANSFERENCIA"
+      ? await tx.consorcioCuentaBancaria.findMany({
+          where: {
+            consorcioId: snapshot.consorcio.id,
+            activa: true,
+          },
+          orderBy: [{ esCuentaExpensas: "desc" }, { banco: "asc" }, { id: "asc" }],
+          select: {
+            id: true,
+            saldoActual: true,
+            banco: true,
+            tipoCuenta: true,
+            numeroCuenta: true,
+            alias: true,
+          },
+        })
+      : [];
+
+    let cuentaDestino: (typeof cuentasActivas)[number] | null = null;
+
+    if (medioPago === "TRANSFERENCIA") {
+      if (cuentasActivas.length === 0) {
+        throw new CobranzaError("transferencia_sin_cuentas_activas");
+      }
+
+      if (cuentasActivas.length === 1) {
+        cuentaDestino = cuentasActivas[0];
+      } else {
+        const cuentaSeleccionada = params.consorcioCuentaBancariaId
+          ? cuentasActivas.find((cuenta) => cuenta.id === params.consorcioCuentaBancariaId)
+          : null;
+
+        if (!cuentaSeleccionada) {
+          throw new CobranzaError("cuenta_bancaria_requerida");
+        }
+
+        cuentaDestino = cuentaSeleccionada;
+      }
+    }
+
     const estimacion = estimatePagoExpensa(snapshot, params.monto);
 
     const pago = await tx.pago.create({
       data: {
         expensaId: params.expensaId,
+        consorcioCuentaBancariaId: cuentaDestino?.id ?? null,
         fechaPago: params.fechaPago,
         monto: estimacion.monto,
         capitalPendientePrevio: snapshot.capitalPendiente,
@@ -357,6 +405,66 @@ export async function registrarPagoExpensa(params: {
         comprobanteSubidoAt: params.comprobante?.comprobanteSubidoAt ?? null,
       },
     });
+
+    if (medioPago === "EFECTIVO") {
+      const consorcio = await tx.consorcio.findUnique({
+        where: { id: snapshot.consorcio.id },
+        select: { saldoCajaActual: true },
+      });
+
+      if (!consorcio) {
+        throw new CobranzaError("consorcio_inexistente");
+      }
+
+      const saldoAnterior = roundMoney(consorcio.saldoCajaActual);
+      const saldoPosterior = roundMoney(saldoAnterior + estimacion.monto);
+
+      await tx.consorcio.update({
+        where: { id: snapshot.consorcio.id },
+        data: {
+          saldoCajaActual: saldoPosterior,
+        },
+      });
+
+      await tx.movimientoFondo.create({
+        data: {
+          consorcioId: snapshot.consorcio.id,
+          pagoId: pago.id,
+          fechaMovimiento: params.fechaPago,
+          tipoOrigen: "PAGO_EXPENSA",
+          tipoDestino: "CAJA",
+          descripcion: `Cobranza expensa ${snapshot.liquidacion.periodo} - unidad ${snapshot.unidad.identificador}`,
+          monto: estimacion.monto,
+          saldoAnterior,
+          saldoPosterior,
+        },
+      });
+    } else if (cuentaDestino) {
+      const saldoAnterior = roundMoney(cuentaDestino.saldoActual);
+      const saldoPosterior = roundMoney(saldoAnterior + estimacion.monto);
+
+      await tx.consorcioCuentaBancaria.update({
+        where: { id: cuentaDestino.id },
+        data: {
+          saldoActual: saldoPosterior,
+        },
+      });
+
+      await tx.movimientoFondo.create({
+        data: {
+          consorcioId: snapshot.consorcio.id,
+          pagoId: pago.id,
+          consorcioCuentaBancariaId: cuentaDestino.id,
+          fechaMovimiento: params.fechaPago,
+          tipoOrigen: "PAGO_EXPENSA",
+          tipoDestino: "CUENTA_BANCARIA",
+          descripcion: `Cobranza expensa ${snapshot.liquidacion.periodo} - unidad ${snapshot.unidad.identificador}`,
+          monto: estimacion.monto,
+          saldoAnterior,
+          saldoPosterior,
+        },
+      });
+    }
 
     await tx.expensa.update({
       where: { id: params.expensaId },
