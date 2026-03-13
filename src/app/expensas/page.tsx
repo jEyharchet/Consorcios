@@ -1,11 +1,22 @@
+import type { Prisma } from "@prisma/client";
 import Link from "next/link";
-import { redirect } from "next/navigation";
 
 import { getActiveConsorcioContext } from "../../lib/consorcio-activo";
 import { redirectToOnboardingIfNoConsorcios } from "../../lib/onboarding";
 import { normalizePeriodo } from "../../lib/periodo";
 import { prisma } from "../../lib/prisma";
 import { isVigente, normalizeDate } from "../../lib/relaciones";
+import ExpensaKpis from "./_components/ExpensaKpis";
+import ExpensasTable, { type ExpensaTableRow } from "./_components/ExpensasTable";
+import type { ExpensaEstadoVisual } from "./_components/ExpensaEstadoBadge";
+
+function formatCurrency(value: number) {
+  return new Intl.NumberFormat("es-AR", {
+    style: "currency",
+    currency: "ARS",
+    maximumFractionDigits: 2,
+  }).format(value);
+}
 
 function formatResponsables(
   relaciones: Array<{ desde: Date; hasta: Date | null; persona: { apellido: string; nombre: string } }>,
@@ -14,66 +25,140 @@ function formatResponsables(
   const vigentes = relaciones.filter((relacion) => isVigente(relacion.desde, relacion.hasta, today));
 
   if (vigentes.length === 0) {
-    return ["Sin responsable"];
+    return "Sin responsable";
   }
 
-  return vigentes.map((relacion) => `${relacion.persona.apellido}, ${relacion.persona.nombre}`);
+  return vigentes.map((relacion) => `${relacion.persona.apellido}, ${relacion.persona.nombre}`).join(" / ");
+}
+
+function resolveVisualStatus(params: {
+  saldo: number;
+  estado: string;
+  fechaVencimiento: Date | null;
+  today: Date;
+}): ExpensaEstadoVisual {
+  if (params.saldo <= 0.009 || params.estado === "PAGADA") {
+    return "PAGADA";
+  }
+
+  if (params.fechaVencimiento && normalizeDate(params.fechaVencimiento) < params.today) {
+    return "VENCIDA";
+  }
+
+  return "PENDIENTE";
+}
+
+function buildSearchConditions(search: string, today: Date): Prisma.ExpensaWhereInput[] {
+  return search
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((token) => ({
+      OR: [
+        {
+          unidad: {
+            identificador: {
+              contains: token,
+              mode: "insensitive",
+            },
+          },
+        },
+        {
+          unidad: {
+            personas: {
+              some: {
+                desde: { lte: today },
+                OR: [{ hasta: null }, { hasta: { gte: today } }],
+                persona: {
+                  OR: [
+                    {
+                      apellido: {
+                        contains: token,
+                        mode: "insensitive",
+                      },
+                    },
+                    {
+                      nombre: {
+                        contains: token,
+                        mode: "insensitive",
+                      },
+                    },
+                  ],
+                },
+              },
+            },
+          },
+        },
+      ],
+    }));
 }
 
 export default async function ExpensasPage({
   searchParams,
 }: {
-  searchParams?: { consorcioId?: string; periodo?: string; estado?: string };
+  searchParams?: { periodo?: string; estado?: string; buscar?: string };
 }) {
-  const { access, activeConsorcioId } = await getActiveConsorcioContext();
+  const { access, consorcios, activeConsorcioId } = await getActiveConsorcioContext();
   const today = normalizeDate(new Date());
 
   redirectToOnboardingIfNoConsorcios(access);
 
-  const rawConsorcioIdParam = (searchParams?.consorcioId ?? "").trim();
-  const consorcioIdParam = rawConsorcioIdParam || (activeConsorcioId ? String(activeConsorcioId) : "");
-  const periodoInput = (searchParams?.periodo ?? "").trim();
-  const periodo = normalizePeriodo(periodoInput) ?? periodoInput;
-  const estado = (searchParams?.estado ?? "").trim();
-
-  const consorcioId = consorcioIdParam ? Number(consorcioIdParam) : null;
-  if (consorcioIdParam && (!Number.isInteger(consorcioId) || (consorcioId ?? 0) <= 0)) {
-    redirect("/expensas");
+  if (!activeConsorcioId) {
+    return (
+      <main className="mx-auto w-full max-w-7xl px-6 py-10">
+        <h1 className="text-2xl font-semibold">Expensas</h1>
+        <p className="mt-4 rounded-md bg-amber-50 px-4 py-3 text-amber-800">
+          No hay un consorcio activo valido para mostrar.
+        </p>
+      </main>
+    );
   }
 
-  if (!access.isSuperAdmin && consorcioId && !access.allowedConsorcioIds.includes(consorcioId)) {
-    redirect("/expensas");
+  if (!access.isSuperAdmin && !access.allowedConsorcioIds.includes(activeConsorcioId)) {
+    return (
+      <main className="mx-auto w-full max-w-7xl px-6 py-10">
+        <h1 className="text-2xl font-semibold">Expensas</h1>
+        <p className="mt-4 rounded-md bg-amber-50 px-4 py-3 text-amber-800">
+          No tenes acceso al consorcio activo seleccionado.
+        </p>
+      </main>
+    );
   }
 
-  const consorcios = await prisma.consorcio.findMany({
-    where: access.isSuperAdmin ? undefined : { id: { in: access.allowedConsorcioIds } },
-    orderBy: { nombre: "asc" },
-    select: { id: true, nombre: true },
+  const activeConsorcio = consorcios.find((consorcio) => consorcio.id === activeConsorcioId);
+  const assignmentRole = access.assignments.find((assignment) => assignment.consorcioId === activeConsorcioId)?.role;
+  const canRegisterPayments = access.isSuperAdmin || assignmentRole === "ADMIN";
+
+  const periodos = await prisma.liquidacion.findMany({
+    where: { consorcioId: activeConsorcioId },
+    distinct: ["periodo"],
+    orderBy: { periodo: "desc" },
+    select: { periodo: true },
   });
+
+  const rawSearch = (searchParams?.buscar ?? "").trim();
+  const rawEstado = (searchParams?.estado ?? "").trim().toUpperCase();
+  const selectedEstado = rawEstado === "PAGADA" || rawEstado === "PENDIENTE" ? rawEstado : "";
+  const defaultPeriodo = periodos[0]?.periodo ?? "";
+  const selectedPeriodo = normalizePeriodo((searchParams?.periodo ?? "").trim()) ?? defaultPeriodo;
 
   const expensas = await prisma.expensa.findMany({
     where: {
       liquidacion: {
-        consorcioId: access.isSuperAdmin
-          ? consorcioId ?? undefined
-          : consorcioId
-            ? consorcioId
-            : { in: access.allowedConsorcioIds },
-        periodo: periodo || undefined,
+        consorcioId: activeConsorcioId,
+        periodo: selectedPeriodo || undefined,
       },
-      estado: estado || undefined,
+      ...(selectedEstado === "PAGADA" ? { saldo: { lte: 0.009 } } : {}),
+      ...(selectedEstado === "PENDIENTE" ? { saldo: { gt: 0.009 } } : {}),
+      ...(rawSearch ? { AND: buildSearchConditions(rawSearch, today) } : {}),
     },
     include: {
       liquidacion: {
         select: {
-          id: true,
-          periodo: true,
-          consorcio: { select: { id: true, nombre: true } },
+          fechaVencimiento: true,
         },
       },
       unidad: {
         select: {
-          id: true,
           identificador: true,
           tipo: true,
           personas: {
@@ -92,131 +177,149 @@ export default async function ExpensasPage({
         },
       },
     },
-    orderBy: [{ id: "desc" }],
+    orderBy: [{ unidad: { identificador: "asc" } }, { id: "desc" }],
   });
 
-  const rolesByConsorcio = new Map(access.assignments.map((a) => [a.consorcioId, a.role]));
+  const rows: ExpensaTableRow[] = expensas.map((expensa) => ({
+    id: expensa.id,
+    unidad: `${expensa.unidad.identificador} (${expensa.unidad.tipo})`,
+    responsable: formatResponsables(expensa.unidad.personas, today),
+    capital: formatCurrency(expensa.monto),
+    saldo: formatCurrency(expensa.saldo),
+    estado: resolveVisualStatus({
+      saldo: expensa.saldo,
+      estado: expensa.estado,
+      fechaVencimiento: expensa.liquidacion.fechaVencimiento,
+      today,
+    }),
+    canRegisterPayment: canRegisterPayments,
+  }));
+
+  const pendientesCount = rows.filter((row) => row.estado !== "PAGADA").length;
+  const pagadasCount = rows.filter((row) => row.estado === "PAGADA").length;
+  const deudaTotal = expensas.reduce((acc, item) => acc + item.saldo, 0);
+  const periodoLabel = selectedPeriodo || "Sin periodo";
 
   return (
-    <main className="mx-auto w-full max-w-7xl px-6 py-10">
-      <header className="mb-6 flex items-center justify-between gap-4">
-        <h1 className="text-2xl font-semibold">Expensas</h1>
+    <main className="mx-auto flex w-full max-w-7xl flex-col gap-8 px-6 py-10">
+      <header className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm shadow-slate-950/5 lg:flex-row lg:items-end lg:justify-between">
+        <div className="space-y-2">
+          <div>
+            <h1 className="text-3xl font-semibold tracking-tight text-slate-950">
+              Expensas · {activeConsorcio?.nombre ?? `Consorcio #${activeConsorcioId}`}
+            </h1>
+            <p className="mt-2 text-sm text-slate-500">
+              Panel operativo para seguimiento de deuda, cobro y estado del periodo seleccionado.
+            </p>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+          <p className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">Periodo activo</p>
+          <p className="mt-1 text-lg font-semibold text-slate-950">{periodoLabel}</p>
+        </div>
       </header>
 
-      <form method="GET" className="mb-4 rounded-lg border border-slate-200 bg-white p-4">
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
-          <select
-            name="consorcioId"
-            defaultValue={consorcioIdParam}
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-          >
-            <option value="">Todos los consorcios</option>
-            {consorcios.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.nombre}
-              </option>
-            ))}
-          </select>
+      <ExpensaKpis
+        items={[
+          {
+            label: "Expensas del periodo",
+            value: String(rows.length),
+            detail: selectedPeriodo ? `Liquidacion ${selectedPeriodo}` : "Sin periodo filtrado",
+          },
+          {
+            label: "Pendientes",
+            value: String(pendientesCount),
+            detail: "Incluye pendientes y vencidas con saldo abierto",
+          },
+          {
+            label: "Pagadas",
+            value: String(pagadasCount),
+            detail: "Expensas canceladas completamente",
+          },
+          {
+            label: "Deuda total",
+            value: formatCurrency(deudaTotal),
+            detail: "Saldo aun por cobrar del periodo visible",
+          },
+        ]}
+      />
 
-          <input
-            name="periodo"
-            defaultValue={periodo}
-            placeholder="Periodo (ej: 2026-03)"
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-          />
-
-          <select
-            name="estado"
-            defaultValue={estado}
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-          >
-            <option value="">Todos los estados</option>
-            <option value="PENDIENTE">PENDIENTE</option>
-            <option value="PAGADA">PAGADA</option>
-            <option value="PARCIAL">PARCIAL</option>
-          </select>
-
-          <button
-            type="submit"
-            className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
-          >
-            Filtrar
-          </button>
+      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm shadow-slate-950/5">
+        <div className="mb-5 flex flex-col gap-1">
+          <h2 className="text-lg font-semibold text-slate-950">Filtros</h2>
+          <p className="text-sm text-slate-500">Usa el consorcio activo del sidebar y filtra solo lo necesario para operar rapido.</p>
         </div>
-      </form>
 
-      <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
-        <div className="overflow-x-auto">
-          <table className="min-w-[1000px] w-full border-collapse">
-            <thead className="bg-slate-50">
-              <tr className="text-left text-sm text-slate-600">
-                <th className="px-4 py-3 font-medium">Consorcio</th>
-                <th className="px-4 py-3 font-medium">Periodo</th>
-                <th className="px-4 py-3 font-medium">Unidad</th>
-                <th className="px-4 py-3 font-medium">Responsable/s</th>
-                <th className="px-4 py-3 font-medium">Monto</th>
-                <th className="px-4 py-3 font-medium">Saldo</th>
-                <th className="px-4 py-3 font-medium">Estado</th>
-                <th className="px-4 py-3 font-medium">Acciones</th>
-              </tr>
-            </thead>
-            <tbody className="text-sm text-slate-800">
-              {expensas.length === 0 ? (
-                <tr className="border-t border-slate-100">
-                  <td colSpan={8} className="px-4 py-4 text-slate-500">
-                    Sin expensas para los filtros aplicados.
-                  </td>
-                </tr>
-              ) : (
-                expensas.map((expensa) => {
-                  const responsables = formatResponsables(expensa.unidad.personas, today);
+        <form method="GET" className="grid gap-4 lg:grid-cols-[220px_220px_minmax(0,1fr)_auto]">
+          <label className="space-y-2">
+            <span className="text-sm font-medium text-slate-700">Periodo</span>
+            <select
+              name="periodo"
+              defaultValue={selectedPeriodo}
+              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none ring-blue-500 focus:ring-2"
+            >
+              {periodos.length === 0 ? <option value="">Sin periodos</option> : null}
+              {periodos.map((periodo) => (
+                <option key={periodo.periodo} value={periodo.periodo}>
+                  {periodo.periodo}
+                </option>
+              ))}
+            </select>
+          </label>
 
-                  return (
-                    <tr key={expensa.id} className="border-t border-slate-100 align-top">
-                      <td className="px-4 py-4">{expensa.liquidacion.consorcio.nombre}</td>
-                      <td className="px-4 py-4">{expensa.liquidacion.periodo}</td>
-                      <td className="px-4 py-4">
-                        <Link href={`/expensas/${expensa.id}`} className="text-blue-600 hover:underline">
-                          {expensa.unidad.identificador} ({expensa.unidad.tipo})
-                        </Link>
-                      </td>
-                      <td className="px-4 py-4 min-w-[220px]">
-                        <div className="space-y-1 text-slate-700">
-                          {responsables.map((responsable) => (
-                            <div key={responsable}>{responsable}</div>
-                          ))}
-                        </div>
-                      </td>
-                      <td className="px-4 py-4">{expensa.monto.toFixed(2)}</td>
-                      <td className="px-4 py-4">{expensa.saldo.toFixed(2)}</td>
-                      <td className="px-4 py-4">{expensa.estado}</td>
-                      <td className="px-4 py-4">
-                        <div className="flex items-center gap-3">
-                          <Link href={`/expensas/${expensa.id}`} className="text-blue-600 hover:underline">
-                            Ver
-                          </Link>
-                          {access.isSuperAdmin ||
-                          rolesByConsorcio.get(expensa.liquidacion.consorcio.id) === "ADMIN" ? (
-                            expensa.estado !== "PAGADA" ? (
-                              <Link href={`/expensas/${expensa.id}/pago`} className="text-blue-600 hover:underline">
-                                Registrar cobranza
-                              </Link>
-                            ) : null
-                          ) : null}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
+          <label className="space-y-2">
+            <span className="text-sm font-medium text-slate-700">Estado</span>
+            <select
+              name="estado"
+              defaultValue={selectedEstado}
+              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none ring-blue-500 focus:ring-2"
+            >
+              <option value="">Todos</option>
+              <option value="PENDIENTE">Pendientes</option>
+              <option value="PAGADA">Pagadas</option>
+            </select>
+          </label>
+
+          <label className="space-y-2">
+            <span className="text-sm font-medium text-slate-700">Buscar</span>
+            <input
+              name="buscar"
+              defaultValue={rawSearch}
+              placeholder="UF 08, Eyharchet, Ruiz"
+              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none ring-blue-500 placeholder:text-slate-400 focus:ring-2"
+            />
+          </label>
+
+          <div className="flex items-end gap-3">
+            <button
+              type="submit"
+              className="inline-flex h-[42px] items-center justify-center rounded-xl bg-slate-900 px-4 text-sm font-medium text-white transition hover:bg-slate-800"
+            >
+              Aplicar
+            </button>
+            <Link
+              href="/expensas"
+              className="inline-flex h-[42px] items-center justify-center rounded-xl border border-slate-300 px-4 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:text-slate-950"
+            >
+              Limpiar
+            </Link>
+          </div>
+        </form>
+      </section>
+
+      <section className="space-y-4">
+        <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h2 className="text-xl font-semibold text-slate-950">Expensas del periodo</h2>
+            <p className="text-sm text-slate-500">Fila clickeable, estado visual y accion contextual para registrar pagos mas rapido.</p>
+          </div>
         </div>
-      </div>
+
+        <ExpensasTable rows={rows} />
+      </section>
     </main>
   );
 }
-
-
 
 
