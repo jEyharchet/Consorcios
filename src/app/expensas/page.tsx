@@ -5,6 +5,17 @@ import { getActiveConsorcioContext } from "../../lib/consorcio-activo";
 import { redirectToOnboardingIfNoConsorcios } from "../../lib/onboarding";
 import { normalizePeriodo } from "../../lib/periodo";
 import { prisma } from "../../lib/prisma";
+import { normalizeDate } from "../../lib/relaciones";
+
+function formatResponsables(
+  relaciones: Array<{ persona: { apellido: string; nombre: string } }>,
+) {
+  if (relaciones.length === 0) {
+    return ["Sin responsable"];
+  }
+
+  return relaciones.map((relacion) => `${relacion.persona.apellido}, ${relacion.persona.nombre}`);
+}
 
 export default async function ExpensasPage({
   searchParams,
@@ -12,6 +23,7 @@ export default async function ExpensasPage({
   searchParams?: { consorcioId?: string; periodo?: string; estado?: string };
 }) {
   const { access, activeConsorcioId } = await getActiveConsorcioContext();
+  const today = normalizeDate(new Date());
 
   redirectToOnboardingIfNoConsorcios(access);
 
@@ -57,7 +69,26 @@ export default async function ExpensasPage({
         },
       },
       unidad: {
-        select: { id: true, identificador: true, tipo: true },
+        select: {
+          id: true,
+          identificador: true,
+          tipo: true,
+          personas: {
+            where: {
+              desde: { lte: today },
+              OR: [{ hasta: null }, { hasta: { gte: today } }],
+            },
+            orderBy: [{ persona: { apellido: "asc" } }, { persona: { nombre: "asc" } }, { id: "asc" }],
+            select: {
+              persona: {
+                select: {
+                  apellido: true,
+                  nombre: true,
+                },
+              },
+            },
+          },
+        },
       },
     },
     orderBy: [{ id: "desc" }],
@@ -121,6 +152,7 @@ export default async function ExpensasPage({
                 <th className="px-4 py-3 font-medium">Consorcio</th>
                 <th className="px-4 py-3 font-medium">Periodo</th>
                 <th className="px-4 py-3 font-medium">Unidad</th>
+                <th className="px-4 py-3 font-medium">Responsable/s</th>
                 <th className="px-4 py-3 font-medium">Monto</th>
                 <th className="px-4 py-3 font-medium">Saldo</th>
                 <th className="px-4 py-3 font-medium">Estado</th>
@@ -130,40 +162,51 @@ export default async function ExpensasPage({
             <tbody className="text-sm text-slate-800">
               {expensas.length === 0 ? (
                 <tr className="border-t border-slate-100">
-                  <td colSpan={7} className="px-4 py-4 text-slate-500">
+                  <td colSpan={8} className="px-4 py-4 text-slate-500">
                     Sin expensas para los filtros aplicados.
                   </td>
                 </tr>
               ) : (
-                expensas.map((expensa) => (
-                  <tr key={expensa.id} className="border-t border-slate-100">
-                    <td className="px-4 py-4">{expensa.liquidacion.consorcio.nombre}</td>
-                    <td className="px-4 py-4">{expensa.liquidacion.periodo}</td>
-                    <td className="px-4 py-4">
-                      <Link href={`/expensas/${expensa.id}`} className="text-blue-600 hover:underline">
-                        {expensa.unidad.identificador} ({expensa.unidad.tipo})
-                      </Link>
-                    </td>
-                    <td className="px-4 py-4">{expensa.monto.toFixed(2)}</td>
-                    <td className="px-4 py-4">{expensa.saldo.toFixed(2)}</td>
-                    <td className="px-4 py-4">{expensa.estado}</td>
-                    <td className="px-4 py-4">
-                      <div className="flex items-center gap-3">
+                expensas.map((expensa) => {
+                  const responsables = formatResponsables(expensa.unidad.personas);
+
+                  return (
+                    <tr key={expensa.id} className="border-t border-slate-100 align-top">
+                      <td className="px-4 py-4">{expensa.liquidacion.consorcio.nombre}</td>
+                      <td className="px-4 py-4">{expensa.liquidacion.periodo}</td>
+                      <td className="px-4 py-4">
                         <Link href={`/expensas/${expensa.id}`} className="text-blue-600 hover:underline">
-                          Ver
+                          {expensa.unidad.identificador} ({expensa.unidad.tipo})
                         </Link>
-                        {access.isSuperAdmin ||
-                        rolesByConsorcio.get(expensa.liquidacion.consorcio.id) === "ADMIN" ? (
-                          expensa.estado !== "PAGADA" ? (
-                            <Link href={`/expensas/${expensa.id}/pago`} className="text-blue-600 hover:underline">
-                              Registrar cobranza
-                            </Link>
-                          ) : null
-                        ) : null}
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                      </td>
+                      <td className="px-4 py-4 min-w-[220px]">
+                        <div className="space-y-1 text-slate-700">
+                          {responsables.map((responsable) => (
+                            <div key={responsable}>{responsable}</div>
+                          ))}
+                        </div>
+                      </td>
+                      <td className="px-4 py-4">{expensa.monto.toFixed(2)}</td>
+                      <td className="px-4 py-4">{expensa.saldo.toFixed(2)}</td>
+                      <td className="px-4 py-4">{expensa.estado}</td>
+                      <td className="px-4 py-4">
+                        <div className="flex items-center gap-3">
+                          <Link href={`/expensas/${expensa.id}`} className="text-blue-600 hover:underline">
+                            Ver
+                          </Link>
+                          {access.isSuperAdmin ||
+                          rolesByConsorcio.get(expensa.liquidacion.consorcio.id) === "ADMIN" ? (
+                            expensa.estado !== "PAGADA" ? (
+                              <Link href={`/expensas/${expensa.id}/pago`} className="text-blue-600 hover:underline">
+                                Registrar cobranza
+                              </Link>
+                            ) : null
+                          ) : null}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
