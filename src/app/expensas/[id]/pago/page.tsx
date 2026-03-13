@@ -232,7 +232,7 @@ export default async function RegistrarPagoPage({
     { label: "Estado actual", value: snapshot.estado },
   ];
 
-  const previewSummary = typeof estimacion === "object"
+  const previewSummary = estimacion && typeof estimacion === "object"
     ? [
         { label: "Importe a registrar", value: formatCurrency(estimacion.monto) },
         { label: "Imputado a interes", value: formatCurrency(estimacion.montoInteres) },
