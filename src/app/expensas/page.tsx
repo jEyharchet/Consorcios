@@ -206,7 +206,7 @@ export default async function ExpensasPage({
         <div className="space-y-2">
           <div>
             <h1 className="text-3xl font-semibold tracking-tight text-slate-950">
-              Expensas · {activeConsorcio?.nombre ?? `Consorcio #${activeConsorcioId}`}
+              Expensas Â· {activeConsorcio?.nombre ?? `Consorcio #${activeConsorcioId}`}
             </h1>
             <p className="mt-2 text-sm text-slate-500">
               Panel operativo para seguimiento de deuda, cobro y estado del periodo seleccionado.
