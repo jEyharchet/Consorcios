@@ -336,6 +336,7 @@ export default async function GastosPage({
                 <th className="px-4 py-3 font-medium">Monto total</th>
                 <th className="px-4 py-3 font-medium">Pagado</th>
                 <th className="px-4 py-3 font-medium">Saldo pendiente</th>
+                <th className="px-4 py-3 font-medium">Comprobante</th>
                 <th className="px-4 py-3 font-medium">Estado</th>
                 <th className="px-4 py-3 font-medium">Acciones</th>
               </tr>
@@ -343,7 +344,7 @@ export default async function GastosPage({
             <tbody className="divide-y divide-slate-100 text-slate-800">
               {gastos.length === 0 ? (
                 <tr>
-                  <td className="px-4 py-5 text-slate-500" colSpan={11}>
+                  <td className="px-4 py-5 text-slate-500" colSpan={12}>
                     No hay gastos para los filtros aplicados.
                   </td>
                 </tr>
@@ -364,6 +365,20 @@ export default async function GastosPage({
                     <td className="px-4 py-4 whitespace-nowrap">{formatCurrency(gasto.totalPagado)}</td>
                     <td className="px-4 py-4 whitespace-nowrap">{formatCurrency(gasto.saldoPendiente)}</td>
                     <td className="px-4 py-4">
+                      {gasto.comprobanteContenido ? (
+                        <a
+                          href={`/api/gastos/${gasto.id}/comprobante`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-blue-600 hover:underline"
+                        >
+                          Ver comprobante
+                        </a>
+                      ) : (
+                        <span className="text-slate-500">Sin adjunto</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-4">
                       <span className={`inline-flex rounded-full px-2 py-1 text-xs font-medium ${getEstadoBadgeClasses(gasto.estadoPago)}`}>
                         {gasto.estadoPago}
                       </span>
@@ -373,6 +388,16 @@ export default async function GastosPage({
                         <Link href={`/gastos/${gasto.id}`} className="text-blue-600 hover:underline">
                           Ver pagos
                         </Link>
+                        {gasto.comprobanteContenido ? (
+                          <a
+                            href={`/api/gastos/${gasto.id}/comprobante`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-blue-600 hover:underline"
+                          >
+                            Descargar comprobante
+                          </a>
+                        ) : null}
                         {canManage ? (
                           <>
                             <Link href={`/gastos/${gasto.id}/editar`} className="text-blue-600 hover:underline">

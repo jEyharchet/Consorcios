@@ -177,10 +177,23 @@ export default async function GastoDetallePage({
           <div className="rounded-xl border border-slate-200 bg-white p-6">
             <h2 className="text-lg font-semibold text-slate-900">Comprobante</h2>
             <div className="mt-4 text-sm text-slate-600">
-              {gasto.comprobantePath ? (
-                <a href={gasto.comprobantePath} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">
-                  Ver comprobante
-                </a>
+              {gasto.comprobanteContenido ? (
+                <div className="space-y-2">
+                  <p>
+                    Archivo: <span className="font-medium text-slate-900">{gasto.comprobanteNombreOriginal ?? "Comprobante adjunto"}</span>
+                  </p>
+                  <div className="flex flex-wrap gap-3">
+                    <a href={`/api/gastos/${gasto.id}/comprobante`} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">
+                      Ver comprobante
+                    </a>
+                    <a href={`/api/gastos/${gasto.id}/comprobante`} download={gasto.comprobanteNombreOriginal ?? `comprobante-gasto-${gasto.id}`} className="text-blue-600 hover:underline">
+                      Descargar comprobante
+                    </a>
+                  </div>
+                  {gasto.comprobanteSubidoAt ? (
+                    <p className="text-xs text-slate-500">Adjuntado el {formatDateAR(gasto.comprobanteSubidoAt)}</p>
+                  ) : null}
+                </div>
               ) : (
                 <p>Sin comprobante cargado.</p>
               )}
