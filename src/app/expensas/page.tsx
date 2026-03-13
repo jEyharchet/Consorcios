@@ -5,16 +5,19 @@ import { getActiveConsorcioContext } from "../../lib/consorcio-activo";
 import { redirectToOnboardingIfNoConsorcios } from "../../lib/onboarding";
 import { normalizePeriodo } from "../../lib/periodo";
 import { prisma } from "../../lib/prisma";
-import { normalizeDate } from "../../lib/relaciones";
+import { isVigente, normalizeDate } from "../../lib/relaciones";
 
 function formatResponsables(
-  relaciones: Array<{ persona: { apellido: string; nombre: string } }>,
+  relaciones: Array<{ desde: Date; hasta: Date | null; persona: { apellido: string; nombre: string } }>,
+  today: Date,
 ) {
-  if (relaciones.length === 0) {
+  const vigentes = relaciones.filter((relacion) => isVigente(relacion.desde, relacion.hasta, today));
+
+  if (vigentes.length === 0) {
     return ["Sin responsable"];
   }
 
-  return relaciones.map((relacion) => `${relacion.persona.apellido}, ${relacion.persona.nombre}`);
+  return vigentes.map((relacion) => `${relacion.persona.apellido}, ${relacion.persona.nombre}`);
 }
 
 export default async function ExpensasPage({
@@ -74,12 +77,10 @@ export default async function ExpensasPage({
           identificador: true,
           tipo: true,
           personas: {
-            where: {
-              desde: { lte: today },
-              OR: [{ hasta: null }, { hasta: { gte: today } }],
-            },
-            orderBy: [{ persona: { apellido: "asc" } }, { persona: { nombre: "asc" } }, { id: "asc" }],
+            orderBy: [{ desde: "desc" }, { persona: { apellido: "asc" } }, { persona: { nombre: "asc" } }, { id: "asc" }],
             select: {
+              desde: true,
+              hasta: true,
               persona: {
                 select: {
                   apellido: true,
@@ -168,7 +169,7 @@ export default async function ExpensasPage({
                 </tr>
               ) : (
                 expensas.map((expensa) => {
-                  const responsables = formatResponsables(expensa.unidad.personas);
+                  const responsables = formatResponsables(expensa.unidad.personas, today);
 
                   return (
                     <tr key={expensa.id} className="border-t border-slate-100 align-top">
