@@ -1,4 +1,4 @@
-import { auth } from '../../../../../../../auth';
+import { auth } from '../../../../../../auth';
 
 import { hasConsorcioAccessForUserId } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
