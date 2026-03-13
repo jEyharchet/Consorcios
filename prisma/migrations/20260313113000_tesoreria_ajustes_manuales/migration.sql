@@ -1,0 +1,5 @@
+ALTER TABLE "MovimientoFondo"
+  ALTER COLUMN "pagoId" DROP NOT NULL;
+
+ALTER TABLE "MovimientoFondo"
+  ADD COLUMN "naturaleza" TEXT NOT NULL DEFAULT 'INCREMENTO';

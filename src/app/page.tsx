@@ -20,6 +20,7 @@ const accesosRapidos = [
   { label: "Gastos", href: "/gastos" },
   { label: "Liquidaciones", href: "/liquidaciones" },
   { label: "Expensas", href: "/expensas" },
+  { label: "Tesoreria", href: "/tesoreria" },
 ] as const;
 
 export default async function Home() {

@@ -363,11 +363,12 @@ model ConsorcioCuentaBancaria {
 model MovimientoFondo {
   id                       Int      @id @default(autoincrement())
   consorcioId              Int
-  pagoId                   Int      @unique
+  pagoId                   Int?     @unique
   consorcioCuentaBancariaId Int?
   fechaMovimiento          DateTime
   tipoOrigen               String
   tipoDestino              String
+  naturaleza               String   @default("INCREMENTO")
   descripcion              String?
   monto                    Float
   saldoAnterior            Float
@@ -375,7 +376,7 @@ model MovimientoFondo {
   createdAt                DateTime @default(now())
 
   consorcio              Consorcio              @relation(fields: [consorcioId], references: [id], onDelete: Cascade)
-  pago                   Pago                   @relation(fields: [pagoId], references: [id], onDelete: Cascade)
+  pago                   Pago?                  @relation(fields: [pagoId], references: [id], onDelete: Cascade)
   consorcioCuentaBancaria ConsorcioCuentaBancaria? @relation(fields: [consorcioCuentaBancariaId], references: [id], onDelete: SetNull)
 
   @@index([consorcioId])

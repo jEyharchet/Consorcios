@@ -26,6 +26,7 @@ const baseItems: SidebarItem[] = [
   { label: "Reporte de gastos", href: "/gastos/reporte", match: "prefix" },
   { label: "Liquidaciones", href: "/liquidaciones", match: "prefix" },
   { label: "Expensas", href: "/expensas", match: "prefix" },
+  { label: "Tesoreria", href: "/tesoreria", match: "prefix" },
 ];
 
 function matchesPath(pathname: string, item: SidebarItem) {

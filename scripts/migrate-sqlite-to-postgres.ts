@@ -11,7 +11,13 @@ type TableTask = {
   upsert: (tx: PrismaClient, row: JsonObj) => Promise<void>;
 };
 
-const prisma = new PrismaClient();
+const prisma = new PrismaClient({
+  datasources: {
+    db: {
+      url: process.env.DATABASE_URL ?? "",
+    },
+  },
+});
 
 const DATE_FIELDS: Record<string, string[]> = {
   User: ["emailVerified", "createdAt", "updatedAt"],
