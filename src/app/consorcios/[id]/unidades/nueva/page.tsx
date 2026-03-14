@@ -1,8 +1,48 @@
 ﻿import Link from "next/link";
 import { redirect } from "next/navigation";
+import { Prisma } from "@prisma/client";
 
 import { prisma } from "../../../../../../lib/prisma";
 import { requireConsorcioRole } from "../../../../../lib/auth";
+
+async function createUnidadWithSequenceRecovery(data: {
+  consorcioId: number;
+  identificador: string;
+  tipo: string;
+  piso: string | null;
+  departamento: string | null;
+  superficie: number | null;
+  porcentajeExpensas: number | null;
+}) {
+  try {
+    return await prisma.unidad.create({ data });
+  } catch (error) {
+    const target = error instanceof Prisma.PrismaClientKnownRequestError
+      ? (error.meta as { target?: unknown } | undefined)?.target
+      : undefined;
+    const targetIncludesId =
+      (Array.isArray(target) && target.includes("id")) ||
+      (typeof target === "string" && target.includes("id"));
+    const isDuplicatedId =
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2002" &&
+      targetIncludesId;
+
+    if (!isDuplicatedId) {
+      throw error;
+    }
+
+    await prisma.$executeRawUnsafe(`
+      SELECT setval(
+        pg_get_serial_sequence('"Unidad"', 'id'),
+        COALESCE((SELECT MAX(id) FROM "Unidad"), 1),
+        true
+      );
+    `);
+
+    return prisma.unidad.create({ data });
+  }
+}
 
 export default async function NuevaUnidadPage({ params }: { params: { id: string } }) {
   const consorcioId = Number(params.id);
@@ -20,16 +60,14 @@ export default async function NuevaUnidadPage({ params }: { params: { id: string
     const superficieRaw = (formData.get("superficie")?.toString() ?? "").trim();
     const porcentajeRaw = (formData.get("porcentajeExpensas")?.toString() ?? "").trim();
 
-    await prisma.unidad.create({
-      data: {
-        consorcioId,
-        identificador,
-        tipo,
-        piso: pisoRaw || null,
-        departamento: departamentoRaw || null,
-        superficie: superficieRaw === "" ? null : Number(superficieRaw),
-        porcentajeExpensas: porcentajeRaw === "" ? null : Number(porcentajeRaw),
-      },
+    await createUnidadWithSequenceRecovery({
+      consorcioId,
+      identificador,
+      tipo,
+      piso: pisoRaw || null,
+      departamento: departamentoRaw || null,
+      superficie: superficieRaw === "" ? null : Number(superficieRaw),
+      porcentajeExpensas: porcentajeRaw === "" ? null : Number(porcentajeRaw),
     });
 
     redirect(`/consorcios/${consorcioId}`);
