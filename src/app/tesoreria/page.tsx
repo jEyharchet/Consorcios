@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 
 import { requireConsorcioRole } from "../../lib/auth";
 import { getActiveConsorcioContext } from "../../lib/consorcio-activo";
+import { enviarRecordatoriosPendientes, formatEmailSummary } from "../../lib/liquidacion-email";
 import { redirectToOnboardingIfNoConsorcios } from "../../lib/onboarding";
 import { prisma } from "../../lib/prisma";
 import {
@@ -67,9 +68,38 @@ function getFeedbackMessage(code: string | undefined) {
       return { type: "error" as const, text: "La cuenta marcada para expensas no puede desactivarse desde Tesoreria." };
     case "consorcio_inexistente":
       return { type: "error" as const, text: "No se encontro el consorcio asociado a la operacion." };
+    case "liquidacion_requerida":
+      return { type: "error" as const, text: "Debes seleccionar una liquidacion para enviar recordatorios." };
+    case "liquidacion_inexistente":
+      return { type: "error" as const, text: "No se encontro la liquidacion indicada para este consorcio." };
     default:
       return null;
   }
+}
+
+function getReminderFeedback(searchParams: {
+  ok?: string;
+  enviados?: string;
+  fallidos?: string;
+  sinDestinatario?: string;
+}) {
+  if (searchParams.ok !== "recordatorios_ok") {
+    return null;
+  }
+
+  const enviados = Number(searchParams.enviados ?? 0);
+  const fallidos = Number(searchParams.fallidos ?? 0);
+  const sinDestinatario = Number(searchParams.sinDestinatario ?? 0);
+
+  return {
+    type: "ok" as const,
+    text: formatEmailSummary({
+      total: enviados + fallidos + sinDestinatario,
+      enviados,
+      fallidos,
+      sinDestinatario,
+    }),
+  };
 }
 
 export default async function TesoreriaPage({
@@ -79,6 +109,10 @@ export default async function TesoreriaPage({
     ok?: string;
     error?: string;
     cuentaId?: string;
+    liquidacionId?: string;
+    enviados?: string;
+    fallidos?: string;
+    sinDestinatario?: string;
   };
 }) {
   const { access, consorcios, activeConsorcioId } = await getActiveConsorcioContext();
@@ -106,6 +140,8 @@ export default async function TesoreriaPage({
   const activeConsorcio = consorcios.find((consorcio) => consorcio.id === activeConsorcioId) ?? null;
   const selectedCuentaIdRaw = (searchParams?.cuentaId ?? "").trim();
   const selectedCuentaId = /^\d+$/.test(selectedCuentaIdRaw) ? Number(selectedCuentaIdRaw) : null;
+  const selectedLiquidacionIdRaw = (searchParams?.liquidacionId ?? "").trim();
+  const selectedLiquidacionId = /^\d+$/.test(selectedLiquidacionIdRaw) ? Number(selectedLiquidacionIdRaw) : null;
 
   async function registrarAjusteCaja(formData: FormData) {
     "use server";
@@ -192,7 +228,41 @@ export default async function TesoreriaPage({
     redirect(`/tesoreria${buildReturnQuery({ ok: "cuenta_actualizada_ok", cuentaId: String(cuentaBancariaId) })}`);
   }
 
-  const [consorcio, movimientosRecientes, movimientosCaja] = await Promise.all([
+  async function enviarRecordatorios(formData: FormData) {
+    "use server";
+
+    const consorcioId = Number(formData.get("consorcioId"));
+    const liquidacionId = Number(formData.get("liquidacionId"));
+
+    await requireConsorcioRole(consorcioId, ["ADMIN", "OPERADOR"]);
+
+    if (!Number.isInteger(liquidacionId) || liquidacionId <= 0) {
+      redirect(`/tesoreria${buildReturnQuery({ error: "liquidacion_requerida" })}`);
+    }
+
+    const liquidacion = await prisma.liquidacion.findUnique({
+      where: { id: liquidacionId },
+      select: { id: true, consorcioId: true },
+    });
+
+    if (!liquidacion || liquidacion.consorcioId !== consorcioId) {
+      redirect(`/tesoreria${buildReturnQuery({ error: "liquidacion_inexistente" })}`);
+    }
+
+    const summary = await enviarRecordatoriosPendientes(liquidacionId);
+
+    redirect(
+      `/tesoreria${buildReturnQuery({
+        ok: "recordatorios_ok",
+        liquidacionId: String(liquidacionId),
+        enviados: String(summary.enviados),
+        fallidos: String(summary.fallidos),
+        sinDestinatario: String(summary.sinDestinatario),
+      })}`,
+    );
+  }
+
+  const [consorcio, movimientosRecientes, movimientosCaja, liquidacionesDisponibles] = await Promise.all([
     prisma.consorcio.findUnique({
       where: { id: activeConsorcioId },
       include: {
@@ -224,6 +294,24 @@ export default async function TesoreriaPage({
       orderBy: [{ fechaMovimiento: "desc" }, { id: "desc" }],
       take: 5,
     }),
+    prisma.liquidacion.findMany({
+      where: {
+        consorcioId: activeConsorcioId,
+        estado: { in: ["EMITIDA", "FINALIZADA", "CERRADA"] },
+      },
+      orderBy: [{ fechaEmision: "desc" }, { id: "desc" }],
+      select: {
+        id: true,
+        periodo: true,
+        estado: true,
+        fechaVencimiento: true,
+        _count: {
+          select: {
+            expensas: true,
+          },
+        },
+      },
+    }),
   ]);
 
   if (!consorcio) {
@@ -244,7 +332,12 @@ export default async function TesoreriaPage({
     selectedCuentaId !== null
       ? consorcio.cuentasBancarias.find((cuenta) => cuenta.id === selectedCuentaId) ?? null
       : cuentasActivas[0] ?? consorcio.cuentasBancarias[0] ?? null;
-  const feedback = getFeedbackMessage(searchParams?.error ?? searchParams?.ok);
+  const liquidacionesConExpensas = liquidacionesDisponibles.filter((liquidacion) => liquidacion._count.expensas > 0);
+  const selectedLiquidacion =
+    selectedLiquidacionId !== null
+      ? liquidacionesConExpensas.find((liquidacion) => liquidacion.id === selectedLiquidacionId) ?? null
+      : liquidacionesConExpensas[0] ?? null;
+  const feedback = getReminderFeedback(searchParams ?? {}) ?? getFeedbackMessage(searchParams?.error ?? searchParams?.ok);
 
   return (
     <main className="mx-auto w-full max-w-7xl px-6 py-10">
@@ -469,6 +562,56 @@ export default async function TesoreriaPage({
         </div>
 
         <div className="space-y-6">
+          <article className="rounded-xl border border-slate-200 bg-white p-6">
+            <h2 className="text-lg font-semibold text-slate-900">Recordatorios de vencimiento</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Envia recordatorios solo a unidades con saldo pendiente mayor a cero de una liquidacion puntual.
+            </p>
+
+            {canOperate ? (
+              <form action={enviarRecordatorios} className="mt-4 space-y-4">
+                <input type="hidden" name="consorcioId" value={consorcio.id} />
+
+                <div className="space-y-1">
+                  <label htmlFor="liquidacionId" className="text-sm font-medium text-slate-700">Liquidacion</label>
+                  <select
+                    id="liquidacionId"
+                    name="liquidacionId"
+                    defaultValue={selectedLiquidacion?.id?.toString() ?? ""}
+                    required
+                    className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                  >
+                    <option value="">Seleccionar liquidacion</option>
+                    {liquidacionesConExpensas.map((liquidacion) => (
+                      <option key={liquidacion.id} value={liquidacion.id}>
+                        {liquidacion.periodo} - {liquidacion.estado}
+                        {liquidacion.fechaVencimiento ? ` - vence ${liquidacion.fechaVencimiento.toLocaleDateString()}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <p className="text-xs text-slate-500">
+                  Se excluyen unidades totalmente pagadas y casos sin email valido, que quedan trazados como sin destinatario.
+                </p>
+
+                <button type="submit" className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
+                  Enviar recordatorio a pendientes
+                </button>
+              </form>
+            ) : (
+              <p className="mt-4 rounded-lg border border-dashed border-slate-200 px-4 py-3 text-sm text-slate-500">
+                Tenes acceso de lectura. El envio manual de recordatorios esta disponible para administradores u operadores.
+              </p>
+            )}
+
+            {liquidacionesConExpensas.length === 0 ? (
+              <p className="mt-4 rounded-lg border border-dashed border-slate-200 px-4 py-3 text-sm text-slate-500">
+                No hay liquidaciones con expensas generadas para enviar recordatorios desde Tesoreria.
+              </p>
+            ) : null}
+          </article>
+
           <article id="ajuste-cuenta" className="rounded-xl border border-slate-200 bg-white p-6">
             <h2 className="text-lg font-semibold text-slate-900">Ajuste manual de cuenta bancaria</h2>
             <p className="mt-1 text-sm text-slate-500">Registra ajustes manuales con trazabilidad y sin permitir saldos negativos.</p>

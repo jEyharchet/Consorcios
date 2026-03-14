@@ -1,5 +1,6 @@
 import { prisma } from "./prisma";
 import { generarExpensasDefinitivasDesdePaso3, regenerarArchivosLiquidacion } from "./liquidacion-paso4";
+import { formatEmailSummary } from "./liquidacion-email";
 
 export type RegeneracionJobStatus = "PENDING" | "RUNNING" | "VALIDATING" | "COMPLETED" | "FAILED";
 export type RegeneracionJobStage =
@@ -387,7 +388,7 @@ export async function runFinalizacionLiquidacionJob(jobId: number) {
       data: {
         status: "COMPLETED",
         stage: "DONE",
-        message: "Proceso completado",
+        message: result.emailSummary ? formatEmailSummary(result.emailSummary) : "Proceso completado",
         expectedFiles: result.expectedFiles,
         generatedFiles: result.generatedFiles,
         validatedFiles: result.validatedFiles,

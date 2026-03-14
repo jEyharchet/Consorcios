@@ -6,13 +6,20 @@ import LiquidacionArchivosPanel from "../_components/LiquidacionArchivosPanel";
 import { prisma } from "../../../lib/prisma";
 import { getAccessContext, requireConsorcioAccess, requireConsorcioRole } from "../../../lib/auth";
 import { getPeriodoVariants } from "../../../lib/periodo";
+import { enviarLiquidacionCerradaEmails, formatEmailSummary } from "../../../lib/liquidacion-email";
 
 export default async function LiquidacionDetallePage({
   params,
   searchParams,
 }: {
   params: { id: string };
-  searchParams?: { error?: string };
+  searchParams?: {
+    error?: string;
+    ok?: string;
+    enviados?: string;
+    fallidos?: string;
+    sinDestinatario?: string;
+  };
 }) {
   const id = Number(params.id);
 
@@ -240,7 +247,15 @@ export default async function LiquidacionDetallePage({
       });
     });
 
-    redirect(`/liquidaciones/${liquidacion.id}`);
+    const summary = await enviarLiquidacionCerradaEmails(liquidacion.id);
+    const params = new URLSearchParams({
+      ok: "emails_liquidacion",
+      enviados: String(summary.enviados),
+      fallidos: String(summary.fallidos),
+      sinDestinatario: String(summary.sinDestinatario),
+    });
+
+    redirect(`/liquidaciones/${liquidacion.id}?${params.toString()}`);
   }
 
   async function eliminarBorrador(formData: FormData) {
@@ -292,6 +307,19 @@ export default async function LiquidacionDetallePage({
     },
     orderBy: [{ fecha: "desc" }, { id: "desc" }],
   });
+
+  const summaryMessage =
+    searchParams?.ok === "emails_liquidacion"
+      ? formatEmailSummary({
+          total:
+            Number(searchParams?.enviados ?? 0) +
+            Number(searchParams?.fallidos ?? 0) +
+            Number(searchParams?.sinDestinatario ?? 0),
+          enviados: Number(searchParams?.enviados ?? 0),
+          fallidos: Number(searchParams?.fallidos ?? 0),
+          sinDestinatario: Number(searchParams?.sinDestinatario ?? 0),
+        })
+      : null;
 
   const errorMessage =
     searchParams?.error === "regeneracion_con_pagos"
@@ -383,6 +411,10 @@ export default async function LiquidacionDetallePage({
 
       {errorMessage ? (
         <div className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{errorMessage}</div>
+      ) : null}
+
+      {summaryMessage ? (
+        <div className="mb-4 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{summaryMessage}</div>
       ) : null}
 
       {liquidacion.estado === "BORRADOR" && hasExpensas && !canRegenerateExistingExpensas ? (

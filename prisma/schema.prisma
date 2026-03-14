@@ -49,6 +49,7 @@ model Unidad {
   expensas           Expensa[]
   prorrateos         LiquidacionProrrateoUnidad[]
   solicitudesAcceso  SolicitudAccesoConsorcio[]
+  enviosEmail        EnvioEmail[]
 
   @@unique([consorcioId, identificador])
   @@index([consorcioId])
@@ -139,6 +140,7 @@ model Liquidacion {
   gastosHistoricos LiquidacionGastoHistorico[]
   archivos         LiquidacionArchivo[]
   regeneracionJobs LiquidacionRegeneracionJob[]
+  enviosEmail      EnvioEmail[]
 
   @@unique([consorcioId, periodo])
   @@index([consorcioId])
@@ -558,6 +560,28 @@ model LiquidacionRegeneracionJob {
   @@index([liquidacionId])
   @@index([status])
   @@index([liquidacionId, createdAt])
+}
+
+model EnvioEmail {
+  id                Int      @id @default(autoincrement())
+  tipoEnvio         String
+  liquidacionId     Int
+  unidadId          Int?
+  destinatario      String?
+  asunto            String
+  estado            String
+  errorMensaje      String?
+  providerMessageId String?
+  enviadoAt         DateTime?
+  createdAt         DateTime @default(now())
+
+  liquidacion Liquidacion @relation(fields: [liquidacionId], references: [id], onDelete: Cascade)
+  unidad      Unidad?     @relation(fields: [unidadId], references: [id], onDelete: SetNull)
+
+  @@index([liquidacionId])
+  @@index([unidadId])
+  @@index([tipoEnvio, createdAt])
+  @@index([estado, createdAt])
 }
 
 

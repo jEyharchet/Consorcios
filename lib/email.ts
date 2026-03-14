@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { Resend } from "resend";
+import { Resend, type Attachment } from "resend";
 
 function getResendClient() {
   const apiKey = process.env.RESEND_API_KEY;
@@ -15,10 +15,14 @@ export async function sendEmail({
   to,
   subject,
   html,
+  text,
+  attachments,
 }: {
-  to: string;
+  to: string | string[];
   subject: string;
   html: string;
+  text?: string;
+  attachments?: Attachment[];
 }) {
   const resend = getResendClient();
   const { data, error } = await resend.emails.send({
@@ -26,6 +30,8 @@ export async function sendEmail({
     to,
     subject,
     html,
+    text,
+    attachments,
   });
 
   if (error) {

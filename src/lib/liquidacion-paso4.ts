@@ -4,6 +4,7 @@ import path from "path";
 import { prisma } from "./prisma";
 import { getPeriodoVariants } from "./periodo";
 import { generarArchivosLiquidacion } from "./liquidacion-cierre";
+import { enviarLiquidacionCerradaEmails } from "./liquidacion-email";
 
 type OwnerRel = {
   desde: Date;
@@ -564,12 +565,15 @@ export async function generarExpensasDefinitivasDesdePaso3(
     validatedFiles: archivosGenerados.length,
   });
 
+  const emailSummary = await enviarLiquidacionCerradaEmails(liquidacion.id);
+
   return {
     ok: true as const,
     archivos: archivosGenerados,
     expectedFiles: archivosGenerados.length,
     generatedFiles: archivosGenerados.length,
     validatedFiles: archivosGenerados.length,
+    emailSummary,
   };
 }
 
