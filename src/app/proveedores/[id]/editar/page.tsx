@@ -1,5 +1,6 @@
 ﻿import Link from "next/link";
 import { redirect } from "next/navigation";
+import { Prisma } from "@prisma/client";
 
 import { prisma } from "../../../../../lib/prisma";
 import { getAccessContext } from "../../../../lib/auth";
@@ -15,6 +16,57 @@ const tiposProveedor = [
   "Seguros",
   "Otros",
 ] as const;
+
+async function upsertProveedorConsorcioWithSequenceRecovery(
+  tx: Prisma.TransactionClient,
+  args: {
+    where: {
+      proveedorId_consorcioId: {
+        proveedorId: number;
+        consorcioId: number;
+      };
+    };
+    update: {
+      desde: Date;
+      hasta: Date | null;
+    };
+    create: {
+      proveedorId: number;
+      consorcioId: number;
+      desde: Date;
+      hasta: Date | null;
+    };
+  },
+) {
+  try {
+    return await tx.proveedorConsorcio.upsert(args);
+  } catch (error) {
+    const target = error instanceof Prisma.PrismaClientKnownRequestError
+      ? (error.meta as { target?: unknown } | undefined)?.target
+      : undefined;
+    const targetIncludesId =
+      (Array.isArray(target) && target.includes("id")) ||
+      (typeof target === "string" && target.includes("id"));
+    const isDuplicatedId =
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2002" &&
+      targetIncludesId;
+
+    if (!isDuplicatedId) {
+      throw error;
+    }
+
+    await tx.$executeRawUnsafe(`
+      SELECT setval(
+        pg_get_serial_sequence('"ProveedorConsorcio"', 'id'),
+        COALESCE((SELECT MAX(id) FROM "ProveedorConsorcio"), 1),
+        true
+      );
+    `);
+
+    return tx.proveedorConsorcio.upsert(args);
+  }
+}
 
 export default async function EditarProveedorPage({
   params,
@@ -178,7 +230,7 @@ export default async function EditarProveedorPage({
       });
 
       for (const asociacion of selectedAsociaciones) {
-        await tx.proveedorConsorcio.upsert({
+        await upsertProveedorConsorcioWithSequenceRecovery(tx, {
           where: {
             proveedorId_consorcioId: {
               proveedorId: id,
