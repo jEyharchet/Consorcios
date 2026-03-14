@@ -1,8 +1,7 @@
-import puppeteer from "puppeteer";
-
 import { auth } from "../../../../../../auth";
 import { hasConsorcioAccessForUserId } from "@/lib/auth";
 import { buildLiquidacionPdfHtml } from "../../../../../lib/liquidacion-pdf-html";
+import { launchPdfBrowser } from "../../../../../lib/pdf-browser";
 import { getLiquidacionPaso4Data } from "../../../../../lib/liquidacion-paso4";
 
 export const runtime = "nodejs";
@@ -35,10 +34,7 @@ export async function GET(
 
   const html = buildLiquidacionPdfHtml(data);
 
-  const browser = await puppeteer.launch({
-    headless: true,
-    args: ["--no-sandbox", "--disable-setuid-sandbox"],
-  });
+  const browser = await launchPdfBrowser();
 
   try {
     const page = await browser.newPage();

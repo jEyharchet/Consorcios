@@ -1,11 +1,10 @@
 import { mkdir, writeFile, rm } from "fs/promises";
 import path from "path";
 
-import puppeteer from "puppeteer";
-
 import { buildLiquidacionPdfHtml } from "./liquidacion-pdf-html";
 import type { getLiquidacionPaso4Data } from "./liquidacion-paso4";
 import { buildBankAccountPaymentQr } from "./payment-qr";
+import { launchPdfBrowser } from "./pdf-browser";
 
 export type Paso4Data = NonNullable<Awaited<ReturnType<typeof getLiquidacionPaso4Data>>>;
 
@@ -423,10 +422,7 @@ function buildBoletaHtml(data: Paso4Data, group: ResponsableGroup) {
 }
 
 async function htmlToPdfBuffer(html: string) {
-  const browser = await puppeteer.launch({
-    headless: true,
-    args: ["--no-sandbox", "--disable-setuid-sandbox"],
-  });
+  const browser = await launchPdfBrowser();
 
   try {
     const page = await browser.newPage();
