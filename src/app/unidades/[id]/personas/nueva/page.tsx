@@ -1,9 +1,46 @@
 ﻿import Link from "next/link";
 import { redirect } from "next/navigation";
+import { Prisma } from "@prisma/client";
 
 import { prisma } from "../../../../../../lib/prisma";
 import { requireConsorcioRole } from "../../../../../lib/auth";
 import { validateNoOverlap } from "../../../../../lib/relaciones";
+
+async function createPersonaWithSequenceRecovery(data: {
+  nombre: string;
+  apellido: string;
+  email: string | null;
+  telefono: string | null;
+}) {
+  try {
+    return await prisma.persona.create({ data });
+  } catch (error) {
+    const target = error instanceof Prisma.PrismaClientKnownRequestError
+      ? (error.meta as { target?: unknown } | undefined)?.target
+      : undefined;
+    const targetIncludesId =
+      (Array.isArray(target) && target.includes("id")) ||
+      (typeof target === "string" && target.includes("id"));
+    const isDuplicatedId =
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2002" &&
+      targetIncludesId;
+
+    if (!isDuplicatedId) {
+      throw error;
+    }
+
+    await prisma.$executeRawUnsafe(`
+      SELECT setval(
+        pg_get_serial_sequence('"Persona"', 'id'),
+        COALESCE((SELECT MAX(id) FROM "Persona"), 1),
+        true
+      );
+    `);
+
+    return prisma.persona.create({ data });
+  }
+}
 
 export default async function NuevaPersonaPage({
   params,
@@ -133,13 +170,11 @@ export default async function NuevaPersonaPage({
       redirect(`/unidades/${unidadId}/personas/nueva?${qs.toString()}`);
     }
 
-    const persona = await prisma.persona.create({
-      data: {
-        nombre,
-        apellido,
-        email: emailRaw || null,
-        telefono: telefonoRaw || null,
-      },
+    const persona = await createPersonaWithSequenceRecovery({
+      nombre,
+      apellido,
+      email: emailRaw || null,
+      telefono: telefonoRaw || null,
     });
 
     const existentes = await prisma.unidadPersona.findMany({
