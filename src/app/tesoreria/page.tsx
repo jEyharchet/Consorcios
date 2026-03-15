@@ -31,6 +31,13 @@ function formatDateTime(value: Date) {
   }).format(value);
 }
 
+function getReminderLiquidacionCutoffDate() {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  today.setDate(today.getDate() - 30);
+  return today;
+}
+
 function buildReturnQuery(values: Record<string, string | undefined | null>) {
   const params = new URLSearchParams();
 
@@ -142,6 +149,7 @@ export default async function TesoreriaPage({
   const selectedCuentaId = /^\d+$/.test(selectedCuentaIdRaw) ? Number(selectedCuentaIdRaw) : null;
   const selectedLiquidacionIdRaw = (searchParams?.liquidacionId ?? "").trim();
   const selectedLiquidacionId = /^\d+$/.test(selectedLiquidacionIdRaw) ? Number(selectedLiquidacionIdRaw) : null;
+  const reminderLiquidacionCutoffDate = getReminderLiquidacionCutoffDate();
 
   async function registrarAjusteCaja(formData: FormData) {
     "use server";
@@ -288,6 +296,10 @@ export default async function TesoreriaPage({
       where: {
         consorcioId: activeConsorcioId,
         estado: { in: ["EMITIDA", "FINALIZADA", "CERRADA"] },
+        OR: [
+          { fechaVencimiento: null },
+          { fechaVencimiento: { gte: reminderLiquidacionCutoffDate } },
+        ],
       },
       orderBy: [{ fechaEmision: "desc" }, { id: "desc" }],
       select: {
