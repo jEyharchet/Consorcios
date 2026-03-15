@@ -2,29 +2,12 @@ import { auth } from '../../../../../../auth';
 
 import { hasConsorcioRoleForUserId } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { createRegeneracionJobRunnerToken, startRegeneracionArchivosJob } from '@/lib/liquidacion-regeneracion-job';
+import { startRegeneracionArchivosJob } from '@/lib/liquidacion-regeneracion-job';
 
 export const runtime = 'nodejs';
 
 function json(data: unknown, status = 200) {
   return Response.json(data, { status });
-}
-
-function dispatchRegeneracionJob(origin: string, jobId: number) {
-  const url = new URL(`/api/liquidaciones/regeneracion-jobs/${jobId}/run`, origin);
-  const token = createRegeneracionJobRunnerToken(jobId);
-
-  void fetch(url, {
-    method: 'POST',
-    headers: {
-      'x-regeneracion-runner-token': token,
-    },
-  }).catch((error) => {
-    console.error('[regeneracion-job] dispatch failed', {
-      jobId,
-      message: error instanceof Error ? error.message : String(error),
-    });
-  });
 }
 
 async function requireOperativeAccess(userId: string, consorcioId: number) {
@@ -72,8 +55,6 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
   if (!result.ok) {
     return json(result, result.reason === 'estado_no_regenerable' ? 409 : 400);
   }
-
-  dispatchRegeneracionJob(new URL(_req.url).origin, result.jobId);
 
   return json({ ok: true, jobId: result.jobId, reused: result.reused });
 }

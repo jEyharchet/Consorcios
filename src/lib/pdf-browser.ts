@@ -13,23 +13,19 @@ const LOCAL_CHROME_CANDIDATES = [
   "/usr/bin/chromium",
 ].filter((value): value is string => Boolean(value));
 
-const DEFAULT_PUBLIC_APP_URL = "https://app.amiconsorcio.com.ar";
-const DEFAULT_VIEWPORT = {
-  deviceScaleFactor: 1,
-  hasTouch: false,
-  height: 1080,
-  isLandscape: true,
-  isMobile: false,
-  width: 1920,
-};
-
 type ChromiumLikeModule = {
   args: string[];
-  defaultViewport?: typeof DEFAULT_VIEWPORT;
-  executablePath: (input?: string) => Promise<string>;
+  defaultViewport?: {
+    width: number;
+    height: number;
+    deviceScaleFactor?: number;
+    isMobile?: boolean;
+    hasTouch?: boolean;
+    isLandscape?: boolean;
+  } | null;
+  headless: boolean | "shell";
+  executablePath: () => Promise<string>;
 };
-
-let cachedExecutablePath: string | null = null;
 
 async function findFirstAccessiblePath(paths: string[]) {
   for (const candidate of paths) {
@@ -44,26 +40,10 @@ async function findFirstAccessiblePath(paths: string[]) {
   return null;
 }
 
-function getPublicAppUrl() {
-  const baseUrl =
-    process.env.APP_URL?.trim() ||
-    process.env.NEXT_PUBLIC_APP_URL?.trim() ||
-    process.env.AUTH_URL?.trim() ||
-    process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim() ||
-    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "") ||
-    DEFAULT_PUBLIC_APP_URL;
-
-  return baseUrl.replace(/\/+$/, "");
-}
-
-function getHostedChromiumPackUrl() {
-  return `${getPublicAppUrl()}/chromium-pack.tar`;
-}
-
 async function loadChromiumModule(): Promise<ChromiumLikeModule> {
   const mod = (await import(
     /* webpackIgnore: true */
-    "@sparticuz/chromium-min"
+    "@sparticuz/chromium"
   )) as ChromiumLikeModule | { default: ChromiumLikeModule };
 
   return "default" in mod ? mod.default : mod;
@@ -73,13 +53,8 @@ async function resolveChromeExecutablePath() {
   const isProduction = process.env.NODE_ENV === "production" || Boolean(process.env.VERCEL);
 
   if (isProduction) {
-    if (cachedExecutablePath) {
-      return cachedExecutablePath;
-    }
-
     const chromium = await loadChromiumModule();
-    cachedExecutablePath = await chromium.executablePath(getHostedChromiumPackUrl());
-    return cachedExecutablePath;
+    return await chromium.executablePath();
   }
 
   const localChrome = await findFirstAccessiblePath(LOCAL_CHROME_CANDIDATES);
@@ -87,31 +62,18 @@ async function resolveChromeExecutablePath() {
     return localChrome;
   }
 
-  throw new Error(
-    "No se encontro una instalacion local de Chrome/Chromium. Configura PUPPETEER_EXECUTABLE_PATH o instala Chrome para desarrollo local.",
-  );
+  const chromium = await loadChromiumModule();
+  return await chromium.executablePath();
 }
 
 export async function launchPdfBrowser() {
-  const isProduction = process.env.NODE_ENV === "production" || Boolean(process.env.VERCEL);
+  const chromium = await loadChromiumModule();
   const executablePath = await resolveChromeExecutablePath();
 
-  if (isProduction) {
-    const chromium = await loadChromiumModule();
-
-    return puppeteer.launch({
-      args: puppeteer.defaultArgs({
-        args: chromium.args,
-        headless: "shell",
-      }),
-      defaultViewport: chromium.defaultViewport ?? DEFAULT_VIEWPORT,
-      executablePath,
-      headless: "shell",
-    });
-  }
-
   return puppeteer.launch({
+    args: chromium.args,
+    defaultViewport: chromium.defaultViewport,
     executablePath,
-    headless: true,
+    headless: chromium.headless,
   });
 }

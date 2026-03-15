@@ -2,7 +2,6 @@ import { mkdir, writeFile, rm } from "fs/promises";
 import path from "path";
 
 import { buildLiquidacionPdfHtml } from "./liquidacion-pdf-html";
-import { buildLiquidacionRelativeBase, resolveLiquidacionAbsolutePathFromRuta } from "./liquidacion-archivos";
 import type { getLiquidacionPaso4Data } from "./liquidacion-paso4";
 import { buildBankAccountPaymentQr } from "./payment-qr";
 import { launchPdfBrowser } from "./pdf-browser";
@@ -491,21 +490,14 @@ async function htmlToPdfBuffer(html: string) {
 
 export async function generarArchivosLiquidacion(
   data: Paso4Data,
-  options?: {
-    onProgress?: (event: GeneracionArchivosProgressEvent) => void | Promise<void>;
-    relativeBase?: string;
-  },
+  options?: { onProgress?: (event: GeneracionArchivosProgressEvent) => void | Promise<void> },
 ): Promise<ArchivoGenerado[]> {
   const consorcioSlug = slugify(data.liquidacion.consorcio.nombre || `consorcio-${data.liquidacion.consorcioId}`);
   const periodoSlug = slugify(data.liquidacion.periodo || "periodo");
   const timestamp = `${Date.now()}`;
-  const relativeBase = options?.relativeBase ?? buildLiquidacionRelativeBase(data.liquidacion.id, timestamp);
-  const outputBaseFile = resolveLiquidacionAbsolutePathFromRuta(`${relativeBase}/placeholder.pdf`);
-  const outputBase = outputBaseFile ? path.dirname(outputBaseFile) : null;
 
-  if (!outputBase) {
-    throw new Error("No se pudo resolver el directorio de salida para archivos de liquidacion.");
-  }
+  const relativeBase = `/uploads/liquidaciones/liquidacion-${data.liquidacion.id}-${timestamp}`;
+  const outputBase = path.join(process.cwd(), "public", relativeBase.replace(/^\//, ""));
 
   await mkdir(outputBase, { recursive: true });
 
