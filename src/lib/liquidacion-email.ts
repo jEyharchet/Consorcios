@@ -198,7 +198,7 @@ async function resolveAttachment(
   archivo:
     | {
         id?: number;
-        tipoArchivo?: "RENDICION" | "BOLETA_RESPONSABLE";
+        tipoArchivo?: string | null;
         nombreArchivo: string;
         rutaArchivo: string;
         mimeType: string;

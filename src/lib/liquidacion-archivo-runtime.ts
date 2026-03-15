@@ -5,25 +5,35 @@ import { getLiquidacionPaso4Data } from "./liquidacion-paso4";
 type EnsureLiquidacionArchivoParams = {
   liquidacionId: number;
   rutaArchivo: string;
-  tipoArchivo?: ArchivoGenerado["tipoArchivo"] | null;
+  tipoArchivo?: string | null;
   responsableGroupKey?: string | null;
   nombreArchivo?: string | null;
 };
+
+function normalizeTipoArchivo(tipoArchivo: string | null | undefined): ArchivoGenerado["tipoArchivo"] | null {
+  if (tipoArchivo === "RENDICION" || tipoArchivo === "BOLETA_RESPONSABLE") {
+    return tipoArchivo;
+  }
+
+  return null;
+}
 
 function pickGeneratedFile(
   archivos: ArchivoGenerado[],
   params: EnsureLiquidacionArchivoParams,
 ) {
+  const tipoArchivo = normalizeTipoArchivo(params.tipoArchivo);
+
   return (
     archivos.find((archivo) => archivo.rutaArchivo === params.rutaArchivo) ??
-    (params.tipoArchivo
+    (tipoArchivo
       ? archivos.find(
           (archivo) =>
-            archivo.tipoArchivo === params.tipoArchivo &&
+            archivo.tipoArchivo === tipoArchivo &&
             archivo.responsableGroupKey === (params.responsableGroupKey ?? null),
         )
       : null) ??
-    (params.tipoArchivo === "RENDICION"
+    (tipoArchivo === "RENDICION"
       ? archivos.find((archivo) => archivo.tipoArchivo === "RENDICION")
       : null) ??
     (params.nombreArchivo ? archivos.find((archivo) => archivo.nombreArchivo === params.nombreArchivo) : null) ??
