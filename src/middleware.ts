@@ -7,9 +7,12 @@ const { auth } = NextAuth(authConfig);
 
 const PUBLIC_PATHS = ["/login"];
 
+const INTERNAL_LIQUIDACION_JOB_RUN_ROUTE = /^\/api\/liquidaciones\/regeneracion-jobs\/[^/]+\/run$/;
+
 function isPublicPath(pathname: string) {
   return (
     PUBLIC_PATHS.includes(pathname) ||
+    INTERNAL_LIQUIDACION_JOB_RUN_ROUTE.test(pathname) ||
     pathname.startsWith("/api/auth") ||
     pathname.startsWith("/_next") ||
     pathname.startsWith("/branding") ||

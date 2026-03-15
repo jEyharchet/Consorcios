@@ -1,7 +1,7 @@
 import { auth } from '../../../../../../auth';
 
 import { hasConsorcioAccessForUserId } from '@/lib/auth';
-import { getRegeneracionJob } from '@/lib/liquidacion-regeneracion-job';
+import { getRegeneracionJob, retryLiquidacionJobIfNeeded } from '@/lib/liquidacion-regeneracion-job';
 
 export const runtime = 'nodejs';
 
@@ -33,23 +33,30 @@ export async function GET(_req: Request, { params }: { params: { jobId: string }
     return json({ ok: false, reason: 'sin_permiso' }, 403);
   }
 
+  await retryLiquidacionJobIfNeeded(job.id);
+
+  const refreshedJob = await getRegeneracionJob(jobId);
+  if (!refreshedJob) {
+    return json({ ok: false, reason: 'job_inexistente' }, 404);
+  }
+
   return json({
     ok: true,
     job: {
-      id: job.id,
-      liquidacionId: job.liquidacionId,
-      tipo: job.tipo,
-      status: job.status,
-      stage: job.stage,
-      expectedFiles: job.expectedFiles,
-      generatedFiles: job.generatedFiles,
-      validatedFiles: job.validatedFiles,
-      message: job.message,
-      errorDetail: job.errorDetail,
-      startedAt: job.startedAt,
-      finishedAt: job.finishedAt,
-      createdAt: job.createdAt,
-      updatedAt: job.updatedAt,
+      id: refreshedJob.id,
+      liquidacionId: refreshedJob.liquidacionId,
+      tipo: refreshedJob.tipo,
+      status: refreshedJob.status,
+      stage: refreshedJob.stage,
+      expectedFiles: refreshedJob.expectedFiles,
+      generatedFiles: refreshedJob.generatedFiles,
+      validatedFiles: refreshedJob.validatedFiles,
+      message: refreshedJob.message,
+      errorDetail: refreshedJob.errorDetail,
+      startedAt: refreshedJob.startedAt,
+      finishedAt: refreshedJob.finishedAt,
+      createdAt: refreshedJob.createdAt,
+      updatedAt: refreshedJob.updatedAt,
     },
   });
 }

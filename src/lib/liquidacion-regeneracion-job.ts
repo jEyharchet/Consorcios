@@ -1,3 +1,5 @@
+import crypto from "crypto";
+
 import { prisma } from "./prisma";
 import { generarExpensasDefinitivasDesdePaso3, regenerarArchivosLiquidacion } from "./liquidacion-paso4";
 import { formatEmailSummary } from "./liquidacion-email";
@@ -10,6 +12,58 @@ export type RegeneracionJobStage =
   | "VERIFYING_FILES"
   | "ACTIVATING_FILES"
   | "DONE";
+
+const JOB_STALE_MS = 30_000;
+
+function getPublicAppUrl() {
+  const baseUrl =
+    process.env.APP_URL?.trim() ||
+    process.env.NEXT_PUBLIC_APP_URL?.trim() ||
+    process.env.AUTH_URL?.trim() ||
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "") ||
+    "http://localhost:3000";
+
+  return baseUrl.replace(/\/+$/, "");
+}
+
+function getRunnerToken(jobId: number) {
+  const secret = process.env.AUTH_SECRET?.trim();
+  if (!secret) {
+    throw new Error("AUTH_SECRET no esta configurado");
+  }
+
+  return crypto.createHmac("sha256", secret).update(`liquidacion-job:${jobId}`).digest("hex");
+}
+
+export function isValidRunnerToken(jobId: number, token: string | null | undefined) {
+  if (!token) return false;
+  const expected = getRunnerToken(jobId);
+  return crypto.timingSafeEqual(Buffer.from(token), Buffer.from(expected));
+}
+
+async function dispatchLiquidacionJob(jobId: number) {
+  const url = `${getPublicAppUrl()}/api/liquidaciones/regeneracion-jobs/${jobId}/run`;
+
+  try {
+    await fetch(url, {
+      method: "POST",
+      headers: {
+        "x-liquidacion-job-token": getRunnerToken(jobId),
+      },
+    });
+  } catch (error) {
+    console.error("[liquidacion-job] dispatch failed", {
+      jobId,
+      url,
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+function isJobStale(updatedAt: Date | null | undefined) {
+  if (!updatedAt) return true;
+  return Date.now() - updatedAt.getTime() > JOB_STALE_MS;
+}
 
 function serializeError(error: unknown) {
   if (error instanceof Error) {
@@ -82,6 +136,9 @@ export async function startRegeneracionArchivosJob(params: {
   });
 
   if (existing) {
+    if (existing.status === "PENDING" || isJobStale(existing.updatedAt)) {
+      void dispatchLiquidacionJob(existing.id);
+    }
     return { ok: true as const, jobId: existing.id, reused: true };
   }
 
@@ -100,7 +157,7 @@ export async function startRegeneracionArchivosJob(params: {
     select: { id: true },
   });
 
-  void runRegeneracionArchivosJob(job.id);
+  void dispatchLiquidacionJob(job.id);
 
   return { ok: true as const, jobId: job.id, reused: false };
 }
@@ -112,6 +169,7 @@ export async function runRegeneracionArchivosJob(jobId: number) {
       id: true,
       liquidacionId: true,
       status: true,
+      updatedAt: true,
     },
   });
 
@@ -119,20 +177,30 @@ export async function runRegeneracionArchivosJob(jobId: number) {
     return;
   }
 
-  if (job.status !== "PENDING") {
-    return;
-  }
-
-  await prisma.liquidacionRegeneracionJob.update({
-    where: { id: job.id },
+  const claim = await prisma.liquidacionRegeneracionJob.updateMany({
+    where:
+      job.status === "PENDING"
+        ? {
+            id: job.id,
+            status: "PENDING",
+          }
+        : {
+            id: job.id,
+            status: { in: ["RUNNING", "VALIDATING"] },
+            updatedAt: { lt: new Date(Date.now() - JOB_STALE_MS) },
+          },
     data: {
       status: "RUNNING",
       stage: "PREPARING",
-      startedAt: new Date(),
+      startedAt: job.status === "PENDING" ? new Date() : undefined,
       message: "Preparando datos historicos...",
       errorDetail: null,
     },
   });
+
+  if (claim.count === 0) {
+    return;
+  }
 
   try {
     const result = await regenerarArchivosLiquidacion(job.liquidacionId, {
@@ -261,6 +329,9 @@ export async function startFinalizacionLiquidacionJob(params: {
   });
 
   if (existing) {
+    if (existing.status === "PENDING" || isJobStale(existing.updatedAt)) {
+      void dispatchLiquidacionJob(existing.id);
+    }
     return { ok: true as const, jobId: existing.id, reused: true };
   }
 
@@ -279,7 +350,7 @@ export async function startFinalizacionLiquidacionJob(params: {
     select: { id: true },
   });
 
-  void runFinalizacionLiquidacionJob(job.id);
+  void dispatchLiquidacionJob(job.id);
 
   return { ok: true as const, jobId: job.id, reused: false };
 }
@@ -291,23 +362,38 @@ export async function runFinalizacionLiquidacionJob(jobId: number) {
       id: true,
       liquidacionId: true,
       status: true,
+      updatedAt: true,
     },
   });
 
-  if (!job || job.status !== "PENDING") {
+  if (!job || (job.status !== "PENDING" && !isJobStale(job.updatedAt))) {
     return;
   }
 
-  await prisma.liquidacionRegeneracionJob.update({
-    where: { id: job.id },
+  const claim = await prisma.liquidacionRegeneracionJob.updateMany({
+    where:
+      job.status === "PENDING"
+        ? {
+            id: job.id,
+            status: "PENDING",
+          }
+        : {
+            id: job.id,
+            status: { in: ["RUNNING", "VALIDATING"] },
+            updatedAt: { lt: new Date(Date.now() - JOB_STALE_MS) },
+          },
     data: {
       status: "RUNNING",
       stage: "PREPARING",
-      startedAt: new Date(),
+      startedAt: job.status === "PENDING" ? new Date() : undefined,
       message: "Preparando liquidacion...",
       errorDetail: null,
     },
   });
+
+  if (claim.count === 0) {
+    return;
+  }
 
   try {
     const result = await generarExpensasDefinitivasDesdePaso3(job.liquidacionId, {
@@ -408,5 +494,22 @@ export async function runFinalizacionLiquidacionJob(jobId: number) {
         finishedAt: new Date(),
       },
     });
+  }
+}
+
+export async function retryLiquidacionJobIfNeeded(jobId: number) {
+  const job = await prisma.liquidacionRegeneracionJob.findUnique({
+    where: { id: jobId },
+    select: {
+      id: true,
+      status: true,
+      updatedAt: true,
+    },
+  });
+
+  if (!job) return;
+
+  if (job.status === "PENDING" || ((job.status === "RUNNING" || job.status === "VALIDATING") && isJobStale(job.updatedAt))) {
+    void dispatchLiquidacionJob(job.id);
   }
 }
