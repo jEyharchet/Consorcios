@@ -271,7 +271,7 @@ function getArchivoUrl(rutaArchivo: string | null | undefined) {
 }
 
 function getBrandingLogoUrl() {
-  return getArchivoUrl("/branding/logo-color.png");
+  return getArchivoUrl("/branding/logo-color-v2.png");
 }
 
 function buildPaymentDetailsHtml(cuentaPago: CuentaPago | null) {
