@@ -1,10 +1,4 @@
 /** @type {import('next').NextConfig} */
-const nextConfig = {
-  experimental: {
-    outputFileTracingIncludes: {
-      "/*": ["./.cache/puppeteer/**/*"],
-    },
-  },
-};
+const nextConfig = {};
 
 export default nextConfig;
