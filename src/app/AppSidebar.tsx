@@ -27,6 +27,7 @@ const baseItems: SidebarItem[] = [
   { label: "Liquidaciones", href: "/liquidaciones", match: "prefix" },
   { label: "Expensas", href: "/expensas", match: "prefix" },
   { label: "Tesoreria", href: "/tesoreria", match: "prefix" },
+  { label: "Administracion", href: "/administracion", match: "prefix" },
 ];
 
 function matchesPath(pathname: string, item: SidebarItem) {

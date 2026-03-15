@@ -29,6 +29,8 @@ model Consorcio {
   cuentasBancarias    ConsorcioCuentaBancaria[]
   movimientosFondo    MovimientoFondo[]
   pagosGasto          PagoGasto[]
+  asambleas           Asamblea[]
+  enviosEmail         EnvioEmail[]
 }
 
 model Unidad {
@@ -564,24 +566,70 @@ model LiquidacionRegeneracionJob {
 
 model EnvioEmail {
   id                Int      @id @default(autoincrement())
+  consorcioId       Int
   tipoEnvio         String
-  liquidacionId     Int
+  liquidacionId     Int?
+  asambleaId        Int?
   unidadId          Int?
   destinatario      String?
   asunto            String
+  cuerpo            String?
   estado            String
   errorMensaje      String?
   providerMessageId String?
   enviadoAt         DateTime?
   createdAt         DateTime @default(now())
 
-  liquidacion Liquidacion @relation(fields: [liquidacionId], references: [id], onDelete: Cascade)
+  consorcio   Consorcio   @relation(fields: [consorcioId], references: [id], onDelete: Cascade)
+  liquidacion Liquidacion? @relation(fields: [liquidacionId], references: [id], onDelete: Cascade)
+  asamblea    Asamblea?   @relation(fields: [asambleaId], references: [id], onDelete: Cascade)
   unidad      Unidad?     @relation(fields: [unidadId], references: [id], onDelete: SetNull)
 
+  @@index([consorcioId])
   @@index([liquidacionId])
+  @@index([asambleaId])
   @@index([unidadId])
+  @@index([consorcioId, tipoEnvio, createdAt])
   @@index([tipoEnvio, createdAt])
   @@index([estado, createdAt])
+}
+
+model Asamblea {
+  id                Int      @id @default(autoincrement())
+  consorcioId       Int
+  tipo              String
+  fecha             DateTime
+  hora              String
+  lugar             String
+  convocatoriaTexto String?
+  estado            String   @default("BORRADOR")
+  observaciones     String?
+  actaTexto         String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  consorcio   Consorcio            @relation(fields: [consorcioId], references: [id], onDelete: Cascade)
+  ordenDia    AsambleaOrdenDia[]
+  enviosEmail EnvioEmail[]
+
+  @@index([consorcioId])
+  @@index([consorcioId, fecha])
+  @@index([consorcioId, estado])
+}
+
+model AsambleaOrdenDia {
+  id          Int      @id @default(autoincrement())
+  asambleaId  Int
+  orden       Int
+  titulo      String
+  descripcion String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  asamblea Asamblea @relation(fields: [asambleaId], references: [id], onDelete: Cascade)
+
+  @@index([asambleaId])
+  @@unique([asambleaId, orden])
 }
 
 

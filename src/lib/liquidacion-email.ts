@@ -2,7 +2,10 @@ import path from "path";
 import { access } from "fs/promises";
 
 import { sendEmail } from "./email";
+import { buildEmailSummary, EMAIL_ESTADO, formatEmailSummary } from "./email-tracking";
 import { prisma } from "./prisma";
+
+export { formatEmailSummary } from "./email-tracking";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
 
@@ -11,21 +14,7 @@ export const EMAIL_TIPO_ENVIO = {
   RECORDATORIO_VENCIMIENTO: "RECORDATORIO_VENCIMIENTO",
 } as const;
 
-export const EMAIL_ESTADO = {
-  PENDIENTE: "PENDIENTE",
-  ENVIADO: "ENVIADO",
-  ERROR: "ERROR",
-  SIN_DESTINATARIO: "SIN_DESTINATARIO",
-} as const;
-
 type TipoEnvioEmail = (typeof EMAIL_TIPO_ENVIO)[keyof typeof EMAIL_TIPO_ENVIO];
-
-type EmailSummary = {
-  total: number;
-  enviados: number;
-  fallidos: number;
-  sinDestinatario: number;
-};
 
 type ResponsableRelacion = {
   desde: Date;
@@ -338,19 +327,6 @@ function buildTemplate(params: {
   };
 }
 
-function buildSummary(items: Array<{ estado: string }>): EmailSummary {
-  return {
-    total: items.length,
-    enviados: items.filter((item) => item.estado === EMAIL_ESTADO.ENVIADO).length,
-    fallidos: items.filter((item) => item.estado === EMAIL_ESTADO.ERROR).length,
-    sinDestinatario: items.filter((item) => item.estado === EMAIL_ESTADO.SIN_DESTINATARIO).length,
-  };
-}
-
-export function formatEmailSummary(summary: EmailSummary) {
-  return `Emails: ${summary.enviados} enviados, ${summary.fallidos} fallidos, ${summary.sinDestinatario} sin destinatario.`;
-}
-
 async function procesarEnviosLiquidacion(params: {
   liquidacionId: number;
   tipoEnvio: TipoEnvioEmail;
@@ -360,6 +336,7 @@ async function procesarEnviosLiquidacion(params: {
     where: { id: params.liquidacionId },
     select: {
       id: true,
+      consorcioId: true,
       periodo: true,
       fechaVencimiento: true,
       boletaCuentaSnapshot: true,
@@ -466,11 +443,13 @@ async function procesarEnviosLiquidacion(params: {
     if (destinatarios.emails.length === 0) {
       await prisma.envioEmail.create({
         data: {
+          consorcioId: liquidacion.consorcioId,
           tipoEnvio: params.tipoEnvio,
           liquidacionId: liquidacion.id,
           unidadId: expensa.unidadId,
           destinatario: null,
           asunto: template.subject,
+          cuerpo: template.text,
           estado: EMAIL_ESTADO.SIN_DESTINATARIO,
           errorMensaje: "No se encontro un email valido para el responsable vigente de la unidad.",
         },
@@ -481,11 +460,13 @@ async function procesarEnviosLiquidacion(params: {
 
     const envio = await prisma.envioEmail.create({
       data: {
+        consorcioId: liquidacion.consorcioId,
         tipoEnvio: params.tipoEnvio,
         liquidacionId: liquidacion.id,
         unidadId: expensa.unidadId,
         destinatario: destinatarios.emails.join(", "),
         asunto: template.subject,
+        cuerpo: template.text,
         estado: EMAIL_ESTADO.PENDIENTE,
       },
       select: { id: true },
@@ -526,7 +507,7 @@ async function procesarEnviosLiquidacion(params: {
     }
   }
 
-  return buildSummary(results);
+  return buildEmailSummary(results);
 }
 
 export async function enviarLiquidacionCerradaEmails(liquidacionId: number) {
