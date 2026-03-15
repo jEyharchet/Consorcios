@@ -12,6 +12,7 @@ function isPublicPath(pathname: string) {
     PUBLIC_PATHS.includes(pathname) ||
     pathname.startsWith("/api/auth") ||
     pathname.startsWith("/_next") ||
+    pathname.startsWith("/branding") ||
     pathname.startsWith("/uploads") ||
     pathname === "/favicon.ico"
   );
@@ -36,5 +37,5 @@ export default auth((req) => {
 });
 
 export const config = {
-  matcher: ["/((?!api/auth|_next/static|_next/image|favicon.ico).*)"],
+  matcher: ["/((?!api/auth|_next/static|_next/image|favicon.ico|branding).*)"],
 };
