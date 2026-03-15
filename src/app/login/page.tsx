@@ -1,6 +1,7 @@
-﻿import { redirect } from "next/navigation";
+import { redirect } from "next/navigation";
 
 import { auth, signIn } from "../../../auth";
+import { getCurrentUserFromSession } from "../../lib/auth";
 
 type LoginPageProps = {
   searchParams?: { error?: string };
@@ -12,9 +13,9 @@ const errorMessages: Record<string, string> = {
 };
 
 export default async function LoginPage({ searchParams }: LoginPageProps) {
-  const session = await auth();
+  const [session, currentUser] = await Promise.all([auth(), getCurrentUserFromSession()]);
 
-  if (session?.user) {
+  if (session?.user && currentUser) {
     redirect("/");
   }
 

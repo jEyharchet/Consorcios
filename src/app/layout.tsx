@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { auth, signOut } from "../../auth";
+import { getCurrentUserFromSession } from "../lib/auth";
 import { getActiveConsorcioContext } from "../lib/consorcio-activo";
 import { getDerivedNotifications } from "../lib/notifications";
 import { onboardingRequired } from "../lib/onboarding";
@@ -19,12 +20,13 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const session = await auth();
+  const [session, currentUser] = await Promise.all([auth(), getCurrentUserFromSession()]);
+  const hasValidAppUser = Boolean(session?.user && currentUser);
 
   let sidebarContext: Awaited<ReturnType<typeof getActiveConsorcioContext>> | null = null;
   let notificationCount = 0;
 
-  if (session?.user) {
+  if (hasValidAppUser) {
     const [activeContext, notifications] = await Promise.all([
       getActiveConsorcioContext(),
       getDerivedNotifications(),
@@ -34,8 +36,8 @@ export default async function RootLayout({
     notificationCount = notifications.pendingCount;
   }
 
-  const isSuperAdmin = session?.user?.role === "SUPER_ADMIN";
-  const shouldShowSidebar = session?.user && sidebarContext ? !onboardingRequired(sidebarContext.access) : false;
+  const isSuperAdmin = currentUser?.role === "SUPER_ADMIN";
+  const shouldShowSidebar = hasValidAppUser && sidebarContext ? !onboardingRequired(sidebarContext.access) : false;
   const notificationClass =
     notificationCount > 0
       ? "border-red-600 bg-red-600 text-white"
@@ -44,7 +46,7 @@ export default async function RootLayout({
   return (
     <html lang="es">
       <body className="bg-slate-50 text-slate-900">
-        {session?.user ? (
+        {hasValidAppUser ? (
           <div className="flex h-screen flex-col overflow-hidden">
             <header className="sticky top-0 z-30 shrink-0 border-b border-slate-200 bg-white">
               <div className="mx-auto flex w-full max-w-none items-center justify-between px-6 py-3">
@@ -52,7 +54,7 @@ export default async function RootLayout({
                   AmiConsorcio
                 </Link>
                 <div className="flex items-center gap-3">
-                  <span className="text-sm text-slate-600">{session.user.email ?? "Usuario"}</span>
+                  <span className="text-sm text-slate-600">{currentUser?.email ?? session?.user?.email ?? "Usuario"}</span>
                   <Link
                     href="/notificaciones"
                     className={`inline-flex h-9 min-w-9 items-center justify-center rounded-md border px-2 text-sm font-semibold transition hover:border-slate-400 ${notificationClass}`}

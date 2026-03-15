@@ -84,6 +84,17 @@ async function getCurrentUserRecord(userId: string): Promise<CurrentUser | null>
   };
 }
 
+export async function getCurrentUserFromSession(): Promise<CurrentUser | null> {
+  const session = await auth();
+  const userId = session?.user?.id;
+
+  if (!userId) {
+    return null;
+  }
+
+  return getCurrentUserRecord(userId);
+}
+
 async function buildAccessContextForUser(user: CurrentUser): Promise<AccessContext & { consorcios: Array<{ id: number; nombre: string }> }> {
   if (user.role === "SUPER_ADMIN") {
     const all = await prisma.consorcio.findMany({
@@ -183,14 +194,7 @@ async function buildAccessContextForUser(user: CurrentUser): Promise<AccessConte
 }
 
 export async function requireAuth(): Promise<CurrentUser> {
-  const session = await auth();
-  const userId = session?.user?.id;
-
-  if (!userId) {
-    redirect("/login");
-  }
-
-  const user = await getCurrentUserRecord(userId);
+  const user = await getCurrentUserFromSession();
 
   if (!user) {
     redirect("/login");
