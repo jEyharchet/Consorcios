@@ -6,10 +6,12 @@ import authConfig from "../auth.config";
 const { auth } = NextAuth(authConfig);
 
 const PUBLIC_PATHS = ["/login"];
+const INTERNAL_REGENERACION_RUNNER_PATTERN = /^\/api\/liquidaciones\/regeneracion-jobs\/[^/]+\/run$/;
 
 function isPublicPath(pathname: string) {
   return (
     PUBLIC_PATHS.includes(pathname) ||
+    INTERNAL_REGENERACION_RUNNER_PATTERN.test(pathname) ||
     pathname.startsWith("/api/auth") ||
     pathname.startsWith("/_next") ||
     pathname.startsWith("/branding") ||
@@ -37,5 +39,5 @@ export default auth((req) => {
 });
 
 export const config = {
-  matcher: ["/((?!api/auth|_next/static|_next/image|favicon.ico|branding).*)"],
+  matcher: ["/((?!api/auth|api/liquidaciones/regeneracion-jobs/[^/]+/run|_next/static|_next/image|favicon.ico|branding).*)"],
 };
