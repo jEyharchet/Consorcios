@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 
 import { requireConsorcioRole } from "../../lib/auth";
 import { getActiveConsorcioContext } from "../../lib/consorcio-activo";
-import { enviarRecordatoriosPendientes, formatEmailSummary } from "../../lib/liquidacion-email";
+import { formatEmailSummary } from "../../lib/liquidacion-email";
 import { redirectToOnboardingIfNoConsorcios } from "../../lib/onboarding";
 import { prisma } from "../../lib/prisma";
 import {
@@ -228,7 +228,7 @@ export default async function TesoreriaPage({
     redirect(`/tesoreria${buildReturnQuery({ ok: "cuenta_actualizada_ok", cuentaId: String(cuentaBancariaId) })}`);
   }
 
-  async function enviarRecordatorios(formData: FormData) {
+  async function previsualizarRecordatorios(formData: FormData) {
     "use server";
 
     const consorcioId = Number(formData.get("consorcioId"));
@@ -249,17 +249,7 @@ export default async function TesoreriaPage({
       redirect(`/tesoreria${buildReturnQuery({ error: "liquidacion_inexistente" })}`);
     }
 
-    const summary = await enviarRecordatoriosPendientes(liquidacionId);
-
-    redirect(
-      `/tesoreria${buildReturnQuery({
-        ok: "recordatorios_ok",
-        liquidacionId: String(liquidacionId),
-        enviados: String(summary.enviados),
-        fallidos: String(summary.fallidos),
-        sinDestinatario: String(summary.sinDestinatario),
-      })}`,
-    );
+    redirect(`/tesoreria/recordatorios${buildReturnQuery({ liquidacionId: String(liquidacionId) })}`);
   }
 
   const [consorcio, movimientosRecientes, movimientosCaja, liquidacionesDisponibles] = await Promise.all([
@@ -569,7 +559,7 @@ export default async function TesoreriaPage({
             </p>
 
             {canOperate ? (
-              <form action={enviarRecordatorios} className="mt-4 space-y-4">
+              <form action={previsualizarRecordatorios} className="mt-4 space-y-4">
                 <input type="hidden" name="consorcioId" value={consorcio.id} />
 
                 <div className="space-y-1">
@@ -592,11 +582,11 @@ export default async function TesoreriaPage({
                 </div>
 
                 <p className="text-xs text-slate-500">
-                  Se excluyen unidades totalmente pagadas y casos sin email valido, que quedan trazados como sin destinatario.
+                  Primero se arma una vista previa editable por unidad pendiente y luego confirmas el envio final.
                 </p>
 
                 <button type="submit" className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
-                  Enviar recordatorio a pendientes
+                  Previsualizar recordatorios
                 </button>
               </form>
             ) : (

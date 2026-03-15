@@ -1,8 +1,8 @@
 import path from "path";
-import { access } from "fs/promises";
+import { readFile } from "fs/promises";
 
 import { sendEmail } from "./email";
-import { buildEmailSummary, EMAIL_ESTADO, formatEmailSummary } from "./email-tracking";
+import { buildEmailSummary, EMAIL_ESTADO, formatEmailSummary, type EmailSummary } from "./email-tracking";
 import { prisma } from "./prisma";
 
 export { formatEmailSummary } from "./email-tracking";
@@ -33,6 +33,27 @@ type CuentaPago = {
   cbu: string;
   alias: string | null;
   cuitTitular: string | null;
+};
+
+export type ReminderDraft = {
+  unidadId: number;
+  unidadLabel: string;
+  responsablesLabel: string;
+  destinatario: string;
+  asunto: string;
+  cuerpo: string;
+  saldoPendiente: number;
+  boletaArchivoId: number | null;
+  boletaNombre: string | null;
+  tieneBoletaAdjunta: boolean;
+};
+
+type ReminderDraftInput = {
+  unidadId: number;
+  destinatario: string;
+  asunto: string;
+  cuerpo: string;
+  boletaArchivoId: number | null;
 };
 
 function formatCurrency(value: number) {
@@ -176,6 +197,7 @@ function getAbsolutePublicPath(rutaArchivo: string | null | undefined) {
 async function resolveAttachment(
   archivo:
     | {
+        id?: number;
         nombreArchivo: string;
         rutaArchivo: string;
         mimeType: string;
@@ -190,11 +212,11 @@ async function resolveAttachment(
   }
 
   try {
-    await access(absolutePath);
+    const content = await readFile(absolutePath);
 
     return [
       {
-        path: absolutePath,
+        content,
         filename: archivo.nombreArchivo,
         contentType: archivo.mimeType,
       },
@@ -202,6 +224,29 @@ async function resolveAttachment(
   } catch {
     return undefined;
   }
+}
+
+function parseDestinatariosInput(value: string) {
+  return Array.from(
+    new Set(
+      value
+        .split(/[,\n;]+/)
+        .map((item) => normalizeEmail(item))
+        .filter((item): item is string => Boolean(item)),
+    ),
+  );
+}
+
+function buildEditableEmailHtml(subject: string, body: string) {
+  return `
+    <div style="font-family:Arial,sans-serif;background:#f8fafc;padding:24px;color:#0f172a">
+      <div style="max-width:680px;margin:0 auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;padding:24px">
+        <p style="margin:0 0 8px;font-size:12px;font-weight:700;letter-spacing:.08em;color:#64748b">AMICONSORCIO</p>
+        <h1 style="margin:0 0 16px;font-size:24px;line-height:1.2">${escapeHtml(subject)}</h1>
+        <div style="color:#334155;line-height:1.6">${escapeHtml(body).replace(/\n/g, "<br />")}</div>
+      </div>
+    </div>
+  `;
 }
 
 function getPublicAppUrl() {
@@ -272,6 +317,27 @@ function buildTemplate(params: {
     .filter((value): value is string => Boolean(value))
     .join("");
 
+  const bodyLines = [
+    intro,
+    "",
+    `Consorcio: ${params.consorcioNombre}`,
+    `Periodo: ${params.periodo}`,
+    `Unidad: ${params.unidadLabel}`,
+    `Responsable: ${params.responsablesLabel}`,
+    `Vencimiento: ${formatDate(params.fechaVencimiento)}`,
+    amountLine,
+    "",
+    params.cuentaPago
+      ? `Pago por transferencia: ${params.cuentaPago.banco} | CBU ${params.cuentaPago.cbu} | Alias ${params.cuentaPago.alias ?? "-"}`
+      : "Los datos de pago estan disponibles en la boleta o en el sistema.",
+    params.boletaUrl ? `Boleta: ${params.boletaUrl}` : null,
+    params.rendicionUrl ? `Rendicion: ${params.rendicionUrl}` : null,
+    "",
+    "Si ya registraste el pago, podes ignorar este mensaje.",
+  ]
+    .filter((value): value is string => Boolean(value))
+    .join("\n");
+
   const html = `
     <div style="font-family:Arial,sans-serif;background:#f8fafc;padding:24px;color:#0f172a">
       <div style="max-width:680px;margin:0 auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;padding:24px">
@@ -300,40 +366,17 @@ function buildTemplate(params: {
     </div>
   `;
 
-  const textLines = [
-    subject,
-    "",
-    intro,
-    `Consorcio: ${params.consorcioNombre}`,
-    `Periodo: ${params.periodo}`,
-    `Unidad: ${params.unidadLabel}`,
-    `Responsable: ${params.responsablesLabel}`,
-    `Vencimiento: ${formatDate(params.fechaVencimiento)}`,
-    amountLine,
-    "",
-    params.cuentaPago
-      ? `Pago por transferencia: ${params.cuentaPago.banco} | CBU ${params.cuentaPago.cbu} | Alias ${params.cuentaPago.alias ?? "-"}`
-      : "Los datos de pago estan disponibles en la boleta o en el sistema.",
-    params.boletaUrl ? `Boleta: ${params.boletaUrl}` : null,
-    params.rendicionUrl ? `Rendicion: ${params.rendicionUrl}` : null,
-  ]
-    .filter((value): value is string => Boolean(value))
-    .join("\n");
-
   return {
     subject,
+    body: bodyLines,
     html,
-    text: textLines,
+    text: `${subject}\n\n${bodyLines}`,
   };
 }
 
-async function procesarEnviosLiquidacion(params: {
-  liquidacionId: number;
-  tipoEnvio: TipoEnvioEmail;
-  onlyPendientes: boolean;
-}) {
-  const liquidacion = await prisma.liquidacion.findUnique({
-    where: { id: params.liquidacionId },
+async function getLiquidacionEmailContext(liquidacionId: number, onlyPendientes: boolean) {
+  return prisma.liquidacion.findUnique({
+    where: { id: liquidacionId },
     select: {
       id: true,
       consorcioId: true,
@@ -369,7 +412,7 @@ async function procesarEnviosLiquidacion(params: {
         },
       },
       expensas: {
-        where: params.onlyPendientes ? { saldo: { gt: 0 } } : undefined,
+        where: onlyPendientes ? { saldo: { gt: 0 } } : undefined,
         orderBy: [{ unidad: { identificador: "asc" } }, { unidadId: "asc" }],
         select: {
           id: true,
@@ -401,6 +444,14 @@ async function procesarEnviosLiquidacion(params: {
       },
     },
   });
+}
+
+async function procesarEnviosLiquidacion(params: {
+  liquidacionId: number;
+  tipoEnvio: TipoEnvioEmail;
+  onlyPendientes: boolean;
+}) {
+  const liquidacion = await getLiquidacionEmailContext(params.liquidacionId, params.onlyPendientes);
 
   if (!liquidacion) {
     throw new Error("liquidacion_inexistente");
@@ -449,7 +500,7 @@ async function procesarEnviosLiquidacion(params: {
           unidadId: expensa.unidadId,
           destinatario: null,
           asunto: template.subject,
-          cuerpo: template.text,
+          cuerpo: template.body,
           estado: EMAIL_ESTADO.SIN_DESTINATARIO,
           errorMensaje: "No se encontro un email valido para el responsable vigente de la unidad.",
         },
@@ -466,7 +517,7 @@ async function procesarEnviosLiquidacion(params: {
         unidadId: expensa.unidadId,
         destinatario: destinatarios.emails.join(", "),
         asunto: template.subject,
-        cuerpo: template.text,
+        cuerpo: template.body,
         estado: EMAIL_ESTADO.PENDIENTE,
       },
       select: { id: true },
@@ -478,6 +529,164 @@ async function procesarEnviosLiquidacion(params: {
         subject: template.subject,
         html: template.html,
         text: template.text,
+        attachments: await resolveAttachment(boletaArchivo),
+      });
+
+      await prisma.envioEmail.update({
+        where: { id: envio.id },
+        data: {
+          estado: EMAIL_ESTADO.ENVIADO,
+          providerMessageId: response?.id ?? null,
+          enviadoAt: new Date(),
+          errorMensaje: null,
+        },
+      });
+
+      results.push({ estado: EMAIL_ESTADO.ENVIADO });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message.slice(0, 1000) : "Error desconocido al enviar email.";
+
+      await prisma.envioEmail.update({
+        where: { id: envio.id },
+        data: {
+          estado: EMAIL_ESTADO.ERROR,
+          errorMensaje: errorMessage,
+        },
+      });
+
+      results.push({ estado: EMAIL_ESTADO.ERROR });
+    }
+  }
+
+  return buildEmailSummary(results);
+}
+
+export async function buildReminderDrafts(liquidacionId: number): Promise<ReminderDraft[]> {
+  const liquidacion = await getLiquidacionEmailContext(liquidacionId, true);
+
+  if (!liquidacion) {
+    throw new Error("liquidacion_inexistente");
+  }
+
+  const cuentaPago =
+    parseCuentaSnapshot(liquidacion.boletaCuentaSnapshot) ??
+    liquidacion.consorcio.cuentasBancarias.find((cuenta) => cuenta.esCuentaExpensas) ??
+    liquidacion.consorcio.cuentasBancarias[0] ??
+    null;
+
+  const rendicionArchivo = liquidacion.archivos.find((archivo) => archivo.tipoArchivo === "RENDICION") ?? null;
+  const rendicionUrl = getArchivoUrl(rendicionArchivo?.rutaArchivo);
+
+  return liquidacion.expensas.map((expensa) => {
+    const destinatarios = resolveDestinatarios(expensa.unidad.personas);
+    const boletaArchivo =
+      liquidacion.archivos.find(
+        (archivo) =>
+          archivo.tipoArchivo === "BOLETA_RESPONSABLE" &&
+          archivo.responsableGroupKey === buildResponsableGroupKey(expensa.unidad.personas),
+      ) ?? null;
+
+    const template = buildTemplate({
+      tipoEnvio: EMAIL_TIPO_ENVIO.RECORDATORIO_VENCIMIENTO,
+      consorcioNombre: liquidacion.consorcio.nombre,
+      periodo: liquidacion.periodo,
+      unidadLabel: `${expensa.unidad.identificador} (${expensa.unidad.tipo})`,
+      responsablesLabel: destinatarios.responsablesLabel,
+      fechaVencimiento: liquidacion.fechaVencimiento,
+      monto: expensa.saldo,
+      boletaUrl: getArchivoUrl(boletaArchivo?.rutaArchivo),
+      rendicionUrl,
+      cuentaPago,
+    });
+
+    return {
+      unidadId: expensa.unidadId,
+      unidadLabel: `${expensa.unidad.identificador} (${expensa.unidad.tipo})`,
+      responsablesLabel: destinatarios.responsablesLabel,
+      destinatario: destinatarios.emails.join(", "),
+      asunto: template.subject,
+      cuerpo: template.body,
+      saldoPendiente: expensa.saldo,
+      boletaArchivoId: boletaArchivo?.id ?? null,
+      boletaNombre: boletaArchivo?.nombreArchivo ?? null,
+      tieneBoletaAdjunta: Boolean(boletaArchivo),
+    };
+  });
+}
+
+export async function sendReminderDrafts(params: {
+  liquidacionId: number;
+  drafts: ReminderDraftInput[];
+}): Promise<EmailSummary> {
+  const liquidacion = await prisma.liquidacion.findUnique({
+    where: { id: params.liquidacionId },
+    select: {
+      id: true,
+      consorcioId: true,
+      archivos: {
+        where: { activo: true },
+        select: {
+          id: true,
+          nombreArchivo: true,
+          rutaArchivo: true,
+          mimeType: true,
+        },
+      },
+    },
+  });
+
+  if (!liquidacion) {
+    throw new Error("liquidacion_inexistente");
+  }
+
+  const results: Array<{ estado: string }> = [];
+
+  for (const draft of params.drafts) {
+    const destinatarios = parseDestinatariosInput(draft.destinatario);
+
+    if (destinatarios.length === 0) {
+      await prisma.envioEmail.create({
+        data: {
+          consorcioId: liquidacion.consorcioId,
+          tipoEnvio: EMAIL_TIPO_ENVIO.RECORDATORIO_VENCIMIENTO,
+          liquidacionId: liquidacion.id,
+          unidadId: draft.unidadId,
+          destinatario: null,
+          asunto: draft.asunto,
+          cuerpo: draft.cuerpo,
+          estado: EMAIL_ESTADO.SIN_DESTINATARIO,
+          errorMensaje: "No se encontro un email valido para el borrador seleccionado.",
+        },
+      });
+      results.push({ estado: EMAIL_ESTADO.SIN_DESTINATARIO });
+      continue;
+    }
+
+    const boletaArchivo =
+      draft.boletaArchivoId !== null
+        ? liquidacion.archivos.find((archivo) => archivo.id === draft.boletaArchivoId) ?? null
+        : null;
+
+    const envio = await prisma.envioEmail.create({
+      data: {
+        consorcioId: liquidacion.consorcioId,
+        tipoEnvio: EMAIL_TIPO_ENVIO.RECORDATORIO_VENCIMIENTO,
+        liquidacionId: liquidacion.id,
+        unidadId: draft.unidadId,
+        destinatario: destinatarios.join(", "),
+        asunto: draft.asunto,
+        cuerpo: draft.cuerpo,
+        estado: EMAIL_ESTADO.PENDIENTE,
+      },
+      select: { id: true },
+    });
+
+    try {
+      const response = await sendEmail({
+        to: destinatarios,
+        subject: draft.asunto,
+        html: buildEditableEmailHtml(draft.asunto, draft.cuerpo),
+        text: draft.cuerpo,
         attachments: await resolveAttachment(boletaArchivo),
       });
 
