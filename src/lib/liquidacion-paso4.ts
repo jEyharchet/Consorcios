@@ -1,8 +1,12 @@
 import { access, rm } from "fs/promises";
-import path from "path";
 
 import { prisma } from "./prisma";
 import { getPeriodoVariants } from "./periodo";
+import {
+  resolveExistingLiquidacionAbsolutePath,
+  resolveLiquidacionAbsolutePathFromRuta,
+  resolveLiquidacionOutputRootFromRuta,
+} from "./liquidacion-archivos";
 import { generarArchivosLiquidacion } from "./liquidacion-cierre";
 import { enviarLiquidacionCerradaEmails } from "./liquidacion-email";
 
@@ -463,7 +467,7 @@ export async function generarExpensasDefinitivasDesdePaso3(
     await assertGeneratedFilesExist(archivosGenerados);
   } catch (error) {
     const outputRootOnValidationError = archivosGenerados[0]?.rutaArchivo
-      ? resolveOutputRootFromRuta(archivosGenerados[0].rutaArchivo)
+      ? resolveLiquidacionOutputRootFromRuta(archivosGenerados[0].rutaArchivo)
       : null;
 
     if (outputRootOnValidationError) {
@@ -482,7 +486,7 @@ export async function generarExpensasDefinitivasDesdePaso3(
   }));
 
   const outputRoot = archivosGenerados[0]?.rutaArchivo
-    ? resolveOutputRootFromRuta(archivosGenerados[0].rutaArchivo)
+    ? resolveLiquidacionOutputRootFromRuta(archivosGenerados[0].rutaArchivo)
     : null;
 
   try {
@@ -579,27 +583,11 @@ export async function generarExpensasDefinitivasDesdePaso3(
 
 
 
-function resolveAbsolutePublicPathFromRuta(rutaArchivo: string) {
-  const relative = rutaArchivo.replace(/^\/+/, "");
-  if (!relative) {
-    return null;
-  }
-
-  return path.join(process.cwd(), "public", relative);
-}
-
-function resolveOutputRootFromRuta(rutaArchivo: string) {
-  const absoluteFile = resolveAbsolutePublicPathFromRuta(rutaArchivo);
-  if (!absoluteFile) {
-    return null;
-  }
-
-  return path.dirname(absoluteFile);
-}
-
 async function assertGeneratedFilesExist(archivos: Array<{ rutaArchivo: string }>) {
   for (const archivo of archivos) {
-    const absolute = resolveAbsolutePublicPathFromRuta(archivo.rutaArchivo);
+    const absolute =
+      resolveLiquidacionAbsolutePathFromRuta(archivo.rutaArchivo) ??
+      (await resolveExistingLiquidacionAbsolutePath(archivo.rutaArchivo));
     if (!absolute) {
       throw new Error(`Ruta de archivo invalida: ${archivo.rutaArchivo}`);
     }
@@ -738,7 +726,7 @@ export async function regenerarArchivosLiquidacion(
     const newRoots = Array.from(
       new Set(
         archivosGenerados
-          .map((a) => resolveOutputRootFromRuta(a.rutaArchivo))
+          .map((a) => resolveLiquidacionOutputRootFromRuta(a.rutaArchivo))
           .filter((value): value is string => Boolean(value)),
       ),
     );
@@ -783,7 +771,7 @@ export async function regenerarArchivosLiquidacion(
     const newRoots = Array.from(
       new Set(
         archivosGenerados
-          .map((a) => resolveOutputRootFromRuta(a.rutaArchivo))
+          .map((a) => resolveLiquidacionOutputRootFromRuta(a.rutaArchivo))
           .filter((value): value is string => Boolean(value)),
       ),
     );

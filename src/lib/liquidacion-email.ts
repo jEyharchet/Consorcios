@@ -1,8 +1,8 @@
-import path from "path";
 import { readFile } from "fs/promises";
 
 import { sendEmail } from "./email";
 import { buildEmailSummary, EMAIL_ESTADO, formatEmailSummary, type EmailSummary } from "./email-tracking";
+import { ensureLiquidacionArchivoAvailable } from "./liquidacion-archivo-runtime";
 import { prisma } from "./prisma";
 
 export { formatEmailSummary } from "./email-tracking";
@@ -194,31 +194,30 @@ function parseCuentaSnapshot(snapshot: string | null | undefined): CuentaPago | 
   }
 }
 
-function getAbsolutePublicPath(rutaArchivo: string | null | undefined) {
-  if (!rutaArchivo) {
-    return null;
-  }
-
-  const relative = rutaArchivo.replace(/^\/+/, "");
-  if (!relative) {
-    return null;
-  }
-
-  return path.join(process.cwd(), "public", relative);
-}
-
 async function resolveAttachment(
   archivo:
     | {
         id?: number;
+        tipoArchivo?: "RENDICION" | "BOLETA_RESPONSABLE";
         nombreArchivo: string;
         rutaArchivo: string;
         mimeType: string;
+        responsableGroupKey?: string | null;
       }
     | null
     | undefined,
+  liquidacionId?: number,
 ) {
-  const absolutePath = getAbsolutePublicPath(archivo?.rutaArchivo);
+  const absolutePath =
+    archivo?.rutaArchivo && liquidacionId
+      ? await ensureLiquidacionArchivoAvailable({
+          liquidacionId,
+          rutaArchivo: archivo.rutaArchivo,
+          tipoArchivo: archivo.tipoArchivo,
+          responsableGroupKey: archivo.responsableGroupKey ?? null,
+          nombreArchivo: archivo.nombreArchivo,
+        })
+      : null;
 
   if (!absolutePath || !archivo) {
     return undefined;
@@ -676,7 +675,7 @@ async function procesarEnviosLiquidacion(params: {
         subject: template.subject,
         html: template.html,
         text: template.text,
-        attachments: await resolveAttachment(boletaArchivo),
+        attachments: await resolveAttachment(boletaArchivo, liquidacion.id),
       });
 
       await prisma.envioEmail.update({
@@ -795,9 +794,11 @@ export async function sendReminderDrafts(params: {
         where: { activo: true },
         select: {
           id: true,
+          tipoArchivo: true,
           nombreArchivo: true,
           rutaArchivo: true,
           mimeType: true,
+          responsableGroupKey: true,
         },
       },
     },
@@ -908,7 +909,7 @@ export async function sendReminderDrafts(params: {
         subject: draft.asunto,
         html: rendered.html,
         text: rendered.text,
-        attachments: await resolveAttachment(boletaArchivo),
+        attachments: await resolveAttachment(boletaArchivo, liquidacion.id),
       });
 
       await prisma.envioEmail.update({
