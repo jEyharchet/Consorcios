@@ -8,7 +8,7 @@ import { prisma } from "./prisma";
 export { formatEmailSummary } from "./email-tracking";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
-const DEFAULT_PUBLIC_APP_URL = "https://amiconsorcio.com.ar";
+const DEFAULT_PUBLIC_APP_URL = "https://app.amiconsorcio.com.ar";
 
 export const EMAIL_TIPO_ENVIO = {
   LIQUIDACION_CIERRE: "LIQUIDACION_CIERRE",
@@ -307,7 +307,7 @@ function buildReminderEditableContent(params: {
 }) {
   const periodoLabel = formatPeriodoLabel(params.periodo);
 
-  return `Te recordamos que la unidad ${params.unidadLabel} registra un saldo pendiente correspondiente a la liquidacion del periodo ${periodoLabel}.\n\nSi ya realizaste el pago, no es necesario responder este mensaje.`;
+  return `Te recordamos que la unidad ${params.unidadLabel} registra un saldo pendiente correspondiente a la liquidación del período ${periodoLabel}.`;
 }
 
 export function renderReminderEmail(params: ReminderEmailRenderParams) {
@@ -452,8 +452,8 @@ function buildTemplate(params: {
 
   const intro =
     params.tipoEnvio === EMAIL_TIPO_ENVIO.LIQUIDACION_CIERRE
-      ? `La liquidacion del periodo ${periodoLabel} ya fue cerrada y la boleta correspondiente se encuentra disponible.`
-      : `Te recordamos que la unidad ${params.unidadLabel} mantiene un saldo pendiente para la liquidacion del periodo ${periodoLabel}.`;
+      ? `La liquidación del período ${periodoLabel} ya fue cerrada y la boleta correspondiente se encuentra disponible.`
+      : `Te recordamos que la unidad ${params.unidadLabel} mantiene un saldo pendiente para la liquidación del período ${periodoLabel}.`;
 
   const amountLine =
     params.tipoEnvio === EMAIL_TIPO_ENVIO.LIQUIDACION_CIERRE
