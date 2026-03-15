@@ -138,8 +138,10 @@ function buildBasicTransferBlock(transferDetailsHtml: string) {
     <div class="divider"></div>
     <div class="transfer-block">
       <p class="transfer-title">DATOS DE CUENTA BANCARIA PARA PAGO POR TRANSFERENCIA</p>
-      <div class="transfer-grid">
-        ${transferDetailsHtml}
+      <div class="transfer-details-panel">
+        <div class="transfer-grid">
+          ${transferDetailsHtml}
+        </div>
       </div>
     </div>
   `;
@@ -162,8 +164,10 @@ function buildBoletaTransferBlock(cuentaExpensas: CuentaExpensas, totalPagar: nu
       <div class="transfer-block">
         <p class="transfer-title">DATOS DE CUENTA BANCARIA PARA PAGO POR TRANSFERENCIA</p>
         <div class="transfer-layout">
-          <div class="transfer-grid">
-            ${transferDetailsHtml}
+          <div class="transfer-details-panel">
+            <div class="transfer-grid">
+              ${transferDetailsHtml}
+            </div>
           </div>
           <div class="qr-block">
             <img class="qr-image" src="${escapeHtml(paymentQr.imageUrl)}" alt="QR de pago" />
@@ -185,6 +189,7 @@ function buildBoletaTransferBlock(cuentaExpensas: CuentaExpensas, totalPagar: nu
 }
 
 function buildBoletaHtml(data: Paso4Data, group: ResponsableGroup) {
+  const brandingLogoUrl = "https://app.amiconsorcio.com.ar/branding/logo-gray-v2.png";
   const consorcio = data.liquidacion.consorcio;
   const periodo = data.liquidacion.periodo;
   const mesLabel = formatPeriodo(data.liquidacion.mesRendicion ?? periodo);
@@ -218,36 +223,49 @@ function buildBoletaHtml(data: Paso4Data, group: ResponsableGroup) {
             width: 100%;
             max-width: 820px;
             margin: 22px auto;
-            padding: 24px 26px;
+            padding: 28px 30px 30px;
             border: 1px solid #cbd5e1;
-            border-radius: 6px;
+            border-radius: 10px;
             background: #ffffff;
+            box-sizing: border-box;
+          }
+
+          .header {
+            padding-bottom: 18px;
+            border-bottom: 1px solid #d7dee7;
+          }
+
+          .header-logo {
+            display: block;
+            margin-bottom: 14px;
           }
 
           .title {
             margin: 0;
-            font-size: 20pt;
+            font-size: 21pt;
             font-weight: 700;
             text-transform: uppercase;
-            letter-spacing: 0.02em;
+            letter-spacing: 0.03em;
+            color: #111827;
           }
 
           .subtitle {
-            margin: 8px 0 0 0;
+            margin: 10px 0 0 0;
             font-size: 10.5pt;
             color: #334155;
+            line-height: 1.45;
           }
 
           .grid {
-            margin-top: 16px;
+            margin-top: 22px;
             display: grid;
             grid-template-columns: 1fr 320px;
-            gap: 20px;
+            gap: 24px;
             align-items: start;
           }
 
           .field {
-            margin-bottom: 12px;
+            margin-bottom: 14px;
           }
 
           .label {
@@ -275,15 +293,18 @@ function buildBoletaHtml(data: Paso4Data, group: ResponsableGroup) {
 
           .divider {
             border-top: 1px solid #cbd5e1;
-            margin: 14px 0 0 0;
+            margin: 20px 0 0 0;
           }
 
           .total-block {
-            margin-top: 14px;
+            margin-top: 20px;
             display: grid;
             grid-template-columns: 1fr auto;
             align-items: end;
-            gap: 12px;
+            gap: 18px;
+            padding: 18px 0 16px;
+            border-top: 2px solid #94a3b8;
+            border-bottom: 2px solid #94a3b8;
           }
 
           .total-label {
@@ -297,37 +318,50 @@ function buildBoletaHtml(data: Paso4Data, group: ResponsableGroup) {
 
           .total-value {
             margin: 0;
-            font-size: 24pt;
+            font-size: 29pt;
             font-weight: 700;
             line-height: 1;
             color: #0f172a;
             white-space: nowrap;
+            letter-spacing: -0.02em;
           }
 
           .transfer-block {
-            margin-top: 14px;
+            margin-top: 18px;
+            padding: 16px 18px 18px;
+            border: 1px solid #d7dee7;
+            border-radius: 10px;
+            background: #f8fafc;
           }
 
           .transfer-layout {
             display: grid;
-            grid-template-columns: 1fr 220px;
-            gap: 18px;
+            grid-template-columns: minmax(0, 1fr) 220px;
+            gap: 20px;
             align-items: start;
           }
 
           .transfer-title {
-            margin: 0 0 8px 0;
+            margin: 0 0 12px 0;
             font-size: 10.5pt;
             font-weight: 700;
-            letter-spacing: 0.02em;
+            letter-spacing: 0.05em;
             text-transform: uppercase;
             color: #334155;
+          }
+
+          .transfer-details-panel {
+            padding: 14px 16px;
+            border: 1px solid #dbe3ec;
+            border-radius: 8px;
+            background: #ffffff;
           }
 
           .transfer-grid p {
             margin: 0 0 4px 0;
             font-size: 10.5pt;
             color: #0f172a;
+            line-height: 1.45;
           }
 
           .transfer-label {
@@ -336,14 +370,21 @@ function buildBoletaHtml(data: Paso4Data, group: ResponsableGroup) {
           }
 
           .transfer-reference {
-            margin-top: 8px;
+            margin-top: 10px;
+            padding-top: 8px;
+            border-top: 1px solid #e2e8f0;
           }
 
           .qr-block {
             display: flex;
             flex-direction: column;
             align-items: center;
-            gap: 8px;
+            justify-content: center;
+            gap: 10px;
+            padding: 14px 12px;
+            border: 1px solid #dbe3ec;
+            border-radius: 8px;
+            background: #ffffff;
           }
 
           .qr-image {
@@ -359,10 +400,11 @@ function buildBoletaHtml(data: Paso4Data, group: ResponsableGroup) {
 
           .qr-label {
             margin: 0;
-            font-size: 10pt;
+            font-size: 9.5pt;
             font-weight: 700;
             text-align: center;
             color: #0f172a;
+            line-height: 1.35;
           }
 
           .vencimiento {
@@ -373,9 +415,18 @@ function buildBoletaHtml(data: Paso4Data, group: ResponsableGroup) {
       </head>
       <body>
         <div class="sheet">
+          <div class="header">
+          <img
+            class="header-logo"
+            src="${brandingLogoUrl}"
+            alt="AmiConsorcio"
+            width="140"
+            style="display:block;margin-bottom:12px"
+          />
           <h1 class="title">VOLANTE DE PAGO DE EXPENSAS</h1>
           <p class="subtitle">${escapeHtml(consorcio.nombre)} · Periodo ${escapeHtml(periodo)} (${escapeHtml(mesLabel)}) · Vence ${escapeHtml(vencimiento)}</p>
 
+          </div>
           <div class="grid">
             <div>
               <div class="field">
