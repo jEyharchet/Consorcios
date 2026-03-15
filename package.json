@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "postinstall": "node scripts/prepare-chromium-pack.mjs",
     "build": "prisma generate && next build",
     "start": "next start",
     "lint": "next lint",
@@ -13,14 +14,14 @@
     "test:email": "tsx scripts/test-email.ts"
   },
   "dependencies": {
-    "@sparticuz/chromium": "^131.0.1",
+    "@sparticuz/chromium-min": "^141.0.0",
     "@auth/prisma-adapter": "^2.7.4",
     "@prisma/client": "5.19.1",
     "better-sqlite3": "^11.8.1",
     "dotenv": "^16.6.1",
     "next": "14.2.5",
     "next-auth": "^5.0.0-beta.30",
-    "puppeteer-core": "^24.0.0",
+    "puppeteer-core": "^24.23.1",
     "react": "18.3.1",
     "react-dom": "18.3.1",
     "resend": "^6.9.3"
