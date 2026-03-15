@@ -8,6 +8,7 @@ import { prisma } from "./prisma";
 export { formatEmailSummary } from "./email-tracking";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
+const DEFAULT_PUBLIC_APP_URL = "https://amiconsorcio.com.ar";
 
 export const EMAIL_TIPO_ENVIO = {
   LIQUIDACION_CIERRE: "LIQUIDACION_CIERRE",
@@ -254,7 +255,7 @@ function getPublicAppUrl() {
     process.env.APP_URL?.trim() ||
     process.env.NEXT_PUBLIC_APP_URL?.trim() ||
     process.env.AUTH_URL?.trim() ||
-    "";
+    DEFAULT_PUBLIC_APP_URL;
 
   return baseUrl.replace(/\/+$/, "");
 }
