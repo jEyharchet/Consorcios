@@ -343,7 +343,7 @@ export function renderReminderEmail(params: ReminderEmailRenderParams) {
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse">
             <tr>
               <td style="vertical-align:middle">
-                ${logoUrl ? `<img src="${logoUrl}" alt="AmiConsorcio" style="display:block;max-width:180px;height:auto;border:0" />` : `<div style="font-size:20px;font-weight:700;letter-spacing:.04em;color:#0f172a">AmiConsorcio</div>`}
+                ${logoUrl ? `<img src="${logoUrl}" alt="AmiConsorcio" style="display:block;height:34px;width:auto;max-width:180px;border:0" />` : `<div style="font-size:20px;font-weight:700;letter-spacing:.04em;color:#0f172a">AmiConsorcio</div>`}
               </td>
               <td style="vertical-align:middle;text-align:right">
                 <div style="font-size:12px;font-weight:700;letter-spacing:.08em;color:#64748b;text-transform:uppercase">Consorcio</div>
