@@ -1,5 +1,6 @@
 import { access } from "fs/promises";
 
+import chromium from "@sparticuz/chromium";
 import puppeteer from "puppeteer-core";
 
 const LOCAL_CHROME_CANDIDATES = [
@@ -12,20 +13,6 @@ const LOCAL_CHROME_CANDIDATES = [
   "/usr/bin/chromium-browser",
   "/usr/bin/chromium",
 ].filter((value): value is string => Boolean(value));
-
-type ChromiumLikeModule = {
-  args: string[];
-  defaultViewport?: {
-    width: number;
-    height: number;
-    deviceScaleFactor?: number;
-    isMobile?: boolean;
-    hasTouch?: boolean;
-    isLandscape?: boolean;
-  } | null;
-  headless: boolean | "shell";
-  executablePath: () => Promise<string>;
-};
 
 async function findFirstAccessiblePath(paths: string[]) {
   for (const candidate of paths) {
@@ -40,20 +27,10 @@ async function findFirstAccessiblePath(paths: string[]) {
   return null;
 }
 
-async function loadChromiumModule(): Promise<ChromiumLikeModule> {
-  const mod = (await import(
-    /* webpackIgnore: true */
-    "@sparticuz/chromium"
-  )) as ChromiumLikeModule | { default: ChromiumLikeModule };
-
-  return "default" in mod ? mod.default : mod;
-}
-
 async function resolveChromeExecutablePath() {
   const isProduction = process.env.NODE_ENV === "production" || Boolean(process.env.VERCEL);
 
   if (isProduction) {
-    const chromium = await loadChromiumModule();
     return await chromium.executablePath();
   }
 
@@ -62,12 +39,10 @@ async function resolveChromeExecutablePath() {
     return localChrome;
   }
 
-  const chromium = await loadChromiumModule();
   return await chromium.executablePath();
 }
 
 export async function launchPdfBrowser() {
-  const chromium = await loadChromiumModule();
   const executablePath = await resolveChromeExecutablePath();
 
   return puppeteer.launch({
