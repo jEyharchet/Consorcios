@@ -1,3 +1,5 @@
+import crypto from "crypto";
+
 import { prisma } from "./prisma";
 import { generarExpensasDefinitivasDesdePaso3, regenerarArchivosLiquidacion } from "./liquidacion-paso4";
 import { formatEmailSummary } from "./liquidacion-email";
@@ -10,6 +12,41 @@ export type RegeneracionJobStage =
   | "VERIFYING_FILES"
   | "ACTIVATING_FILES"
   | "DONE";
+
+const JOB_STALE_TIMEOUT_MS = 30_000;
+
+function getRegeneracionRunnerSecret() {
+  return process.env.AUTH_SECRET?.trim() || process.env.NEXTAUTH_SECRET?.trim() || "amiconsorcio-regeneracion-runner";
+}
+
+export function createRegeneracionJobRunnerToken(jobId: number) {
+  return crypto.createHmac("sha256", getRegeneracionRunnerSecret()).update(`liquidacion-job:${jobId}`).digest("hex");
+}
+
+export function verifyRegeneracionJobRunnerToken(jobId: number, token: string | null | undefined) {
+  if (!token) {
+    return false;
+  }
+
+  const expected = createRegeneracionJobRunnerToken(jobId);
+  if (token.length !== expected.length) {
+    return false;
+  }
+
+  return crypto.timingSafeEqual(Buffer.from(token), Buffer.from(expected));
+}
+
+function isJobStale(job: { status: string; updatedAt: Date; finishedAt?: Date | null }) {
+  if (job.finishedAt) {
+    return false;
+  }
+
+  if (job.status !== "RUNNING" && job.status !== "VALIDATING") {
+    return false;
+  }
+
+  return Date.now() - job.updatedAt.getTime() > JOB_STALE_TIMEOUT_MS;
+}
 
 function serializeError(error: unknown) {
   if (error instanceof Error) {
@@ -100,8 +137,6 @@ export async function startRegeneracionArchivosJob(params: {
     select: { id: true },
   });
 
-  void runRegeneracionArchivosJob(job.id);
-
   return { ok: true as const, jobId: job.id, reused: false };
 }
 
@@ -112,6 +147,8 @@ export async function runRegeneracionArchivosJob(jobId: number) {
       id: true,
       liquidacionId: true,
       status: true,
+      updatedAt: true,
+      finishedAt: true,
     },
   });
 
@@ -119,20 +156,30 @@ export async function runRegeneracionArchivosJob(jobId: number) {
     return;
   }
 
-  if (job.status !== "PENDING") {
+  const stale = isJobStale(job);
+  if (job.status !== "PENDING" && !stale) {
     return;
   }
 
-  await prisma.liquidacionRegeneracionJob.update({
-    where: { id: job.id },
+  const claim = await prisma.liquidacionRegeneracionJob.updateMany({
+    where: {
+      id: job.id,
+      updatedAt: job.updatedAt,
+      finishedAt: null,
+      status: { in: stale ? ["RUNNING", "VALIDATING"] : ["PENDING"] },
+    },
     data: {
       status: "RUNNING",
       stage: "PREPARING",
-      startedAt: new Date(),
-      message: "Preparando datos historicos...",
+      startedAt: job.status === "PENDING" ? new Date() : undefined,
+      message: stale ? "Reanudando regeneracion..." : "Preparando datos historicos...",
       errorDetail: null,
     },
   });
+
+  if (claim.count === 0) {
+    return;
+  }
 
   try {
     const result = await regenerarArchivosLiquidacion(job.liquidacionId, {
@@ -216,8 +263,6 @@ export async function runRegeneracionArchivosJob(jobId: number) {
     });
   }
 }
-
-
 export async function startFinalizacionLiquidacionJob(params: {
   liquidacionId: number;
   requestedByUserId: string;
