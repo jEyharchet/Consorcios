@@ -112,14 +112,24 @@ export default async function AsambleasPage() {
           </p>
         </div>
 
-        {canOperate ? (
-          <Link
-            href="/administracion/asambleas/nueva"
-            className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
+        <div className="flex flex-wrap gap-2">
+          <a
+            href={`/api/administracion/asambleas/acta-en-blanco?consorcioId=${consorcio.id}`}
+            target="_blank"
+            rel="noreferrer"
+            className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
           >
-            Nueva asamblea
-          </Link>
-        ) : null}
+            Crear acta en blanco
+          </a>
+          {canOperate ? (
+            <Link
+              href="/administracion/asambleas/nueva"
+              className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
+            >
+              Nueva asamblea
+            </Link>
+          ) : null}
+        </div>
       </header>
 
       <section className="grid gap-4 md:grid-cols-3">
