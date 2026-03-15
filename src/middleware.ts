@@ -15,6 +15,7 @@ function isPublicPath(pathname: string) {
     INTERNAL_LIQUIDACION_JOB_RUN_ROUTE.test(pathname) ||
     pathname.startsWith("/api/auth") ||
     pathname.startsWith("/_next") ||
+    pathname === "/chromium-pack.tar" ||
     pathname.startsWith("/branding") ||
     pathname.startsWith("/uploads") ||
     pathname === "/favicon.ico"

@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "postinstall": "node ./scripts/prepare-chromium-pack.mjs",
     "build": "prisma generate && next build",
     "start": "next start",
     "lint": "next lint",
@@ -14,6 +15,7 @@
   },
   "dependencies": {
     "@sparticuz/chromium": "^131.0.1",
+    "@sparticuz/chromium-min": "^131.0.1",
     "@auth/prisma-adapter": "^2.7.4",
     "@prisma/client": "5.19.1",
     "better-sqlite3": "^11.8.1",
