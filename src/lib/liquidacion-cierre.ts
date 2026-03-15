@@ -25,6 +25,12 @@ export type GeneracionArchivosProgressEvent = {
   generatedFiles: number;
 };
 
+export function getLiquidacionesUploadsBaseDir() {
+  return process.env.VERCEL
+    ? path.join("/tmp", "liquidaciones")
+    : path.join(process.cwd(), "public", "uploads", "liquidaciones");
+}
+
 type ResponsableGroup = {
   key: string;
   label: string;
@@ -497,7 +503,10 @@ export async function generarArchivosLiquidacion(
   const timestamp = `${Date.now()}`;
 
   const relativeBase = `/uploads/liquidaciones/liquidacion-${data.liquidacion.id}-${timestamp}`;
-  const outputBase = path.join(process.cwd(), "public", relativeBase.replace(/^\//, ""));
+  const outputBase = path.join(
+    getLiquidacionesUploadsBaseDir(),
+    `liquidacion-${data.liquidacion.id}-${timestamp}`,
+  );
 
   await mkdir(outputBase, { recursive: true });
 

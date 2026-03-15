@@ -3,7 +3,7 @@ import path from "path";
 
 import { prisma } from "./prisma";
 import { getPeriodoVariants } from "./periodo";
-import { generarArchivosLiquidacion } from "./liquidacion-cierre";
+import { generarArchivosLiquidacion, getLiquidacionesUploadsBaseDir } from "./liquidacion-cierre";
 import { enviarLiquidacionCerradaEmails } from "./liquidacion-email";
 
 type OwnerRel = {
@@ -583,6 +583,14 @@ function resolveAbsolutePublicPathFromRuta(rutaArchivo: string) {
   const relative = rutaArchivo.replace(/^\/+/, "");
   if (!relative) {
     return null;
+  }
+
+  const liquidacionesPrefix = "uploads/liquidaciones/";
+  if (relative.startsWith(liquidacionesPrefix)) {
+    return path.join(
+      getLiquidacionesUploadsBaseDir(),
+      relative.slice(liquidacionesPrefix.length),
+    );
   }
 
   return path.join(process.cwd(), "public", relative);
