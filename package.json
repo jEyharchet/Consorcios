@@ -13,7 +13,7 @@
     "test:email": "tsx scripts/test-email.ts"
   },
   "dependencies": {
-    "@sparticuz/chromium-min": "^131.0.1",
+    "@sparticuz/chromium": "^131.0.1",
     "@auth/prisma-adapter": "^2.7.4",
     "@prisma/client": "5.19.1",
     "better-sqlite3": "^11.8.1",

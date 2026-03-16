@@ -1,6 +1,6 @@
 import { launchPdfBrowser } from "./pdf-browser";
 
-type ChromiumMinModule = {
+type ChromiumModule = {
   args: string[];
   defaultViewport?: {
     width: number;
@@ -10,14 +10,14 @@ type ChromiumMinModule = {
     hasTouch?: boolean;
     isLandscape?: boolean;
   } | null;
-  executablePath(input?: string): Promise<string>;
+  headless: boolean | "shell";
+  executablePath(): Promise<string>;
 };
 
 type PuppeteerCoreModule = {
-  defaultArgs(input?: { args?: string[]; headless?: boolean | "shell" }): string[];
   launch(input: {
     args?: string[];
-    defaultViewport?: ChromiumMinModule["defaultViewport"];
+    defaultViewport?: ChromiumModule["defaultViewport"];
     executablePath?: string;
     headless?: boolean | "shell";
   }): Promise<{
@@ -33,20 +33,11 @@ type PuppeteerCoreModule = {
   }>;
 };
 
-const DEFAULT_VIEWPORT = {
-  deviceScaleFactor: 1,
-  hasTouch: false,
-  height: 1080,
-  isLandscape: true,
-  isMobile: false,
-  width: 1920,
-};
-
-async function loadChromiumMin() {
+async function loadChromium() {
   const mod = (await import(
     /* webpackIgnore: true */
-    "@sparticuz/chromium-min"
-  )) as ChromiumMinModule | { default: ChromiumMinModule };
+    "@sparticuz/chromium"
+  )) as ChromiumModule | { default: ChromiumModule };
 
   return "default" in mod ? mod.default : mod;
 }
@@ -77,22 +68,12 @@ export async function renderPdfWithVercelTestBrowser(html: string) {
     }
   }
 
-  const chromiumPackUrl = process.env.CHROMIUM_PACK_URL?.trim();
-  if (!chromiumPackUrl) {
-    throw new Error("CHROMIUM_PACK_URL no esta configurado");
-  }
-
-  const [chromium, puppeteerCore] = await Promise.all([loadChromiumMin(), loadPuppeteerCore()]);
-  const executablePath = await chromium.executablePath(chromiumPackUrl);
-
+  const [chromium, puppeteerCore] = await Promise.all([loadChromium(), loadPuppeteerCore()]);
   const browser = await puppeteerCore.launch({
-    args: puppeteerCore.defaultArgs({
-      args: chromium.args,
-      headless: "shell",
-    }),
-    defaultViewport: chromium.defaultViewport ?? DEFAULT_VIEWPORT,
-    executablePath,
-    headless: "shell",
+    args: chromium.args,
+    defaultViewport: chromium.defaultViewport,
+    executablePath: await chromium.executablePath(),
+    headless: chromium.headless,
   });
 
   try {

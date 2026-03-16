@@ -1,4 +1,4 @@
-declare module "@sparticuz/chromium-min" {
+declare module "@sparticuz/chromium" {
   const chromium: {
     args: string[];
     defaultViewport?: {
@@ -9,7 +9,8 @@ declare module "@sparticuz/chromium-min" {
       hasTouch?: boolean;
       isLandscape?: boolean;
     } | null;
-    executablePath(input?: string): Promise<string>;
+    headless: boolean | "shell";
+    executablePath(): Promise<string>;
   };
 
   export default chromium;
@@ -17,7 +18,6 @@ declare module "@sparticuz/chromium-min" {
 
 declare module "puppeteer-core" {
   const puppeteerCore: {
-    defaultArgs(input?: { args?: string[]; headless?: boolean | "shell" }): string[];
     launch(input: {
       args?: string[];
       defaultViewport?: {
