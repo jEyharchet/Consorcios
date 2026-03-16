@@ -33,7 +33,7 @@ export async function GET(_req: Request, { params }: { params: { jobId: string }
     return json({ ok: false, reason: 'sin_permiso' }, 403);
   }
 
-  await retryLiquidacionJobIfNeeded(job.id);
+  const shouldRun = await retryLiquidacionJobIfNeeded(job.id);
 
   const refreshedJob = await getRegeneracionJob(jobId);
   if (!refreshedJob) {
@@ -58,5 +58,6 @@ export async function GET(_req: Request, { params }: { params: { jobId: string }
       createdAt: refreshedJob.createdAt,
       updatedAt: refreshedJob.updatedAt,
     },
+    shouldRun,
   });
 }

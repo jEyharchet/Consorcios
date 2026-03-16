@@ -136,9 +136,6 @@ export async function startRegeneracionArchivosJob(params: {
   });
 
   if (existing) {
-    if (existing.status === "PENDING" || isJobStale(existing.updatedAt)) {
-      void dispatchLiquidacionJob(existing.id);
-    }
     return { ok: true as const, jobId: existing.id, reused: true };
   }
 
@@ -156,8 +153,6 @@ export async function startRegeneracionArchivosJob(params: {
     },
     select: { id: true },
   });
-
-  void dispatchLiquidacionJob(job.id);
 
   return { ok: true as const, jobId: job.id, reused: false };
 }
@@ -329,9 +324,6 @@ export async function startFinalizacionLiquidacionJob(params: {
   });
 
   if (existing) {
-    if (existing.status === "PENDING" || isJobStale(existing.updatedAt)) {
-      void dispatchLiquidacionJob(existing.id);
-    }
     return { ok: true as const, jobId: existing.id, reused: true };
   }
 
@@ -349,8 +341,6 @@ export async function startFinalizacionLiquidacionJob(params: {
     },
     select: { id: true },
   });
-
-  void dispatchLiquidacionJob(job.id);
 
   return { ok: true as const, jobId: job.id, reused: false };
 }
@@ -502,14 +492,13 @@ export async function retryLiquidacionJobIfNeeded(jobId: number) {
     where: { id: jobId },
     select: {
       id: true,
+      tipo: true,
       status: true,
       updatedAt: true,
     },
   });
 
-  if (!job) return;
+  if (!job) return false;
 
-  if (job.status === "PENDING" || ((job.status === "RUNNING" || job.status === "VALIDATING") && isJobStale(job.updatedAt))) {
-    void dispatchLiquidacionJob(job.id);
-  }
+  return job.status === "PENDING" || ((job.status === "RUNNING" || job.status === "VALIDATING") && isJobStale(job.updatedAt));
 }

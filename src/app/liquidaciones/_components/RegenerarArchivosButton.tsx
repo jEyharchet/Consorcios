@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 type JobStatus = "PENDING" | "RUNNING" | "VALIDATING" | "COMPLETED" | "FAILED";
@@ -21,6 +21,12 @@ type JobPayload = {
   validatedFiles: number;
   message: string;
   errorDetail: string | null;
+};
+
+type JobStatusResponse = {
+  ok: true;
+  job: JobPayload;
+  shouldRun?: boolean;
 };
 
 const STAGE_LABELS: Record<JobStage, string> = {
@@ -101,8 +107,27 @@ export default function RegenerarArchivosButton({
   const [isOpen, setIsOpen] = useState(false);
   const [job, setJob] = useState<JobPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const runRequestInFlightRef = useRef(false);
 
   const isFinished = job?.status === "COMPLETED" || job?.status === "FAILED";
+
+  function triggerJobRun(jobId: number) {
+    if (runRequestInFlightRef.current) {
+      return;
+    }
+
+    runRequestInFlightRef.current = true;
+
+    void fetch(`/api/liquidaciones/regeneracion-jobs/${jobId}/run`, {
+      method: "POST",
+    })
+      .catch((runError) => {
+        console.error("[liquidacion-job] run request failed", runError);
+      })
+      .finally(() => {
+        runRequestInFlightRef.current = false;
+      });
+  }
 
   useEffect(() => {
     if (!job || isFinished) {
@@ -111,10 +136,13 @@ export default function RegenerarArchivosButton({
 
     const interval = window.setInterval(async () => {
       try {
-        const payload = await fetchJson<{ ok: true; job: JobPayload }>(
+        const payload = await fetchJson<JobStatusResponse>(
           `/api/liquidaciones/regeneracion-jobs/${job.id}`,
         );
         setJob(payload.job);
+        if (payload.shouldRun) {
+          triggerJobRun(payload.job.id);
+        }
       } catch (pollError) {
         setError(pollError instanceof Error ? pollError.message : "No se pudo consultar el estado del proceso");
       }
@@ -152,11 +180,14 @@ export default function RegenerarArchivosButton({
         },
       );
 
-      const firstStatus = await fetchJson<{ ok: true; job: JobPayload }>(
+      const firstStatus = await fetchJson<JobStatusResponse>(
         `/api/liquidaciones/regeneracion-jobs/${payload.jobId}`,
       );
 
       setJob(firstStatus.job);
+      if (firstStatus.shouldRun || firstStatus.job.status === "PENDING") {
+        triggerJobRun(firstStatus.job.id);
+      }
     } catch (startError) {
       setError(startError instanceof Error ? startError.message : "No se pudo iniciar la regeneracion");
     } finally {
