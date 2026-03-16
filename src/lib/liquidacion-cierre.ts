@@ -25,6 +25,10 @@ export type GeneracionArchivosProgressEvent = {
   generatedFiles: number;
 };
 
+function sanitizeOutputKey(value: string) {
+  return value.replace(/[^a-zA-Z0-9_-]+/g, "").slice(0, 120);
+}
+
 export function getLiquidacionesUploadsBaseDir() {
   return process.env.VERCEL
     ? path.join("/tmp", "liquidaciones")
@@ -496,16 +500,20 @@ async function htmlToPdfBuffer(html: string) {
 
 export async function generarArchivosLiquidacion(
   data: Paso4Data,
-  options?: { onProgress?: (event: GeneracionArchivosProgressEvent) => void | Promise<void> },
+  options?: {
+    onProgress?: (event: GeneracionArchivosProgressEvent) => void | Promise<void>;
+    outputKey?: string;
+  },
 ): Promise<ArchivoGenerado[]> {
   const consorcioSlug = slugify(data.liquidacion.consorcio.nombre || `consorcio-${data.liquidacion.consorcioId}`);
   const periodoSlug = slugify(data.liquidacion.periodo || "periodo");
   const timestamp = `${Date.now()}`;
+  const outputKey = sanitizeOutputKey(options?.outputKey?.trim() || "") || `liquidacion-${data.liquidacion.id}-${timestamp}`;
 
-  const relativeBase = `/uploads/liquidaciones/liquidacion-${data.liquidacion.id}-${timestamp}`;
+  const relativeBase = `/uploads/liquidaciones/${outputKey}`;
   const outputBase = path.join(
     getLiquidacionesUploadsBaseDir(),
-    `liquidacion-${data.liquidacion.id}-${timestamp}`,
+    outputKey,
   );
 
   await mkdir(outputBase, { recursive: true });
