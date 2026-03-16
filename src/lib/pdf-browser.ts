@@ -7,7 +7,7 @@ export async function launchPdfBrowser() {
     return puppeteerCore.launch({
       args: [...chromium.args, "--no-sandbox", "--disable-setuid-sandbox"],
       executablePath: await chromium.executablePath(),
-      headless: chromium.headless,
+      headless: true,
     });
   }
 
