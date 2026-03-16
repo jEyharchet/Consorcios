@@ -10,6 +10,8 @@ declare module "@sparticuz/chromium" {
       isLandscape?: boolean;
     } | null;
     headless: boolean | "shell";
+    setGraphicsMode: boolean;
+    setHeadlessMode: boolean;
     executablePath(): Promise<string>;
   };
 
