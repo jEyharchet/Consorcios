@@ -7,6 +7,7 @@ import { getActiveConsorcioContext } from "../../../../lib/consorcio-activo";
 import { redirectToOnboardingIfNoConsorcios } from "../../../../lib/onboarding";
 import { prisma } from "../../../../lib/prisma";
 import { buildReturnQuery } from "../../shared";
+import NuevaAsambleaEditor from "./NuevaAsambleaEditor";
 
 function getFeedback(error?: string) {
   switch (error) {
@@ -85,6 +86,12 @@ export default async function NuevaAsambleaPage({
     const lugar = (formData.get("lugar")?.toString() ?? "").trim();
     const convocatoriaTexto = (formData.get("convocatoriaTexto")?.toString() ?? "").trim();
     const observaciones = (formData.get("observaciones")?.toString() ?? "").trim();
+    const ordenTitulos = formData
+      .getAll("ordenTitulo")
+      .map((value) => value.toString().trim());
+    const ordenDescripciones = formData
+      .getAll("ordenDescripcion")
+      .map((value) => value.toString().trim());
 
     await requireConsorcioRole(consorcioId, ["ADMIN", "OPERADOR"]);
 
@@ -110,6 +117,15 @@ export default async function NuevaAsambleaPage({
         convocatoriaTexto: convocatoriaTexto || null,
         observaciones: observaciones || null,
         estado: ASAMBLEA_ESTADO.BORRADOR,
+        ordenDia: {
+          create: ordenTitulos
+            .map((titulo, index) => ({
+              orden: index + 1,
+              titulo,
+              descripcion: ordenDescripciones[index] || null,
+            }))
+            .filter((item) => item.titulo.length > 0),
+        },
       },
       select: { id: true },
     });
@@ -120,7 +136,7 @@ export default async function NuevaAsambleaPage({
   const feedback = getFeedback(searchParams?.error);
 
   return (
-    <main className="mx-auto w-full max-w-4xl px-6 py-10">
+    <main className="mx-auto w-full max-w-7xl px-6 py-10">
       <header className="mb-6">
         <Link href="/administracion/asambleas" className="text-sm text-blue-600 hover:underline">
           Volver a asambleas
@@ -135,68 +151,7 @@ export default async function NuevaAsambleaPage({
         </div>
       ) : null}
 
-      <form action={crearAsamblea} className="space-y-5 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-        <input type="hidden" name="consorcioId" value={consorcio.id} />
-
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-1">
-            <label htmlFor="tipo" className="text-sm font-medium text-slate-700">
-              Tipo
-            </label>
-            <select id="tipo" name="tipo" defaultValue={ASAMBLEA_TIPO.ORDINARIA} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm">
-              <option value={ASAMBLEA_TIPO.ORDINARIA}>ORDINARIA</option>
-              <option value={ASAMBLEA_TIPO.EXTRAORDINARIA}>EXTRAORDINARIA</option>
-            </select>
-          </div>
-
-          <div className="space-y-1">
-            <label htmlFor="lugar" className="text-sm font-medium text-slate-700">
-              Lugar
-            </label>
-            <input id="lugar" name="lugar" className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" required />
-          </div>
-        </div>
-
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-1">
-            <label htmlFor="fecha" className="text-sm font-medium text-slate-700">
-              Fecha
-            </label>
-            <input id="fecha" name="fecha" type="date" className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" required />
-          </div>
-
-          <div className="space-y-1">
-            <label htmlFor="hora" className="text-sm font-medium text-slate-700">
-              Hora
-            </label>
-            <input id="hora" name="hora" type="time" className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" required />
-          </div>
-        </div>
-
-        <div className="space-y-1">
-          <label htmlFor="convocatoriaTexto" className="text-sm font-medium text-slate-700">
-            Texto base de convocatoria
-          </label>
-          <textarea
-            id="convocatoriaTexto"
-            name="convocatoriaTexto"
-            rows={5}
-            defaultValue="Se convoca a los propietarios a la asamblea del consorcio {{consorcio}}."
-            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-          />
-        </div>
-
-        <div className="space-y-1">
-          <label htmlFor="observaciones" className="text-sm font-medium text-slate-700">
-            Observaciones
-          </label>
-          <textarea id="observaciones" name="observaciones" rows={4} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
-        </div>
-
-        <button type="submit" className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800">
-          Crear asamblea
-        </button>
-      </form>
+      <NuevaAsambleaEditor action={crearAsamblea} consorcioId={consorcio.id} consorcioNombre={consorcio.nombre} />
     </main>
   );
 }
