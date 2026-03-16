@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { ASAMBLEA_ESTADO, ASAMBLEA_TIPO, enviarConvocatoriaAsamblea } from "../../../../lib/administracion";
+import { enviarConvocatoriaAsamblea } from "../../../../lib/administracion";
+import { ASAMBLEA_ESTADO, ASAMBLEA_TIPO } from "../../../../lib/administracion-shared";
 import { requireConsorcioAccess, requireConsorcioRole } from "../../../../lib/auth";
 import { formatEmailSummary } from "../../../../lib/email-tracking";
 import { prisma } from "../../../../lib/prisma";

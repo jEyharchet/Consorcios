@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@sparticuz/chromium": "^141.0.0",
+    "@react-email/render": "^1.0.4",
     "@auth/prisma-adapter": "^2.7.4",
     "@prisma/client": "5.19.1",
     "better-sqlite3": "^11.8.1",

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { ASAMBLEA_ESTADO, ASAMBLEA_TIPO } from "../../../../lib/administracion";
+import { ASAMBLEA_ESTADO, ASAMBLEA_TIPO } from "../../../../lib/administracion-shared";
 import { requireConsorcioRole } from "../../../../lib/auth";
 import { getActiveConsorcioContext } from "../../../../lib/consorcio-activo";
 import { redirectToOnboardingIfNoConsorcios } from "../../../../lib/onboarding";

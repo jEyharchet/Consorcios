@@ -1,3 +1,5 @@
+import "server-only";
+
 import "dotenv/config";
 import { Resend, type Attachment } from "resend";
 

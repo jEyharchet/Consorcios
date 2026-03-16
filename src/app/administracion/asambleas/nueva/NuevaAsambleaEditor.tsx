@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 
-import { ASAMBLEA_TIPO } from "@/lib/administracion";
+import { ASAMBLEA_TIPO } from "@/lib/administracion-shared";
 import {
   buildAsambleaConvocatoriaPreviewHtml,
   getDefaultConvocatoriaTexto,

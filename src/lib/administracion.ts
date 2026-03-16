@@ -1,25 +1,11 @@
+import "server-only";
+
 import { sendEmail } from "./email";
 import { buildEmailSummary, EMAIL_ESTADO, type EmailSummary } from "./email-tracking";
 import { prisma } from "./prisma";
+import { ADMIN_EMAIL_TIPO_ENVIO, ASAMBLEA_ESTADO, ASAMBLEA_TIPO } from "./administracion-shared";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
-
-export const ADMIN_EMAIL_TIPO_ENVIO = {
-  COMUNICACION_LIBRE: "COMUNICACION_LIBRE",
-  ASAMBLEA_CONVOCATORIA: "ASAMBLEA_CONVOCATORIA",
-} as const;
-
-export const ASAMBLEA_TIPO = {
-  ORDINARIA: "ORDINARIA",
-  EXTRAORDINARIA: "EXTRAORDINARIA",
-} as const;
-
-export const ASAMBLEA_ESTADO = {
-  BORRADOR: "BORRADOR",
-  CONVOCADA: "CONVOCADA",
-  REALIZADA: "REALIZADA",
-  CERRADA: "CERRADA",
-} as const;
 
 type ResponsableRelacion = {
   desde: Date;
