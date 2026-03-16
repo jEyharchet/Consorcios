@@ -2,7 +2,7 @@ import { auth } from "../../../../../../auth";
 
 import { hasConsorcioAccessForUserId } from "@/lib/auth";
 import { buildBlankActaPdfHtml } from "@/lib/acta-blank-pdf";
-import { renderPdfWithVercelTestBrowser } from "@/lib/pdf-browser-vercel-test";
+import { launchPdfBrowser } from "@/lib/pdf-browser";
 import { prisma } from "@/lib/prisma";
 
 export const runtime = "nodejs";
@@ -41,12 +41,25 @@ export async function GET(req: Request) {
     logoUrl: `${origin}/branding/logo-gray-v2.png`,
   });
 
-  const pdf = await renderPdfWithVercelTestBrowser(html);
+  const browser = await launchPdfBrowser();
 
-  return new Response(pdf, {
-    headers: {
-      "Content-Type": "application/pdf",
-      "Content-Disposition": 'inline; filename="acta-en-blanco.pdf"',
-    },
-  });
+  try {
+    const page = await browser.newPage();
+    await page.setContent(html, { waitUntil: "networkidle0" });
+
+    const pdf = await page.pdf({
+      format: "A4",
+      printBackground: true,
+      preferCSSPageSize: true,
+    });
+
+    return new Response(pdf, {
+      headers: {
+        "Content-Type": "application/pdf",
+        "Content-Disposition": 'inline; filename="acta-en-blanco.pdf"',
+      },
+    });
+  } finally {
+    await browser.close();
+  }
 }
