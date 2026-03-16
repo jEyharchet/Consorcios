@@ -20,6 +20,8 @@ type Props = {
   consorcioNombre: string;
 };
 
+type AsambleaTipo = (typeof ASAMBLEA_TIPO)[keyof typeof ASAMBLEA_TIPO];
+
 function createOrdenDiaDraft(index: number): OrdenDiaDraft {
   return {
     id: `orden-${index}-${Date.now()}`,
@@ -29,7 +31,7 @@ function createOrdenDiaDraft(index: number): OrdenDiaDraft {
 }
 
 export default function NuevaAsambleaEditor({ action, consorcioId, consorcioNombre }: Props) {
-  const [tipo, setTipo] = useState(ASAMBLEA_TIPO.ORDINARIA);
+  const [tipo, setTipo] = useState<AsambleaTipo>(ASAMBLEA_TIPO.ORDINARIA);
   const [fecha, setFecha] = useState("");
   const [hora, setHora] = useState("");
   const [lugar, setLugar] = useState("");
@@ -82,7 +84,7 @@ export default function NuevaAsambleaEditor({ action, consorcioId, consorcioNomb
               id="tipo"
               name="tipo"
               value={tipo}
-              onChange={(event) => setTipo(event.target.value)}
+              onChange={(event) => setTipo(event.target.value as AsambleaTipo)}
               className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
             >
               <option value={ASAMBLEA_TIPO.ORDINARIA}>ORDINARIA</option>
