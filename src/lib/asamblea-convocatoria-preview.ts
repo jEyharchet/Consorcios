@@ -82,13 +82,13 @@ export function buildAsambleaConvocatoriaPreviewHtml(data: AsambleaConvocatoriaP
     data.firmaUrl || data.firmaAclaracion?.trim() || data.firmaRol?.trim()
       ? `
           <div style="display:flex;justify-content:flex-end;">
-            <div style="width:280px;text-align:center;">
+            <div style="width:420px;text-align:center;">
               ${
                 data.firmaUrl
-                  ? `<div style="height:110px;display:flex;align-items:center;justify-content:center;margin-bottom:10px;">
-                       <img src="${escapeHtml(data.firmaUrl)}" alt="Firma del administrador" style="display:block;max-width:240px;max-height:96px;width:auto;height:auto;object-fit:contain;margin:0 auto;" />
+                  ? `<div style="height:190px;display:flex;align-items:center;justify-content:center;margin-bottom:12px;">
+                       <img src="${escapeHtml(data.firmaUrl)}" alt="Firma del administrador" style="display:block;max-width:380px;max-height:170px;width:auto;height:auto;object-fit:contain;margin:0 auto;" />
                      </div>`
-                  : `<div style="height:110px;"></div>`
+                  : `<div style="height:190px;"></div>`
               }
               <div style="border-top:1px solid #94a3b8;"></div>
               <div style="margin-top:10px;font-size:13px;font-weight:700;color:#334155;">
@@ -102,8 +102,8 @@ export function buildAsambleaConvocatoriaPreviewHtml(data: AsambleaConvocatoriaP
         `
       : `
           <div style="display:flex;justify-content:flex-end;">
-            <div style="width:280px;text-align:center;">
-              <div style="height:110px;"></div>
+            <div style="width:420px;text-align:center;">
+              <div style="height:190px;"></div>
               <div style="border-top:1px solid #94a3b8;"></div>
               <div style="margin-top:10px;font-size:13px;color:#475569;">Firma</div>
               <div style="margin-top:18px;border-top:1px solid #94a3b8;"></div>
