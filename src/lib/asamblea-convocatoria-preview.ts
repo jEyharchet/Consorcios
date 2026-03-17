@@ -83,18 +83,18 @@ export function buildAsambleaConvocatoriaPreviewHtml(data: AsambleaConvocatoriaP
       ? `
           <div style="display:flex;justify-content:flex-end;">
             <div style="width:420px;text-align:center;">
-              <div style="position:relative;height:118px;">
+              <div style="position:relative;height:110px;">
                 ${
                 data.firmaUrl
-                  ? `<img src="${escapeHtml(data.firmaUrl)}" alt="Firma del administrador" style="display:block;position:absolute;left:50%;bottom:12px;transform:translateX(-50%);z-index:1;max-width:380px;max-height:170px;width:auto;height:auto;object-fit:contain;margin:0 auto;" />`
+                  ? `<img src="${escapeHtml(data.firmaUrl)}" alt="Firma del administrador" style="display:block;position:absolute;left:50%;bottom:18px;transform:translateX(-50%);z-index:1;max-width:380px;max-height:170px;width:auto;height:auto;object-fit:contain;margin:0 auto;" />`
                   : ``
                 }
-                <div style="position:absolute;left:0;right:0;bottom:44px;z-index:2;border-top:1px solid #94a3b8;"></div>
+                <div style="position:absolute;left:50%;width:260px;bottom:10px;transform:translateX(-50%);z-index:2;border-top:1px solid #94a3b8;"></div>
               </div>
-              <div style="margin-top:10px;font-size:13px;font-weight:700;color:#334155;">
+              <div style="margin-top:4px;font-size:13px;font-weight:700;color:#334155;">
                 ${escapeHtml(data.firmaAclaracion?.trim() || "Aclaración")}
               </div>
-              <div style="margin-top:4px;font-size:12px;color:#64748b;">
+              <div style="margin-top:2px;font-size:12px;color:#64748b;">
                 ${escapeHtml(data.firmaRol?.trim() || "Administrador")}
               </div>
             </div>
@@ -103,12 +103,11 @@ export function buildAsambleaConvocatoriaPreviewHtml(data: AsambleaConvocatoriaP
       : `
           <div style="display:flex;justify-content:flex-end;">
             <div style="width:420px;text-align:center;">
-              <div style="position:relative;height:118px;">
-                <div style="position:absolute;left:0;right:0;bottom:44px;border-top:1px solid #94a3b8;"></div>
+              <div style="position:relative;height:110px;">
+                <div style="position:absolute;left:50%;width:260px;bottom:10px;transform:translateX(-50%);border-top:1px solid #94a3b8;"></div>
               </div>
-              <div style="margin-top:10px;font-size:13px;color:#475569;">Firma</div>
-              <div style="margin-top:18px;border-top:1px solid #94a3b8;"></div>
-              <div style="margin-top:10px;font-size:13px;color:#475569;">Aclaración</div>
+              <div style="margin-top:4px;font-size:13px;color:#475569;">Firma</div>
+              <div style="margin-top:2px;font-size:13px;color:#475569;">Aclaración</div>
             </div>
           </div>
         `;
@@ -160,7 +159,7 @@ export function buildAsambleaConvocatoriaPreviewHtml(data: AsambleaConvocatoriaP
           </p>
         </section>
 
-        <footer style="margin-top:44px;padding-top:22px;border-top:1px solid #dbe3ec;">
+        <footer style="margin-top:44px;padding-top:22px;">
           ${firmaHtml}
         </footer>
       </div>
