@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import ConvocatoriaActions from "./ConvocatoriaActions";
 import { enviarConvocatoriaAsamblea, enviarSimulacionConvocatoriaAsamblea } from "../../../../lib/administracion";
 import { ADMIN_EMAIL_TIPO_ENVIO, ASAMBLEA_ESTADO, ASAMBLEA_TIPO } from "../../../../lib/administracion-shared";
 import { requireConsorcioAccess, requireConsorcioRole } from "../../../../lib/auth";
@@ -108,6 +109,10 @@ function estadoClass(estado: string) {
 
   return "bg-amber-100 text-amber-800";
 }
+
+type EnvioConvocatoriaActionResult =
+  | { ok: true; successMessage: string }
+  | { ok: false; errorMessage: string };
 
 export default async function AsambleaDetallePage({
   params,
@@ -315,7 +320,7 @@ export default async function AsambleaDetallePage({
     redirect(`/administracion/asambleas/${asambleaIdValue}${buildReturnQuery({ ok: "orden_eliminado" })}#orden-dia`);
   }
 
-  async function enviarConvocatoria(formData: FormData) {
+  async function enviarConvocatoria(formData: FormData): Promise<EnvioConvocatoriaActionResult> {
     "use server";
 
     const id = Number(formData.get("id"));
@@ -334,26 +339,22 @@ export default async function AsambleaDetallePage({
     });
 
     if (!existente) {
-      redirect(`/administracion/asambleas/${id}${buildReturnQuery({ error: "asamblea_inexistente" })}`);
+      return { ok: false, errorMessage: "No se encontro la asamblea indicada." };
     }
 
     if (existente.ordenDia.length === 0) {
-      redirect(`/administracion/asambleas/${id}${buildReturnQuery({ error: "asamblea_sin_orden" })}`);
+      return { ok: false, errorMessage: "Debes cargar al menos un punto del orden del dia antes de convocar." };
     }
 
     const summary = await enviarConvocatoriaAsamblea(id);
 
-    redirect(
-      `/administracion/asambleas/${id}${buildReturnQuery({
-        ok: "convocatoria_ok",
-        enviados: String(summary.enviados),
-        fallidos: String(summary.fallidos),
-        sinDestinatario: String(summary.sinDestinatario),
-      })}`,
-    );
+    return {
+      ok: true,
+      successMessage: formatEmailSummary(summary),
+    };
   }
 
-  async function enviarSimulacionConvocatoria(formData: FormData) {
+  async function enviarSimulacionConvocatoria(formData: FormData): Promise<EnvioConvocatoriaActionResult> {
     "use server";
 
     const id = Number(formData.get("id"));
@@ -365,14 +366,29 @@ export default async function AsambleaDetallePage({
       await enviarSimulacionConvocatoriaAsamblea(id);
     } catch (error) {
       const message = error instanceof Error ? error.message : "error_desconocido";
-      if (message === "asamblea_sin_orden" || message === "asamblea_inexistente" || message === "administrador_sin_email") {
-        redirect(`/administracion/asambleas/${id}${buildReturnQuery({ error: message })}`);
+      if (message === "asamblea_sin_orden") {
+        return { ok: false, errorMessage: "Debes cargar al menos un punto del orden del dia antes de convocar." };
+      }
+      if (message === "asamblea_inexistente") {
+        return { ok: false, errorMessage: "No se encontro la asamblea indicada." };
+      }
+      if (message === "administrador_sin_email") {
+        return {
+          ok: false,
+          errorMessage: "El consorcio no tiene un email de administrador vigente configurado para enviar la simulacion.",
+        };
       }
 
-      redirect(`/administracion/asambleas/${id}${buildReturnQuery({ error: "simulacion_error" })}`);
+      return {
+        ok: false,
+        errorMessage: "No se pudo enviar la simulacion de convocatoria. Intenta nuevamente en unos minutos.",
+      };
     }
 
-    redirect(`/administracion/asambleas/${id}${buildReturnQuery({ ok: "simulacion_ok" })}`);
+    return {
+      ok: true,
+      successMessage: "La simulacion de convocatoria se envio correctamente al administrador del consorcio.",
+    };
   }
 
   const feedback = getFeedback(searchParams ?? {});
@@ -602,26 +618,12 @@ export default async function AsambleaDetallePage({
                   <p><strong>Puntos cargados:</strong> {asamblea.ordenDia.length}</p>
                 </div>
 
-                <div className="flex flex-wrap gap-3">
-                  <form action={enviarSimulacionConvocatoria}>
-                    <input type="hidden" name="id" value={asamblea.id} />
-                    <input type="hidden" name="consorcioId" value={asamblea.consorcioId} />
-                    <button
-                      type="submit"
-                      className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                    >
-                      Enviar simulacion al administrador
-                    </button>
-                  </form>
-
-                  <form action={enviarConvocatoria}>
-                    <input type="hidden" name="id" value={asamblea.id} />
-                    <input type="hidden" name="consorcioId" value={asamblea.consorcioId} />
-                    <button type="submit" className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
-                      Enviar convocatoria
-                    </button>
-                  </form>
-                </div>
+                <ConvocatoriaActions
+                  asambleaId={asamblea.id}
+                  consorcioId={asamblea.consorcioId}
+                  enviarSimulacion={enviarSimulacionConvocatoria}
+                  enviarConvocatoria={enviarConvocatoria}
+                />
               </div>
             ) : (
               <p className="mt-4 rounded-lg border border-dashed border-slate-200 px-4 py-3 text-sm text-slate-500">
