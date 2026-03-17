@@ -84,13 +84,9 @@ export default async function NuevaAsambleaPage({
     const fecha = (formData.get("fecha")?.toString() ?? "").trim();
     const hora = (formData.get("hora")?.toString() ?? "").trim();
     const lugar = (formData.get("lugar")?.toString() ?? "").trim();
-    const convocatoriaTexto = (formData.get("convocatoriaTexto")?.toString() ?? "").trim();
     const observaciones = (formData.get("observaciones")?.toString() ?? "").trim();
     const ordenTitulos = formData
       .getAll("ordenTitulo")
-      .map((value) => value.toString().trim());
-    const ordenDescripciones = formData
-      .getAll("ordenDescripcion")
       .map((value) => value.toString().trim());
 
     await requireConsorcioRole(consorcioId, ["ADMIN", "OPERADOR"]);
@@ -114,7 +110,7 @@ export default async function NuevaAsambleaPage({
         fecha: new Date(`${fecha}T00:00:00`),
         hora,
         lugar,
-        convocatoriaTexto: convocatoriaTexto || null,
+        convocatoriaTexto: null,
         observaciones: observaciones || null,
         estado: ASAMBLEA_ESTADO.BORRADOR,
         ordenDia: {
@@ -122,7 +118,7 @@ export default async function NuevaAsambleaPage({
             .map((titulo, index) => ({
               orden: index + 1,
               titulo,
-              descripcion: ordenDescripciones[index] || null,
+              descripcion: null,
             }))
             .filter((item) => item.titulo.length > 0),
         },

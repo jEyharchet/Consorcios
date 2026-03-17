@@ -1,6 +1,5 @@
 type OrdenDiaItem = {
   titulo: string;
-  descripcion?: string | null;
 };
 
 export type AsambleaConvocatoriaPreviewData = {
@@ -9,7 +8,7 @@ export type AsambleaConvocatoriaPreviewData = {
   fecha: string;
   hora: string;
   lugar: string;
-  convocatoriaTexto: string;
+  observaciones?: string;
   ordenDelDia: OrdenDiaItem[];
   logoUrl?: string;
 };
@@ -47,15 +46,8 @@ function buildTipoLabel(tipo: string) {
   return `PRIMERA ASAMBLEA ${normalized}`;
 }
 
-export function getDefaultConvocatoriaTexto(consorcioNombre: string) {
-  return `Se convoca a los propietarios del ${consorcioNombre} a participar de la asamblea en la fecha, hora y lugar indicados a continuacion.`;
-}
-
 export function buildAsambleaConvocatoriaPreviewHtml(data: AsambleaConvocatoriaPreviewData) {
   const logo = data.logoUrl?.trim() || "/branding/logo-gray-v2.png";
-  const cierreTexto =
-    data.convocatoriaTexto.trim() || getDefaultConvocatoriaTexto(data.consorcioNombre);
-
   const items = data.ordenDelDia.filter((item) => item.titulo.trim().length > 0);
 
   const ordenDelDiaHtml =
@@ -63,38 +55,43 @@ export function buildAsambleaConvocatoriaPreviewHtml(data: AsambleaConvocatoriaP
       ? items
           .map(
             (item, index) => `
-              <li style="margin-bottom:12px;">
-                <div style="font-weight:700;color:#0f172a;">${index + 1}. ${escapeHtml(item.titulo.trim())}</div>
-                ${
-                  item.descripcion?.trim()
-                    ? `<div style="margin-top:4px;color:#475569;line-height:1.55;">${toParagraphs(item.descripcion.trim())}</div>`
-                    : ""
-                }
+              <li style="margin-bottom:10px;color:#0f172a;line-height:1.45;">
+                <span style="font-weight:700;">${index + 1}.</span> ${escapeHtml(item.titulo.trim())}
               </li>
             `,
           )
           .join("")
       : `<li style="color:#64748b;">Orden del dia pendiente de definicion.</li>`;
 
+  const observacionesHtml = data.observaciones?.trim()
+    ? `
+        <div style="margin:20px 0 0 0;">
+          <div style="margin:0 0 8px 0;font-size:12px;font-weight:700;letter-spacing:0.08em;color:#334155;">OBSERVACIONES</div>
+          <div style="font-size:13px;line-height:1.65;color:#334155;">
+            ${toParagraphs(data.observaciones.trim())}
+          </div>
+        </div>
+      `
+    : "";
+
   return `
-    <div style="font-family:Arial,sans-serif;background:#f8fafc;padding:28px;color:#0f172a;">
-      <div style="max-width:794px;margin:0 auto;background:#fff;border:1px solid #cbd5e1;border-radius:12px;padding:34px 38px 44px;box-shadow:0 10px 30px rgba(15,23,42,0.08);">
-        <header style="border-bottom:1px solid #dbe3ec;padding-bottom:18px;margin-bottom:26px;">
-          <img src="${escapeHtml(logo)}" alt="AmiConsorcio" style="display:block;width:148px;height:auto;margin-bottom:14px;" />
+    <div style="height:100%;box-sizing:border-box;font-family:Arial,sans-serif;background:#fff;color:#0f172a;padding:28px 30px 34px;">
+      <div style="height:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:8px;padding:28px 30px 36px;">
+        <header style="border-bottom:1px solid #dbe3ec;padding-bottom:16px;margin-bottom:22px;">
+          <img src="${escapeHtml(logo)}" alt="AmiConsorcio" style="display:block;width:142px;height:auto;margin-bottom:12px;" />
           <div style="font-size:24px;font-weight:700;letter-spacing:0.04em;color:#111827;">CONVOCATORIA A ASAMBLEA</div>
           <div style="margin-top:8px;font-size:13px;font-weight:700;letter-spacing:0.08em;color:#475569;">
             CONSORCIO DE PROPIETARIOS - ${escapeHtml(data.consorcioNombre)}
           </div>
         </header>
 
-        <section style="font-size:14px;line-height:1.75;color:#1f2937;">
+        <section style="font-size:14px;line-height:1.72;color:#1f2937;">
           <p style="margin:0 0 18px 0;">
-            Por la presente se convoca a los senores propietarios del ${escapeHtml(data.consorcioNombre)},
-            a la ${escapeHtml(buildTipoLabel(data.tipo))}, que se celebrara conforme al Reglamento de Propiedad y Administracion.
+            Por la presente se convoca a los señores propietarios del consorcio ${escapeHtml(data.consorcioNombre)}, a la ${escapeHtml(buildTipoLabel(data.tipo))}, que se celebrara conforme al Reglamento de Propiedad y Administración.
           </p>
 
-          <div style="margin:20px 0 26px;border:1px solid #dbe3ec;border-radius:10px;background:#f8fafc;padding:18px 20px;">
-            <div style="display:grid;grid-template-columns:120px 1fr;row-gap:10px;column-gap:14px;font-size:14px;">
+          <div style="margin:18px 0 24px;border:1px solid #dbe3ec;border-radius:10px;background:#f8fafc;padding:12px 16px;">
+            <div style="display:grid;grid-template-columns:96px 1fr;row-gap:6px;column-gap:12px;font-size:13px;line-height:1.35;">
               <div style="font-weight:700;color:#475569;">Fecha:</div>
               <div>${escapeHtml(formatFecha(data.fecha))}</div>
               <div style="font-weight:700;color:#475569;">Hora:</div>
@@ -104,15 +101,15 @@ export function buildAsambleaConvocatoriaPreviewHtml(data: AsambleaConvocatoriaP
             </div>
           </div>
 
-          <div style="margin:0 0 14px 0;font-size:13px;font-weight:700;letter-spacing:0.08em;color:#334155;">ORDEN DEL DIA</div>
-          <ol style="margin:0 0 26px 20px;padding:0;">
+          <div style="margin:0 0 12px 0;font-size:13px;font-weight:700;letter-spacing:0.08em;color:#334155;">ORDEN DEL DÍA</div>
+          <ol style="margin:0 0 24px 20px;padding:0;">
             ${ordenDelDiaHtml}
           </ol>
 
-          <p style="margin:0 0 18px 0;">${toParagraphs(cierreTexto)}</p>
+          ${observacionesHtml}
 
-          <p style="margin:0 0 28px 0;">
-            Se deja constancia que la presente convocatoria se realiza conforme a lo dispuesto en el Reglamento de Propiedad y Administracion,
+          <p style="margin:20px 0 0 0;">
+            Se deja constancia que la presente convocatoria se realiza conforme a lo dispuesto en el Reglamento de Propiedad y Administración,
             cursandose en forma escrita y con la antelacion alli prevista.
           </p>
         </section>

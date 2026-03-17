@@ -3,15 +3,11 @@
 import { useMemo, useState } from "react";
 
 import { ASAMBLEA_TIPO } from "@/lib/administracion-shared";
-import {
-  buildAsambleaConvocatoriaPreviewHtml,
-  getDefaultConvocatoriaTexto,
-} from "@/lib/asamblea-convocatoria-preview";
+import { buildAsambleaConvocatoriaPreviewHtml } from "@/lib/asamblea-convocatoria-preview";
 
 type OrdenDiaDraft = {
   id: string;
   titulo: string;
-  descripcion: string;
 };
 
 type Props = {
@@ -26,7 +22,6 @@ function createOrdenDiaDraft(index: number): OrdenDiaDraft {
   return {
     id: `orden-${index}-${Date.now()}`,
     titulo: "",
-    descripcion: "",
   };
 }
 
@@ -35,7 +30,6 @@ export default function NuevaAsambleaEditor({ action, consorcioId, consorcioNomb
   const [fecha, setFecha] = useState("");
   const [hora, setHora] = useState("");
   const [lugar, setLugar] = useState("");
-  const [convocatoriaTexto, setConvocatoriaTexto] = useState(getDefaultConvocatoriaTexto(consorcioNombre));
   const [observaciones, setObservaciones] = useState("");
   const [ordenDelDia, setOrdenDelDia] = useState<OrdenDiaDraft[]>([
     createOrdenDiaDraft(1),
@@ -50,15 +44,15 @@ export default function NuevaAsambleaEditor({ action, consorcioId, consorcioNomb
         fecha,
         hora,
         lugar,
-        convocatoriaTexto,
+        observaciones,
         ordenDelDia,
       }),
-    [consorcioNombre, tipo, fecha, hora, lugar, convocatoriaTexto, ordenDelDia],
+    [consorcioNombre, tipo, fecha, hora, lugar, observaciones, ordenDelDia],
   );
 
-  function updateOrdenDia(id: string, field: "titulo" | "descripcion", value: string) {
+  function updateOrdenDia(id: string, value: string) {
     setOrdenDelDia((current) =>
-      current.map((item) => (item.id === id ? { ...item, [field]: value } : item)),
+      current.map((item) => (item.id === id ? { ...item, titulo: value } : item)),
     );
   }
 
@@ -139,20 +133,6 @@ export default function NuevaAsambleaEditor({ action, consorcioId, consorcioNomb
           </div>
         </div>
 
-        <div className="space-y-1">
-          <label htmlFor="convocatoriaTexto" className="text-sm font-medium text-slate-700">
-            Texto base
-          </label>
-          <textarea
-            id="convocatoriaTexto"
-            name="convocatoriaTexto"
-            rows={5}
-            value={convocatoriaTexto}
-            onChange={(event) => setConvocatoriaTexto(event.target.value)}
-            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-          />
-        </div>
-
         <section className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
           <div className="flex items-center justify-between gap-3">
             <div>
@@ -189,24 +169,13 @@ export default function NuevaAsambleaEditor({ action, consorcioId, consorcioNomb
                     <label className="text-xs font-medium text-slate-600">Titulo</label>
                     <input
                       value={item.titulo}
-                      onChange={(event) => updateOrdenDia(item.id, "titulo", event.target.value)}
-                      className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-                    />
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-xs font-medium text-slate-600">Descripcion</label>
-                    <textarea
-                      rows={3}
-                      value={item.descripcion}
-                      onChange={(event) => updateOrdenDia(item.id, "descripcion", event.target.value)}
+                      onChange={(event) => updateOrdenDia(item.id, event.target.value)}
                       className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
                     />
                   </div>
                 </div>
 
                 <input type="hidden" name="ordenTitulo" value={item.titulo} />
-                <input type="hidden" name="ordenDescripcion" value={item.descripcion} />
               </div>
             ))}
           </div>
@@ -240,10 +209,14 @@ export default function NuevaAsambleaEditor({ action, consorcioId, consorcioNomb
         </div>
 
         <div className="max-h-[calc(100vh-220px)] overflow-auto bg-slate-100 p-4">
-          <div
-            className="mx-auto w-full max-w-[860px] rounded-xl border border-slate-200 bg-white"
-            dangerouslySetInnerHTML={{ __html: previewHtml }}
-          />
+          <div className="flex justify-center">
+            <div className="aspect-[210/297] w-full max-w-[860px] rounded-xl border border-slate-300 bg-white shadow-[0_20px_45px_rgba(15,23,42,0.12)]">
+              <div
+                className="h-full overflow-hidden rounded-xl"
+                dangerouslySetInnerHTML={{ __html: previewHtml }}
+              />
+            </div>
+          </div>
         </div>
       </section>
     </div>
