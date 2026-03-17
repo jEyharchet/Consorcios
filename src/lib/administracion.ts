@@ -1,11 +1,17 @@
 import "server-only";
 
+import { Buffer } from "node:buffer";
+
 import { sendEmail } from "./email";
 import { buildEmailSummary, EMAIL_ESTADO, type EmailSummary } from "./email-tracking";
+import { buildAsambleaFirmaPath } from "./asamblea-firma";
+import { buildAsambleaConvocatoriaPreviewHtml } from "./asamblea-convocatoria-preview";
 import { prisma } from "./prisma";
+import { launchPdfBrowser } from "./pdf-browser";
 import { ADMIN_EMAIL_TIPO_ENVIO, ASAMBLEA_ESTADO, ASAMBLEA_TIPO } from "./administracion-shared";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
+const DEFAULT_PUBLIC_APP_URL = "https://app.amiconsorcio.com.ar";
 
 type ResponsableRelacion = {
   desde: Date;
@@ -49,6 +55,45 @@ function formatDate(value: Date) {
     month: "2-digit",
     year: "numeric",
   }).format(value);
+}
+
+function formatLongDate(value: Date) {
+  return new Intl.DateTimeFormat("es-AR", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  }).format(value);
+}
+
+function getPublicAppUrl() {
+  const baseUrl =
+    process.env.APP_URL?.trim() ||
+    process.env.NEXT_PUBLIC_APP_URL?.trim() ||
+    process.env.AUTH_URL?.trim() ||
+    DEFAULT_PUBLIC_APP_URL;
+
+  return baseUrl.replace(/\/+$/, "");
+}
+
+function getArchivoUrl(rutaArchivo: string | null | undefined) {
+  if (!rutaArchivo) {
+    return null;
+  }
+
+  const baseUrl = getPublicAppUrl();
+  return `${baseUrl}${rutaArchivo.startsWith("/") ? rutaArchivo : `/${rutaArchivo}`}`;
+}
+
+function buildTipoLabel(tipo: string) {
+  return `PRIMERA ASAMBLEA ${tipo === ASAMBLEA_TIPO.EXTRAORDINARIA ? "EXTRAORDINARIA" : "ORDINARIA"}`;
+}
+
+function buildFirmaDataUrl(mimeType: string | null | undefined, contenido: Uint8Array | null | undefined) {
+  if (!mimeType || !contenido) {
+    return null;
+  }
+
+  return `data:${mimeType};base64,${Buffer.from(contenido).toString("base64")}`;
 }
 
 function resolveBaseResponsables(relaciones: ResponsableRelacion[]) {
@@ -298,6 +343,113 @@ function buildConvocatoriaTexto(params: {
   return `${encabezado}${ordenDelDia}`;
 }
 
+type AsambleaConvocatoriaRecord = Awaited<ReturnType<typeof getAsambleaConvocatoriaRecord>>;
+
+async function getAsambleaConvocatoriaRecord(asambleaId: number) {
+  return prisma.asamblea.findUnique({
+    where: { id: asambleaId },
+    select: {
+      id: true,
+      consorcioId: true,
+      tipo: true,
+      fecha: true,
+      hora: true,
+      lugar: true,
+      convocatoriaTexto: true,
+      observaciones: true,
+      firmaMimeType: true,
+      firmaContenido: true,
+      firmaAclaracion: true,
+      firmaRol: true,
+      consorcio: {
+        select: {
+          nombre: true,
+          tituloLegal: true,
+          administradores: {
+            where: {
+              desde: { lte: new Date() },
+              OR: [{ hasta: null }, { hasta: { gte: new Date() } }],
+            },
+            orderBy: [{ desde: "desc" }, { id: "desc" }],
+            select: {
+              persona: {
+                select: {
+                  nombre: true,
+                  apellido: true,
+                  email: true,
+                },
+              },
+            },
+          },
+        },
+      },
+      ordenDia: {
+        orderBy: [{ orden: "asc" }, { id: "asc" }],
+        select: {
+          orden: true,
+          titulo: true,
+          descripcion: true,
+        },
+      },
+    },
+  });
+}
+
+function buildConvocatoriaPdfHtml(asamblea: NonNullable<AsambleaConvocatoriaRecord>) {
+  const html = buildAsambleaConvocatoriaPreviewHtml({
+    consorcioNombre: asamblea.consorcio.nombre,
+    consorcioNombreLegal: asamblea.consorcio.tituloLegal?.trim() || asamblea.consorcio.nombre,
+    tipo: asamblea.tipo,
+    fecha: asamblea.fecha.toISOString().slice(0, 10),
+    hora: asamblea.hora,
+    lugar: asamblea.lugar,
+    observaciones: asamblea.observaciones ?? undefined,
+    ordenDelDia: asamblea.ordenDia.map((item) => ({ titulo: item.titulo })),
+    logoUrl: getArchivoUrl("/branding/logo-gray-v2.png") ?? "/branding/logo-gray-v2.png",
+    firmaUrl:
+      buildFirmaDataUrl(asamblea.firmaMimeType, asamblea.firmaContenido) ??
+      (asamblea.firmaContenido ? getArchivoUrl(buildAsambleaFirmaPath(asamblea.id)) : null),
+    firmaAclaracion: asamblea.firmaAclaracion ?? undefined,
+    firmaRol: asamblea.firmaRol ?? undefined,
+  });
+
+  return `
+    <!doctype html>
+    <html lang="es">
+      <head>
+        <meta charset="utf-8" />
+        <title>Convocatoria a asamblea</title>
+        <style>
+          @page { size: A4; margin: 0; }
+          html, body { margin: 0; padding: 0; background: #ffffff; }
+          body { font-family: Arial, sans-serif; }
+        </style>
+      </head>
+      <body>${html}</body>
+    </html>
+  `;
+}
+
+async function renderConvocatoriaPdfBuffer(asamblea: NonNullable<AsambleaConvocatoriaRecord>) {
+  const browser = await launchPdfBrowser();
+
+  try {
+    const page = await browser.newPage();
+    await page.setContent(buildConvocatoriaPdfHtml(asamblea), {
+      waitUntil: "networkidle0",
+    });
+
+    return Buffer.from(
+      await page.pdf({
+        format: "A4",
+        printBackground: true,
+      }),
+    );
+  } finally {
+    await browser.close();
+  }
+}
+
 export async function enviarConvocatoriaAsamblea(asambleaId: number): Promise<EmailSummary> {
   const asamblea = await prisma.asamblea.findUnique({
     where: { id: asambleaId },
@@ -364,4 +516,121 @@ export async function enviarConvocatoriaAsamblea(asambleaId: number): Promise<Em
       });
     },
   });
+}
+
+export async function enviarSimulacionConvocatoriaAsamblea(asambleaId: number): Promise<EmailSummary> {
+  const asamblea = await getAsambleaConvocatoriaRecord(asambleaId);
+
+  if (!asamblea) {
+    throw new Error("asamblea_inexistente");
+  }
+
+  if (asamblea.ordenDia.length === 0) {
+    throw new Error("asamblea_sin_orden");
+  }
+
+  const adminEmails = Array.from(
+    new Set(
+      asamblea.consorcio.administradores
+        .map((relation) => normalizeEmail(relation.persona.email))
+        .filter((value): value is string => Boolean(value)),
+    ),
+  );
+
+  const administradorLabel =
+    asamblea.consorcio.administradores
+      .map((relation) => `${relation.persona.apellido}, ${relation.persona.nombre}`)
+      .filter((value) => value.trim().length > 0)
+      .join(" / ") || "Administrador del consorcio";
+
+  if (adminEmails.length === 0) {
+    await prisma.envioEmail.create({
+      data: {
+        consorcioId: asamblea.consorcioId,
+        asambleaId: asamblea.id,
+        tipoEnvio: ADMIN_EMAIL_TIPO_ENVIO.ASAMBLEA_SIMULACION_ADMIN,
+        destinatario: null,
+        asunto: `Simulacion de convocatoria de asamblea - ${asamblea.consorcio.nombre}`,
+        cuerpo:
+          "No se pudo enviar la simulacion de convocatoria porque el consorcio no tiene un email de administrador vigente configurado.",
+        estado: EMAIL_ESTADO.SIN_DESTINATARIO,
+        errorMensaje: "El consorcio no tiene un email de administrador vigente configurado.",
+      },
+    });
+
+    throw new Error("administrador_sin_email");
+  }
+
+  const asunto = `Simulacion de convocatoria de asamblea - ${asamblea.consorcio.nombre}`;
+  const cuerpo = [
+    "Adjuntamos una simulacion interna de la convocatoria de asamblea para revision previa.",
+    "Este mensaje fue enviado solo al administrador del consorcio y no fue distribuido a propietarios ni responsables.",
+    `Asamblea prevista: ${buildTipoLabel(asamblea.tipo)} del ${formatLongDate(asamblea.fecha)} a las ${asamblea.hora}.`,
+  ].join("\n\n");
+
+  const envio = await prisma.envioEmail.create({
+    data: {
+      consorcioId: asamblea.consorcioId,
+      asambleaId: asamblea.id,
+      tipoEnvio: ADMIN_EMAIL_TIPO_ENVIO.ASAMBLEA_SIMULACION_ADMIN,
+      destinatario: adminEmails.join(", "),
+      asunto,
+      cuerpo,
+      estado: EMAIL_ESTADO.PENDIENTE,
+    },
+    select: { id: true },
+  });
+
+  try {
+    const pdfBuffer = await renderConvocatoriaPdfBuffer(asamblea);
+
+    const response = await sendEmail({
+      to: adminEmails,
+      subject: asunto,
+      html: buildEmailHtml({
+        title: asunto,
+        body: cuerpo,
+        detailLines: [
+          `Consorcio: ${asamblea.consorcio.nombre}`,
+          `Administrador destinatario: ${administradorLabel}`,
+          `Fecha: ${formatDate(asamblea.fecha)}`,
+          `Hora: ${asamblea.hora}`,
+          `Lugar: ${asamblea.lugar}`,
+          "Tipo de envio: simulacion interna para revision",
+        ],
+      }),
+      text: cuerpo,
+      attachments: [
+        {
+          content: pdfBuffer,
+          filename: `convocatoria-asamblea-${asamblea.id}.pdf`,
+          contentType: "application/pdf",
+        },
+      ],
+    });
+
+    await prisma.envioEmail.update({
+      where: { id: envio.id },
+      data: {
+        estado: EMAIL_ESTADO.ENVIADO,
+        providerMessageId: response?.id ?? null,
+        errorMensaje: null,
+        enviadoAt: new Date(),
+      },
+    });
+
+    return buildEmailSummary([{ estado: EMAIL_ESTADO.ENVIADO }]);
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message.slice(0, 1000) : "Error desconocido al enviar email.";
+
+    await prisma.envioEmail.update({
+      where: { id: envio.id },
+      data: {
+        estado: EMAIL_ESTADO.ERROR,
+        errorMensaje: errorMessage,
+      },
+    });
+
+    throw error;
+  }
 }

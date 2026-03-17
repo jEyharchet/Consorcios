@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { enviarConvocatoriaAsamblea } from "../../../../lib/administracion";
-import { ASAMBLEA_ESTADO, ASAMBLEA_TIPO } from "../../../../lib/administracion-shared";
+import { enviarConvocatoriaAsamblea, enviarSimulacionConvocatoriaAsamblea } from "../../../../lib/administracion";
+import { ADMIN_EMAIL_TIPO_ENVIO, ASAMBLEA_ESTADO, ASAMBLEA_TIPO } from "../../../../lib/administracion-shared";
 import { requireConsorcioAccess, requireConsorcioRole } from "../../../../lib/auth";
 import { formatEmailSummary } from "../../../../lib/email-tracking";
 import { prisma } from "../../../../lib/prisma";
@@ -28,6 +28,13 @@ function getFeedback(searchParams: {
         fallidos,
         sinDestinatario,
       }),
+    };
+  }
+
+  if (searchParams.ok === "simulacion_ok") {
+    return {
+      type: "ok" as const,
+      text: "La simulacion de convocatoria se envio correctamente al administrador del consorcio.",
     };
   }
 
@@ -59,9 +66,31 @@ function getFeedback(searchParams: {
       return { type: "error" as const, text: "No se encontro la asamblea indicada." };
     case "asamblea_sin_orden":
       return { type: "error" as const, text: "Debes cargar al menos un punto del orden del dia antes de convocar." };
+    case "administrador_sin_email":
+      return {
+        type: "error" as const,
+        text: "El consorcio no tiene un email de administrador vigente configurado para enviar la simulacion.",
+      };
+    case "simulacion_error":
+      return {
+        type: "error" as const,
+        text: "No se pudo enviar la simulacion de convocatoria. Intenta nuevamente en unos minutos.",
+      };
     default:
       return null;
   }
+}
+
+function tipoEnvioLabel(tipoEnvio: string) {
+  if (tipoEnvio === ADMIN_EMAIL_TIPO_ENVIO.ASAMBLEA_SIMULACION_ADMIN) {
+    return "Simulacion al administrador";
+  }
+
+  if (tipoEnvio === ADMIN_EMAIL_TIPO_ENVIO.ASAMBLEA_CONVOCATORIA) {
+    return "Convocatoria real";
+  }
+
+  return tipoEnvio;
 }
 
 function estadoClass(estado: string) {
@@ -324,8 +353,32 @@ export default async function AsambleaDetallePage({
     );
   }
 
+  async function enviarSimulacionConvocatoria(formData: FormData) {
+    "use server";
+
+    const id = Number(formData.get("id"));
+    const consorcioId = Number(formData.get("consorcioId"));
+
+    await requireConsorcioRole(consorcioId, ["ADMIN", "OPERADOR"]);
+
+    try {
+      await enviarSimulacionConvocatoriaAsamblea(id);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "error_desconocido";
+      if (message === "asamblea_sin_orden" || message === "asamblea_inexistente" || message === "administrador_sin_email") {
+        redirect(`/administracion/asambleas/${id}${buildReturnQuery({ error: message })}`);
+      }
+
+      redirect(`/administracion/asambleas/${id}${buildReturnQuery({ error: "simulacion_error" })}`);
+    }
+
+    redirect(`/administracion/asambleas/${id}${buildReturnQuery({ ok: "simulacion_ok" })}`);
+  }
+
   const feedback = getFeedback(searchParams ?? {});
-  const convocatoriasEnviadas = asamblea.enviosEmail.filter((envio) => envio.estado === "ENVIADO").length;
+  const convocatoriasEnviadas = asamblea.enviosEmail.filter(
+    (envio) => envio.estado === "ENVIADO" && envio.tipoEnvio === ADMIN_EMAIL_TIPO_ENVIO.ASAMBLEA_CONVOCATORIA,
+  ).length;
 
   return (
     <main className="mx-auto w-full max-w-7xl px-6 py-10">
@@ -538,13 +591,10 @@ export default async function AsambleaDetallePage({
         <div className="space-y-6">
           <article className="rounded-xl border border-slate-200 bg-white p-6">
             <h2 className="text-lg font-semibold text-slate-900">Convocatoria</h2>
-            <p className="mt-1 text-sm text-slate-500">Envio de convocatoria por mail a responsables vigentes.</p>
+            <p className="mt-1 text-sm text-slate-500">Envio de convocatoria por mail a responsables vigentes y simulacion previa para revision interna.</p>
 
             {canOperate ? (
-              <form action={enviarConvocatoria} className="mt-4 space-y-4">
-                <input type="hidden" name="id" value={asamblea.id} />
-                <input type="hidden" name="consorcioId" value={asamblea.consorcioId} />
-
+              <div className="mt-4 space-y-4">
                 <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
                   <p><strong>Fecha:</strong> {formatDate(asamblea.fecha)}</p>
                   <p><strong>Hora:</strong> {asamblea.hora}</p>
@@ -552,10 +602,27 @@ export default async function AsambleaDetallePage({
                   <p><strong>Puntos cargados:</strong> {asamblea.ordenDia.length}</p>
                 </div>
 
-                <button type="submit" className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
-                  Enviar convocatoria
-                </button>
-              </form>
+                <div className="flex flex-wrap gap-3">
+                  <form action={enviarSimulacionConvocatoria}>
+                    <input type="hidden" name="id" value={asamblea.id} />
+                    <input type="hidden" name="consorcioId" value={asamblea.consorcioId} />
+                    <button
+                      type="submit"
+                      className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                    >
+                      Enviar simulacion al administrador
+                    </button>
+                  </form>
+
+                  <form action={enviarConvocatoria}>
+                    <input type="hidden" name="id" value={asamblea.id} />
+                    <input type="hidden" name="consorcioId" value={asamblea.consorcioId} />
+                    <button type="submit" className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
+                      Enviar convocatoria
+                    </button>
+                  </form>
+                </div>
+              </div>
             ) : (
               <p className="mt-4 rounded-lg border border-dashed border-slate-200 px-4 py-3 text-sm text-slate-500">
                 Tenes acceso de lectura. El envio de convocatorias esta disponible para administradores u operadores.
@@ -608,6 +675,9 @@ export default async function AsambleaDetallePage({
                         <p className="mt-1 text-sm text-slate-600">
                           {envio.unidad ? `${envio.unidad.identificador} (${envio.unidad.tipo})` : "Sin unidad"} -{" "}
                           {envio.destinatario ?? "Sin destinatario"}
+                        </p>
+                        <p className="mt-1 text-xs font-medium uppercase tracking-[0.08em] text-slate-500">
+                          {tipoEnvioLabel(envio.tipoEnvio)}
                         </p>
                       </div>
                       <span
