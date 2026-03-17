@@ -31,6 +31,12 @@ type UnidadDestinataria = {
   emails: string[];
 };
 
+type EmailAttachment = {
+  content: Buffer;
+  filename: string;
+  contentType: string;
+};
+
 function normalizeEmail(email: string | null | undefined) {
   const value = email?.trim().toLowerCase() ?? "";
   return EMAIL_REGEX.test(value) ? value : null;
@@ -194,6 +200,34 @@ async function getDestinatariosConsorcio(consorcioId: number, unidadIds?: number
   });
 }
 
+function mergeDestinatariosPorUnidad(destinatarios: UnidadDestinataria[]) {
+  const grouped = new Map<number, UnidadDestinataria>();
+
+  for (const destinatario of destinatarios) {
+    const current = grouped.get(destinatario.unidadId);
+
+    if (!current) {
+      grouped.set(destinatario.unidadId, {
+        ...destinatario,
+        emails: Array.from(new Set(destinatario.emails)),
+      });
+      continue;
+    }
+
+    grouped.set(destinatario.unidadId, {
+      unidadId: destinatario.unidadId,
+      unidadLabel: current.unidadLabel || destinatario.unidadLabel,
+      responsablesLabel:
+        current.responsablesLabel === destinatario.responsablesLabel
+          ? current.responsablesLabel
+          : [current.responsablesLabel, destinatario.responsablesLabel].filter(Boolean).join(" / "),
+      emails: Array.from(new Set([...current.emails, ...destinatario.emails])),
+    });
+  }
+
+  return Array.from(grouped.values());
+}
+
 async function registrarYEnviar(params: {
   consorcioId: number;
   consorcioNombre: string;
@@ -203,11 +237,13 @@ async function registrarYEnviar(params: {
   destinatarios: UnidadDestinataria[];
   asambleaId?: number;
   detailLines?: string[];
+  attachments?: EmailAttachment[];
   afterSuccess?: () => Promise<void>;
 }) {
   const results: Array<{ estado: string }> = [];
+  const destinatariosAgrupados = mergeDestinatariosPorUnidad(params.destinatarios);
 
-  for (const destinatario of params.destinatarios) {
+  for (const destinatario of destinatariosAgrupados) {
     const placeholders = {
       responsable: destinatario.responsablesLabel,
       unidad: destinatario.unidadLabel,
@@ -259,6 +295,7 @@ async function registrarYEnviar(params: {
           detailLines: params.detailLines,
         }),
         text: cuerpo,
+        attachments: params.attachments,
       });
 
       await prisma.envioEmail.update({
@@ -451,34 +488,14 @@ async function renderConvocatoriaPdfBuffer(asamblea: NonNullable<AsambleaConvoca
 }
 
 export async function enviarConvocatoriaAsamblea(asambleaId: number): Promise<EmailSummary> {
-  const asamblea = await prisma.asamblea.findUnique({
-    where: { id: asambleaId },
-    select: {
-      id: true,
-      consorcioId: true,
-      tipo: true,
-      fecha: true,
-      hora: true,
-      lugar: true,
-      convocatoriaTexto: true,
-      consorcio: {
-        select: {
-          nombre: true,
-        },
-      },
-      ordenDia: {
-        orderBy: [{ orden: "asc" }, { id: "asc" }],
-        select: {
-          orden: true,
-          titulo: true,
-          descripcion: true,
-        },
-      },
-    },
-  });
+  const asamblea = await getAsambleaConvocatoriaRecord(asambleaId);
 
   if (!asamblea) {
     throw new Error("asamblea_inexistente");
+  }
+
+  if (asamblea.ordenDia.length === 0) {
+    throw new Error("asamblea_sin_orden");
   }
 
   const cuerpo = buildConvocatoriaTexto({
@@ -492,6 +509,7 @@ export async function enviarConvocatoriaAsamblea(asambleaId: number): Promise<Em
   });
 
   const destinatarios = await getDestinatariosConsorcio(asamblea.consorcioId);
+  const pdfBuffer = await renderConvocatoriaPdfBuffer(asamblea);
 
   return registrarYEnviar({
     consorcioId: asamblea.consorcioId,
@@ -506,6 +524,13 @@ export async function enviarConvocatoriaAsamblea(asambleaId: number): Promise<Em
       `Fecha: ${formatDate(asamblea.fecha)}`,
       `Hora: ${asamblea.hora}`,
       `Lugar: ${asamblea.lugar}`,
+    ],
+    attachments: [
+      {
+        content: pdfBuffer,
+        filename: `convocatoria-asamblea-${asamblea.id}.pdf`,
+        contentType: "application/pdf",
+      },
     ],
     afterSuccess: async () => {
       await prisma.asamblea.update({
