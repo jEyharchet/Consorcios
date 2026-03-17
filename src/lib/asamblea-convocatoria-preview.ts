@@ -3,6 +3,7 @@ type OrdenDiaItem = {
 };
 
 export type AsambleaConvocatoriaPreviewData = {
+  consorcioNombre: string;
   consorcioNombreLegal: string;
   tipo: string;
   fecha: string;
@@ -118,7 +119,7 @@ export function buildAsambleaConvocatoriaPreviewHtml(data: AsambleaConvocatoriaP
           <img src="${escapeHtml(logo)}" alt="AmiConsorcio" style="display:block;width:142px;height:auto;margin-bottom:12px;" />
           <div style="font-size:24px;font-weight:700;letter-spacing:0.04em;color:#111827;">CONVOCATORIA A ASAMBLEA</div>
           <div style="margin-top:8px;font-size:13px;font-weight:700;letter-spacing:0.08em;color:#475569;">
-            CONSORCIO DE PROPIETARIOS - ${escapeHtml(data.consorcioNombreLegal)}
+            CONSORCIO DE PROPIETARIOS - ${escapeHtml(data.consorcioNombre)}
           </div>
         </header>
 

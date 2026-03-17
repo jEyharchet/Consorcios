@@ -183,6 +183,7 @@ export default async function NuevaAsambleaPage({
       <NuevaAsambleaEditor
         action={crearAsamblea}
         consorcioId={consorcio.id}
+        consorcioNombre={consorcio.nombre}
         consorcioNombreLegal={consorcio.tituloLegal ?? consorcio.nombre}
       />
     </main>

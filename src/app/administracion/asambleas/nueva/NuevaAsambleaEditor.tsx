@@ -13,6 +13,7 @@ type OrdenDiaDraft = {
 type Props = {
   action: (formData: FormData) => void;
   consorcioId: number;
+  consorcioNombre: string;
   consorcioNombreLegal: string;
 };
 
@@ -28,6 +29,7 @@ function createOrdenDiaDraft(index: number): OrdenDiaDraft {
 export default function NuevaAsambleaEditor({
   action,
   consorcioId,
+  consorcioNombre,
   consorcioNombreLegal,
 }: Props) {
   const [tipo, setTipo] = useState<AsambleaTipo>(ASAMBLEA_TIPO.ORDINARIA);
@@ -54,6 +56,7 @@ export default function NuevaAsambleaEditor({
   const previewHtml = useMemo(
     () =>
       buildAsambleaConvocatoriaPreviewHtml({
+        consorcioNombre,
         consorcioNombreLegal,
         tipo,
         fecha,
@@ -65,7 +68,7 @@ export default function NuevaAsambleaEditor({
         firmaAclaracion,
         firmaRol,
       }),
-    [consorcioNombreLegal, tipo, fecha, hora, lugar, observaciones, ordenDelDia, firmaPreviewUrl, firmaAclaracion, firmaRol],
+    [consorcioNombre, consorcioNombreLegal, tipo, fecha, hora, lugar, observaciones, ordenDelDia, firmaPreviewUrl, firmaAclaracion, firmaRol],
   );
 
   function updateOrdenDia(id: string, value: string) {
@@ -285,11 +288,11 @@ export default function NuevaAsambleaEditor({
           </div>
         </div>
 
-        <div className="max-h-[calc(100vh-220px)] overflow-auto bg-slate-100 p-5">
+        <div className="max-h-[calc(100vh-220px)] overflow-auto bg-slate-100 p-6">
           <div className="flex justify-center">
-            <div className="w-full max-w-[794px] rounded-xl bg-white shadow-md">
+            <div className="w-full max-w-[794px]">
               <div
-                className="aspect-[794/1123] overflow-hidden rounded-xl border border-slate-300"
+                className="mx-auto aspect-[210/297] w-full overflow-hidden rounded-[10px] border border-slate-300 bg-white shadow-md"
                 dangerouslySetInnerHTML={{ __html: previewHtml }}
               />
             </div>
