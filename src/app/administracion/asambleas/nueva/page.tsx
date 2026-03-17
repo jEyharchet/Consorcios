@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { ASAMBLEA_ESTADO, ASAMBLEA_TIPO } from "../../../../lib/administracion-shared";
+import { firmaValidationMessages, isFirmaFileProvided, saveAsambleaFirmaFile } from "../../../../lib/asamblea-firma";
 import { requireConsorcioRole } from "../../../../lib/auth";
 import { getActiveConsorcioContext } from "../../../../lib/consorcio-activo";
 import { redirectToOnboardingIfNoConsorcios } from "../../../../lib/onboarding";
@@ -17,6 +18,12 @@ function getFeedback(error?: string) {
       return "La hora de la asamblea es obligatoria.";
     case "lugar_requerido":
       return "El lugar es obligatorio.";
+    case "firma_invalid_type":
+      return firmaValidationMessages.invalid_type;
+    case "firma_max_size":
+      return firmaValidationMessages.max_size;
+    case "firma_write_error":
+      return firmaValidationMessages.write_error;
     default:
       return null;
   }
@@ -51,7 +58,7 @@ export default async function NuevaAsambleaPage({
 
   const consorcio = await prisma.consorcio.findUnique({
     where: { id: activeConsorcioId },
-    select: { id: true, nombre: true },
+    select: { id: true, nombre: true, tituloLegal: true },
   });
 
   if (!consorcio) {
@@ -85,9 +92,12 @@ export default async function NuevaAsambleaPage({
     const hora = (formData.get("hora")?.toString() ?? "").trim();
     const lugar = (formData.get("lugar")?.toString() ?? "").trim();
     const observaciones = (formData.get("observaciones")?.toString() ?? "").trim();
+    const firmaAclaracion = (formData.get("firmaAclaracion")?.toString() ?? "").trim();
+    const firmaRol = (formData.get("firmaRol")?.toString() ?? "").trim();
     const ordenTitulos = formData
       .getAll("ordenTitulo")
       .map((value) => value.toString().trim());
+    const firmaArchivo = formData.get("firmaArchivo");
 
     await requireConsorcioRole(consorcioId, ["ADMIN", "OPERADOR"]);
 
@@ -103,6 +113,23 @@ export default async function NuevaAsambleaPage({
       redirect(`/administracion/asambleas/nueva${buildReturnQuery({ error: "lugar_requerido" })}`);
     }
 
+    let firmaData:
+      | {
+          firmaNombreOriginal: string;
+          firmaMimeType: string;
+          firmaContenido: Buffer;
+          firmaSubidaAt: Date;
+        }
+      | null = null;
+
+    if (isFirmaFileProvided(firmaArchivo)) {
+      const saved = await saveAsambleaFirmaFile(firmaArchivo);
+      if (!saved.ok) {
+        redirect(`/administracion/asambleas/nueva${buildReturnQuery({ error: `firma_${saved.code}` })}`);
+      }
+      firmaData = saved.data;
+    }
+
     const asamblea = await prisma.asamblea.create({
       data: {
         consorcioId,
@@ -112,6 +139,12 @@ export default async function NuevaAsambleaPage({
         lugar,
         convocatoriaTexto: null,
         observaciones: observaciones || null,
+        firmaNombreOriginal: firmaData?.firmaNombreOriginal ?? null,
+        firmaMimeType: firmaData?.firmaMimeType ?? null,
+        firmaContenido: firmaData?.firmaContenido ?? null,
+        firmaSubidaAt: firmaData?.firmaSubidaAt ?? null,
+        firmaAclaracion: firmaAclaracion || null,
+        firmaRol: firmaRol || null,
         estado: ASAMBLEA_ESTADO.BORRADOR,
         ordenDia: {
           create: ordenTitulos
@@ -147,7 +180,11 @@ export default async function NuevaAsambleaPage({
         </div>
       ) : null}
 
-      <NuevaAsambleaEditor action={crearAsamblea} consorcioId={consorcio.id} consorcioNombre={consorcio.nombre} />
+      <NuevaAsambleaEditor
+        action={crearAsamblea}
+        consorcioId={consorcio.id}
+        consorcioNombreLegal={consorcio.tituloLegal ?? consorcio.nombre}
+      />
     </main>
   );
 }

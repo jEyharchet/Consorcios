@@ -602,6 +602,12 @@ model Asamblea {
   hora              String
   lugar             String
   convocatoriaTexto String?
+  firmaNombreOriginal String?
+  firmaMimeType       String?
+  firmaContenido      Bytes?
+  firmaSubidaAt       DateTime?
+  firmaAclaracion     String?
+  firmaRol            String?
   estado            String   @default("BORRADOR")
   observaciones     String?
   actaTexto         String?

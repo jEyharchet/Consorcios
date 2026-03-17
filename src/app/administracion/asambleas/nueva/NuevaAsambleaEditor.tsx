@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { ASAMBLEA_TIPO } from "@/lib/administracion-shared";
 import { buildAsambleaConvocatoriaPreviewHtml } from "@/lib/asamblea-convocatoria-preview";
@@ -13,7 +13,7 @@ type OrdenDiaDraft = {
 type Props = {
   action: (formData: FormData) => void;
   consorcioId: number;
-  consorcioNombre: string;
+  consorcioNombreLegal: string;
 };
 
 type AsambleaTipo = (typeof ASAMBLEA_TIPO)[keyof typeof ASAMBLEA_TIPO];
@@ -25,29 +25,47 @@ function createOrdenDiaDraft(index: number): OrdenDiaDraft {
   };
 }
 
-export default function NuevaAsambleaEditor({ action, consorcioId, consorcioNombre }: Props) {
+export default function NuevaAsambleaEditor({
+  action,
+  consorcioId,
+  consorcioNombreLegal,
+}: Props) {
   const [tipo, setTipo] = useState<AsambleaTipo>(ASAMBLEA_TIPO.ORDINARIA);
   const [fecha, setFecha] = useState("");
   const [hora, setHora] = useState("");
   const [lugar, setLugar] = useState("");
   const [observaciones, setObservaciones] = useState("");
+  const [firmaPreviewUrl, setFirmaPreviewUrl] = useState<string | null>(null);
+  const [firmaAclaracion, setFirmaAclaracion] = useState("");
+  const [firmaRol, setFirmaRol] = useState("Administrador");
   const [ordenDelDia, setOrdenDelDia] = useState<OrdenDiaDraft[]>([
     createOrdenDiaDraft(1),
     createOrdenDiaDraft(2),
   ]);
 
+  useEffect(() => {
+    return () => {
+      if (firmaPreviewUrl) {
+        URL.revokeObjectURL(firmaPreviewUrl);
+      }
+    };
+  }, [firmaPreviewUrl]);
+
   const previewHtml = useMemo(
     () =>
       buildAsambleaConvocatoriaPreviewHtml({
-        consorcioNombre,
+        consorcioNombreLegal,
         tipo,
         fecha,
         hora,
         lugar,
         observaciones,
         ordenDelDia,
+        firmaUrl: firmaPreviewUrl,
+        firmaAclaracion,
+        firmaRol,
       }),
-    [consorcioNombre, tipo, fecha, hora, lugar, observaciones, ordenDelDia],
+    [consorcioNombreLegal, tipo, fecha, hora, lugar, observaciones, ordenDelDia, firmaPreviewUrl, firmaAclaracion, firmaRol],
   );
 
   function updateOrdenDia(id: string, value: string) {
@@ -62,6 +80,16 @@ export default function NuevaAsambleaEditor({ action, consorcioId, consorcioNomb
 
   function removeOrdenDia(id: string) {
     setOrdenDelDia((current) => (current.length > 1 ? current.filter((item) => item.id !== id) : current));
+  }
+
+  function onFirmaChange(file: File | null) {
+    setFirmaPreviewUrl((current) => {
+      if (current) {
+        URL.revokeObjectURL(current);
+      }
+
+      return file ? URL.createObjectURL(file) : null;
+    });
   }
 
   return (
@@ -195,6 +223,55 @@ export default function NuevaAsambleaEditor({ action, consorcioId, consorcioNomb
           />
         </div>
 
+        <section className="space-y-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
+          <div>
+            <h2 className="text-sm font-semibold text-slate-900">Firma del administrador</h2>
+            <p className="mt-1 text-xs text-slate-500">La imagen se guarda con la asamblea y se muestra en la convocatoria.</p>
+          </div>
+
+          <div className="space-y-1">
+            <label htmlFor="firmaArchivo" className="text-sm font-medium text-slate-700">
+              Imagen de firma
+            </label>
+            <input
+              id="firmaArchivo"
+              name="firmaArchivo"
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              onChange={(event) => onFirmaChange(event.target.files?.[0] ?? null)}
+              className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
+            />
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-1">
+              <label htmlFor="firmaAclaracion" className="text-sm font-medium text-slate-700">
+                Aclaracion
+              </label>
+              <input
+                id="firmaAclaracion"
+                name="firmaAclaracion"
+                value={firmaAclaracion}
+                onChange={(event) => setFirmaAclaracion(event.target.value)}
+                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label htmlFor="firmaRol" className="text-sm font-medium text-slate-700">
+                Rol
+              </label>
+              <input
+                id="firmaRol"
+                name="firmaRol"
+                value={firmaRol}
+                onChange={(event) => setFirmaRol(event.target.value)}
+                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+              />
+            </div>
+          </div>
+        </section>
+
         <button type="submit" className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800">
           Crear asamblea
         </button>
@@ -208,11 +285,11 @@ export default function NuevaAsambleaEditor({ action, consorcioId, consorcioNomb
           </div>
         </div>
 
-        <div className="max-h-[calc(100vh-220px)] overflow-auto bg-slate-100 p-4">
+        <div className="max-h-[calc(100vh-220px)] overflow-auto bg-slate-100 p-5">
           <div className="flex justify-center">
-            <div className="aspect-[210/297] w-full max-w-[860px] rounded-xl border border-slate-300 bg-white shadow-[0_20px_45px_rgba(15,23,42,0.12)]">
+            <div className="w-full max-w-[794px] rounded-xl bg-white shadow-md">
               <div
-                className="h-full overflow-hidden rounded-xl"
+                className="aspect-[794/1123] overflow-hidden rounded-xl border border-slate-300"
                 dangerouslySetInnerHTML={{ __html: previewHtml }}
               />
             </div>
