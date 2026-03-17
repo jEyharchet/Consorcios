@@ -58,9 +58,9 @@ export function buildAsambleaConvocatoriaPreviewHtml(data: AsambleaConvocatoriaP
     items.length > 0
       ? items
           .map(
-            (item, index) => `
+            (item) => `
               <li style="margin-bottom:10px;color:#0f172a;line-height:1.45;">
-                <span style="font-weight:700;">${index + 1}.</span> ${escapeHtml(item.titulo.trim())}
+                ${escapeHtml(item.titulo.trim())}
               </li>
             `,
           )
@@ -82,13 +82,13 @@ export function buildAsambleaConvocatoriaPreviewHtml(data: AsambleaConvocatoriaP
     data.firmaUrl || data.firmaAclaracion?.trim() || data.firmaRol?.trim()
       ? `
           <div style="display:flex;justify-content:flex-end;">
-            <div style="width:260px;text-align:center;">
+            <div style="width:280px;text-align:center;">
               ${
                 data.firmaUrl
-                  ? `<div style="height:84px;display:flex;align-items:flex-end;justify-content:center;margin-bottom:8px;">
-                       <img src="${escapeHtml(data.firmaUrl)}" alt="Firma del administrador" style="max-width:220px;max-height:72px;width:auto;height:auto;object-fit:contain;" />
+                  ? `<div style="height:110px;display:flex;align-items:center;justify-content:center;margin-bottom:10px;">
+                       <img src="${escapeHtml(data.firmaUrl)}" alt="Firma del administrador" style="display:block;max-width:240px;max-height:96px;width:auto;height:auto;object-fit:contain;margin:0 auto;" />
                      </div>`
-                  : `<div style="height:84px;"></div>`
+                  : `<div style="height:110px;"></div>`
               }
               <div style="border-top:1px solid #94a3b8;"></div>
               <div style="margin-top:10px;font-size:13px;font-weight:700;color:#334155;">
@@ -102,8 +102,8 @@ export function buildAsambleaConvocatoriaPreviewHtml(data: AsambleaConvocatoriaP
         `
       : `
           <div style="display:flex;justify-content:flex-end;">
-            <div style="width:260px;text-align:center;">
-              <div style="height:84px;"></div>
+            <div style="width:280px;text-align:center;">
+              <div style="height:110px;"></div>
               <div style="border-top:1px solid #94a3b8;"></div>
               <div style="margin-top:10px;font-size:13px;color:#475569;">Firma</div>
               <div style="margin-top:18px;border-top:1px solid #94a3b8;"></div>
