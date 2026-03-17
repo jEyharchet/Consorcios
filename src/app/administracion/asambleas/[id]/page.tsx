@@ -148,10 +148,6 @@ export default async function AsambleaDetallePage({
               nombre: true,
             },
           },
-          firmaNombreOriginal: true,
-          firmaMimeType: true,
-          firmaAclaracion: true,
-          firmaRol: true,
           ordenDia: {
             orderBy: [{ orden: "asc" }, { id: "asc" }],
           },
