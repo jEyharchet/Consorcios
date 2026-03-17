@@ -82,19 +82,17 @@ export function buildAsambleaConvocatoriaPreviewHtml(data: AsambleaConvocatoriaP
     data.firmaUrl || data.firmaAclaracion?.trim() || data.firmaRol?.trim()
       ? `
           <div style="display:flex;justify-content:flex-end;">
-            <div style="width:420px;text-align:center;">
+            <div style="width:420px;position:relative;text-align:center;padding-top:86px;">
               ${
                 data.firmaUrl
-                  ? `<div style="height:190px;display:flex;align-items:center;justify-content:center;margin-bottom:12px;">
-                       <img src="${escapeHtml(data.firmaUrl)}" alt="Firma del administrador" style="display:block;max-width:380px;max-height:170px;width:auto;height:auto;object-fit:contain;margin:0 auto;" />
-                     </div>`
-                  : `<div style="height:190px;"></div>`
+                  ? `<img src="${escapeHtml(data.firmaUrl)}" alt="Firma del administrador" style="display:block;position:absolute;left:50%;bottom:34px;transform:translateX(-50%);z-index:1;max-width:380px;max-height:170px;width:auto;height:auto;object-fit:contain;margin:0 auto;" />`
+                  : ``
               }
-              <div style="border-top:1px solid #94a3b8;"></div>
-              <div style="margin-top:10px;font-size:13px;font-weight:700;color:#334155;">
+              <div style="position:relative;z-index:2;border-top:1px solid #94a3b8;"></div>
+              <div style="position:relative;z-index:2;margin-top:10px;font-size:13px;font-weight:700;color:#334155;">
                 ${escapeHtml(data.firmaAclaracion?.trim() || "Aclaración")}
               </div>
-              <div style="margin-top:4px;font-size:12px;color:#64748b;">
+              <div style="position:relative;z-index:2;margin-top:4px;font-size:12px;color:#64748b;">
                 ${escapeHtml(data.firmaRol?.trim() || "Administrador")}
               </div>
             </div>
@@ -102,8 +100,7 @@ export function buildAsambleaConvocatoriaPreviewHtml(data: AsambleaConvocatoriaP
         `
       : `
           <div style="display:flex;justify-content:flex-end;">
-            <div style="width:420px;text-align:center;">
-              <div style="height:190px;"></div>
+            <div style="width:420px;text-align:center;padding-top:86px;">
               <div style="border-top:1px solid #94a3b8;"></div>
               <div style="margin-top:10px;font-size:13px;color:#475569;">Firma</div>
               <div style="margin-top:18px;border-top:1px solid #94a3b8;"></div>
@@ -116,16 +113,23 @@ export function buildAsambleaConvocatoriaPreviewHtml(data: AsambleaConvocatoriaP
     <div style="height:100%;box-sizing:border-box;font-family:Arial,sans-serif;background:#fff;color:#0f172a;padding:48px 52px 58px;">
       <div style="height:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:8px;padding:28px 30px 36px;">
         <header style="border-bottom:1px solid #dbe3ec;padding-bottom:16px;margin-bottom:22px;">
-          <img src="${escapeHtml(logo)}" alt="AmiConsorcio" style="display:block;width:142px;height:auto;margin-bottom:12px;" />
-          <div style="font-size:24px;font-weight:700;letter-spacing:0.04em;color:#111827;">CONVOCATORIA A ASAMBLEA</div>
-          <div style="margin-top:8px;font-size:13px;font-weight:700;letter-spacing:0.08em;color:#475569;">
-            CONSORCIO DE PROPIETARIOS - ${escapeHtml(data.consorcioNombre)}
+          <div style="display:flex;align-items:center;gap:18px;">
+            <div style="width:154px;display:flex;align-items:center;justify-content:center;flex:0 0 154px;">
+              <img src="${escapeHtml(logo)}" alt="AmiConsorcio" style="display:block;width:142px;height:auto;" />
+            </div>
+            <div style="width:1px;align-self:stretch;background:#dbe3ec;"></div>
+            <div style="flex:1;display:flex;flex-direction:column;justify-content:center;">
+              <div style="font-size:24px;font-weight:700;letter-spacing:0.04em;color:#111827;">CONVOCATORIA A ASAMBLEA</div>
+              <div style="margin-top:8px;font-size:13px;font-weight:700;letter-spacing:0.08em;color:#475569;">
+                CONSORCIO DE PROPIETARIOS - ${escapeHtml(data.consorcioNombre)}
+              </div>
+            </div>
           </div>
         </header>
 
         <section style="font-size:14px;line-height:1.72;color:#1f2937;">
           <p style="margin:0 0 18px 0;">
-            Por la presente se convoca a los señores propietarios del consorcio ${escapeHtml(data.consorcioNombreLegal)}, a la ${escapeHtml(buildTipoLabel(data.tipo))}, que se celebrará conforme al Reglamento de Propiedad y Administración.
+            Por la presente se convoca a los propietarios del ${escapeHtml(data.consorcioNombreLegal)}, a la ${escapeHtml(buildTipoLabel(data.tipo))}, que se celebrará conforme al Reglamento de Propiedad y Administración.
           </p>
 
           <div style="margin:18px 0 24px;border:1px solid #dbe3ec;border-radius:10px;background:#f8fafc;padding:12px 16px;">
