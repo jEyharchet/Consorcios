@@ -102,6 +102,13 @@ model ConsorcioAdministrador {
   actaPath           String?
   actaContenido      Bytes?
   actaSubidaAt       DateTime?
+  firmaNombreOriginal String?
+  firmaMimeType       String?
+  firmaPath           String?
+  firmaContenido      Bytes?
+  firmaSubidaAt       DateTime?
+  firmaAclaracion     String?
+  firmaRol            String?
 
   consorcio Consorcio @relation(fields: [consorcioId], references: [id], onDelete: Cascade)
   persona   Persona   @relation(fields: [personaId], references: [id], onDelete: Cascade)

@@ -4,8 +4,15 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Fragment } from "react";
 
+import ConfirmSubmitButton from "./ConfirmSubmitButton";
 import { prisma } from "../../../../lib/prisma";
 import { actaValidationMessages, buildAdministradorActaPath, isFileProvided, saveActaFile } from "../../../lib/actas";
+import {
+  buildAdministradorFirmaPath,
+  firmaValidationMessages,
+  isFirmaFileProvided,
+  saveFirmaFile,
+} from "../../../lib/asamblea-firma";
 import { requireConsorcioAccess, requireConsorcioRole } from "../../../lib/auth";
 import { formatDateAR, isVigente, normalizeDate, validateNoOverlap } from "../../../lib/relaciones";
 
@@ -125,6 +132,50 @@ export default async function ConsorcioDetallePage({
     redirect(`/consorcios/${consorcioId}`);
   }
 
+  async function eliminarActaAdministrador(formData: FormData) {
+    "use server";
+
+    const consorcioId = Number(formData.get("consorcioId"));
+    const relacionId = Number(formData.get("relacionId"));
+    await requireConsorcioRole(consorcioId, ["ADMIN"]);
+
+    await prisma.consorcioAdministrador.update({
+      where: { id: relacionId },
+      data: {
+        actaNombreOriginal: null,
+        actaMimeType: null,
+        actaPath: null,
+        actaContenido: null,
+        actaSubidaAt: null,
+      },
+    });
+
+    redirect(`/consorcios/${consorcioId}`);
+  }
+
+  async function eliminarFirmaAdministrador(formData: FormData) {
+    "use server";
+
+    const consorcioId = Number(formData.get("consorcioId"));
+    const relacionId = Number(formData.get("relacionId"));
+    await requireConsorcioRole(consorcioId, ["ADMIN"]);
+
+    await prisma.consorcioAdministrador.update({
+      where: { id: relacionId },
+      data: {
+        firmaNombreOriginal: null,
+        firmaMimeType: null,
+        firmaPath: null,
+        firmaContenido: null,
+        firmaSubidaAt: null,
+        firmaAclaracion: null,
+        firmaRol: null,
+      },
+    });
+
+    redirect(`/consorcios/${consorcioId}`);
+  }
+
   async function finalizarAdministrador(formData: FormData) {
     "use server";
 
@@ -215,6 +266,9 @@ export default async function ConsorcioDetallePage({
     const desdeRaw = (formData.get("desde")?.toString() ?? "").trim();
     const hastaRaw = (formData.get("hasta")?.toString() ?? "").trim();
     const acta = formData.get("acta");
+    const firma = formData.get("firma");
+    const firmaAclaracion = (formData.get("firmaAclaracion")?.toString() ?? "").trim();
+    const firmaRol = (formData.get("firmaRol")?.toString() ?? "").trim();
     await requireConsorcioRole(consorcioId, ["ADMIN"]);
 
     if (!desdeRaw) {
@@ -274,6 +328,13 @@ export default async function ConsorcioDetallePage({
       actaPath?: string | null;
       actaContenido?: Buffer | null;
       actaSubidaAt?: Date | null;
+      firmaNombreOriginal?: string | null;
+      firmaMimeType?: string | null;
+      firmaPath?: string | null;
+      firmaContenido?: Buffer | null;
+      firmaSubidaAt?: Date | null;
+      firmaAclaracion?: string | null;
+      firmaRol?: string | null;
     } = { desde, hasta };
 
     if (isFileProvided(acta)) {
@@ -288,6 +349,22 @@ export default async function ConsorcioDetallePage({
       data.actaContenido = saveResult.data.actaContenido;
       data.actaSubidaAt = saveResult.data.actaSubidaAt;
     }
+
+    if (isFirmaFileProvided(firma)) {
+      const saveResult = await saveFirmaFile(firma);
+      if (!saveResult.ok) {
+        redirect(`/consorcios/${consorcioId}?error=firma_${saveResult.code}&editarAdmin=${relacionId}`);
+      }
+
+      data.firmaNombreOriginal = saveResult.data.firmaNombreOriginal;
+      data.firmaMimeType = saveResult.data.firmaMimeType;
+      data.firmaPath = buildAdministradorFirmaPath(relacionId);
+      data.firmaContenido = saveResult.data.firmaContenido;
+      data.firmaSubidaAt = saveResult.data.firmaSubidaAt;
+    }
+
+    data.firmaAclaracion = firmaAclaracion || null;
+    data.firmaRol = firmaRol || null;
 
     await prisma.consorcioAdministrador.update({ where: { id: relacionId }, data });
     redirect(`/consorcios/${consorcioId}`);
@@ -352,6 +429,12 @@ export default async function ConsorcioDetallePage({
                       ? actaValidationMessages.max_size
                       : error === "write_error"
                         ? actaValidationMessages.write_error
+                        : error === "firma_invalid_type"
+                          ? firmaValidationMessages.invalid_type
+                          : error === "firma_max_size"
+                            ? firmaValidationMessages.max_size
+                            : error === "firma_write_error"
+                              ? firmaValidationMessages.write_error
                         : null;
 
   return (
@@ -421,7 +504,7 @@ export default async function ConsorcioDetallePage({
           <div className="flex items-center justify-between gap-3">
             <div>
               <h2 className="text-xl font-semibold text-slate-950">Administradores</h2>
-              <p className="mt-1 text-sm text-slate-500">Relacion historica, vigencia y actas cargadas.</p>
+              <p className="mt-1 text-sm text-slate-500">Relacion historica, vigencia, actas y firma del administrador.</p>
             </div>
             <span className="rounded-full bg-slate-100 px-3 py-1 text-sm font-medium text-slate-600">{administradoresOrdenados.length}</span>
           </div>
@@ -440,6 +523,7 @@ export default async function ConsorcioDetallePage({
                       <th className="px-4 py-3">Desde</th>
                       <th className="px-4 py-3">Hasta</th>
                       <th className="px-4 py-3">Acta</th>
+                      <th className="px-4 py-3">Firma</th>
                       <th className="px-4 py-3 text-right">Acciones</th>
                     </tr>
                   </thead>
@@ -448,6 +532,7 @@ export default async function ConsorcioDetallePage({
                       const status = getAdminStatus(rel, today);
                       const vigente = status.label === "Activo";
                       const actaDisponible = Boolean(rel.actaPath || rel.actaNombreOriginal);
+                      const firmaDisponible = Boolean(rel.firmaPath || rel.firmaNombreOriginal || rel.firmaContenido);
 
                       return (
                         <Fragment key={rel.id}>
@@ -462,14 +547,59 @@ export default async function ConsorcioDetallePage({
                                 <div className="space-y-1">
                                   <a href={buildAdministradorActaPath(rel.id)} target="_blank" rel="noreferrer" className="font-medium text-blue-600 hover:underline">Ver acta</a>
                                   <p className="text-xs text-slate-500">{rel.actaNombreOriginal ?? "Acta cargada"}</p>
+                                  <form action={eliminarActaAdministrador}>
+                                    <input type="hidden" name="consorcioId" value={consorcio.id} />
+                                    <input type="hidden" name="relacionId" value={rel.id} />
+                                    <ConfirmSubmitButton
+                                      className="text-xs font-medium text-red-600 hover:underline"
+                                      message="¿Eliminar el acta cargada de este administrador?"
+                                    >
+                                      Eliminar acta
+                                    </ConfirmSubmitButton>
+                                  </form>
                                 </div>
                               ) : (
                                 <span className="inline-flex rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700">Falta acta</span>
                               )}
                             </td>
                             <td className="px-4 py-4">
+                              {firmaDisponible ? (
+                                <div className="space-y-1">
+                                  <span className="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+                                    Firma cargada
+                                  </span>
+                                  <p className="text-xs text-slate-500">{rel.firmaNombreOriginal ?? "Firma disponible"}</p>
+                                </div>
+                              ) : (
+                                <span className="inline-flex rounded-full border border-slate-200 bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
+                                  Sin firma
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-4 py-4">
                               <div className="flex items-center justify-end gap-3 whitespace-nowrap">
                                 <Link href={`/consorcios/${consorcio.id}?editarAdmin=${rel.id}`} className="font-medium text-blue-600 hover:underline">{actaDisponible ? "Editar" : "Completar acta"}</Link>
+                                {firmaDisponible ? (
+                                  <>
+                                    <a href={buildAdministradorFirmaPath(rel.id)} target="_blank" rel="noreferrer" className="font-medium text-blue-600 hover:underline">
+                                      Ver firma
+                                    </a>
+                                    <form action={eliminarFirmaAdministrador}>
+                                      <input type="hidden" name="consorcioId" value={consorcio.id} />
+                                      <input type="hidden" name="relacionId" value={rel.id} />
+                                      <ConfirmSubmitButton
+                                        className="font-medium text-red-600 hover:text-red-700 hover:underline"
+                                        message="¿Eliminar la firma cargada de este administrador?"
+                                      >
+                                        Eliminar firma
+                                      </ConfirmSubmitButton>
+                                    </form>
+                                  </>
+                                ) : (
+                                  <Link href={`/consorcios/${consorcio.id}?editarAdmin=${rel.id}`} className="font-medium text-blue-600 hover:underline">
+                                    Cargar firma
+                                  </Link>
+                                )}
                                 <form action={desasociarAdministrador}><input type="hidden" name="consorcioId" value={consorcio.id} /><input type="hidden" name="relacionId" value={rel.id} /><button type="submit" className="font-medium text-red-600 hover:text-red-700 hover:underline">Desasociar</button></form>
                                 {vigente ? <Link href={`/consorcios/${consorcio.id}?finalizarAdmin=${rel.id}`} className="font-medium text-slate-700 hover:text-slate-900 hover:underline">Finalizar</Link> : null}
                               </div>
@@ -478,7 +608,7 @@ export default async function ConsorcioDetallePage({
 
                           {editarAdminId === rel.id ? (
                             <tr className="border-t border-slate-100 bg-slate-50/50">
-                              <td className="px-4 py-4" colSpan={7}>
+                              <td className="px-4 py-4" colSpan={8}>
                                 <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                                   <form action={editarAdministrador} className="space-y-4" encType="multipart/form-data">
                                     <input type="hidden" name="consorcioId" value={consorcio.id} />
@@ -493,6 +623,30 @@ export default async function ConsorcioDetallePage({
                                       <p className="text-xs text-slate-500">Si subes un archivo nuevo, reemplazara el acta actual.</p>
                                     </div>
                                     {actaDisponible ? <p className="text-xs text-slate-600">Acta actual: <a href={buildAdministradorActaPath(rel.id)} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">{rel.actaNombreOriginal ?? "Ver acta"}</a></p> : <p className="text-xs text-amber-700">Esta designacion aun no tiene acta cargada.</p>}
+                                    <div className="space-y-1">
+                                      <label className="text-sm font-medium text-slate-700">Firma del administrador</label>
+                                      <input type="file" name="firma" accept="image/png,image/jpeg,image/webp" className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm" />
+                                      <p className="text-xs text-slate-500">Si subes una imagen nueva, reemplazara la firma actual. Recomendado: PNG transparente.</p>
+                                    </div>
+                                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                      <div className="space-y-1">
+                                        <label className="text-sm font-medium text-slate-700">Aclaracion</label>
+                                        <input
+                                          name="firmaAclaracion"
+                                          defaultValue={rel.firmaAclaracion ?? `${rel.persona.nombre} ${rel.persona.apellido}`}
+                                          className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none ring-blue-500 focus:ring-2"
+                                        />
+                                      </div>
+                                      <div className="space-y-1">
+                                        <label className="text-sm font-medium text-slate-700">Rol</label>
+                                        <input
+                                          name="firmaRol"
+                                          defaultValue={rel.firmaRol ?? "Administrador"}
+                                          className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none ring-blue-500 focus:ring-2"
+                                        />
+                                      </div>
+                                    </div>
+                                    {firmaDisponible ? <p className="text-xs text-slate-600">Firma actual: <a href={buildAdministradorFirmaPath(rel.id)} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">{rel.firmaNombreOriginal ?? "Ver firma"}</a></p> : <p className="text-xs text-slate-500">Este administrador aun no tiene firma cargada.</p>}
                                     <div className="flex items-center gap-3"><button type="submit" className="rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-medium text-white hover:bg-slate-800">Guardar cambios</button><Link href={`/consorcios/${consorcio.id}`} className="text-sm font-medium text-slate-700 hover:underline">Cancelar</Link></div>
                                   </form>
                                 </div>
@@ -502,7 +656,7 @@ export default async function ConsorcioDetallePage({
 
                           {vigente && finalizarAdminId === rel.id ? (
                             <tr className="border-t border-slate-100 bg-slate-50/50">
-                              <td className="px-4 py-4" colSpan={7}>
+                              <td className="px-4 py-4" colSpan={8}>
                                 <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                                   <form action={finalizarAdministrador} className="space-y-4" encType="multipart/form-data">
                                     <input type="hidden" name="consorcioId" value={consorcio.id} />

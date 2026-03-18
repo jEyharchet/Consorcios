@@ -1,12 +1,9 @@
-import { type Buffer } from "node:buffer";
-
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import ConvocatoriaActions from "./ConvocatoriaActions";
 import { enviarConvocatoriaAsamblea, enviarSimulacionConvocatoriaAsamblea } from "../../../../lib/administracion";
 import { ADMIN_EMAIL_TIPO_ENVIO, ASAMBLEA_ESTADO, ASAMBLEA_TIPO } from "../../../../lib/administracion-shared";
-import { buildAsambleaFirmaPath, firmaValidationMessages, isFirmaFileProvided, saveAsambleaFirmaFile } from "../../../../lib/asamblea-firma";
 import { requireConsorcioAccess, requireConsorcioRole } from "../../../../lib/auth";
 import { formatEmailSummary } from "../../../../lib/email-tracking";
 import { prisma } from "../../../../lib/prisma";
@@ -80,12 +77,6 @@ function getFeedback(searchParams: {
         type: "error" as const,
         text: "No se pudo enviar la simulacion de convocatoria. Intenta nuevamente en unos minutos.",
       };
-    case "firma_invalida":
-      return { type: "error" as const, text: firmaValidationMessages.invalid_type };
-    case "firma_max_size":
-      return { type: "error" as const, text: firmaValidationMessages.max_size };
-    case "firma_write_error":
-      return { type: "error" as const, text: firmaValidationMessages.write_error };
     default:
       return null;
   }
@@ -248,54 +239,6 @@ export default async function AsambleaDetallePage({
     });
 
     redirect(`/administracion/asambleas/${id}${buildReturnQuery({ ok: "acta_guardada" })}#acta`);
-  }
-
-  async function guardarFirmaConvocatoria(formData: FormData) {
-    "use server";
-
-    const id = Number(formData.get("id"));
-    const consorcioId = Number(formData.get("consorcioId"));
-    const firmaAclaracion = (formData.get("firmaAclaracion")?.toString() ?? "").trim();
-    const firmaRol = (formData.get("firmaRol")?.toString() ?? "").trim();
-    const firmaFile = formData.get("firmaArchivo");
-
-    await requireConsorcioRole(consorcioId, ["ADMIN", "OPERADOR"]);
-
-    let firmaData:
-      | {
-          firmaNombreOriginal: string;
-          firmaMimeType: string;
-          firmaContenido: Buffer;
-          firmaSubidaAt: Date;
-        }
-      | null = null;
-
-    if (isFirmaFileProvided(firmaFile)) {
-      const result = await saveAsambleaFirmaFile(firmaFile);
-
-      if (!result.ok) {
-        const errorMap = {
-          invalid_type: "firma_invalida",
-          max_size: "firma_max_size",
-          write_error: "firma_write_error",
-        } as const;
-
-        redirect(`/administracion/asambleas/${id}${buildReturnQuery({ error: errorMap[result.code] })}`);
-      }
-
-      firmaData = result.data;
-    }
-
-    await prisma.asamblea.update({
-      where: { id },
-      data: {
-        ...(firmaData ?? {}),
-        firmaAclaracion: firmaAclaracion || null,
-        firmaRol: firmaRol || null,
-      },
-    });
-
-    redirect(`/administracion/asambleas/${id}${buildReturnQuery({ ok: "asamblea_actualizada" })}`);
   }
 
   async function agregarOrdenDia(formData: FormData) {
@@ -681,77 +624,6 @@ export default async function AsambleaDetallePage({
                   enviarSimulacion={enviarSimulacionConvocatoria}
                   enviarConvocatoria={enviarConvocatoria}
                 />
-
-                <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <h3 className="text-sm font-semibold text-slate-900">Firma del administrador</h3>
-                      <p className="mt-1 text-xs text-slate-500">
-                        Puedes reemplazar la firma desde aqui. Recomendado: PNG con fondo transparente.
-                      </p>
-                    </div>
-                    {asamblea.firmaMimeType ? (
-                      <a
-                        href={buildAsambleaFirmaPath(asamblea.id)}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-xs font-medium text-blue-600 hover:underline"
-                      >
-                        Ver firma actual
-                      </a>
-                    ) : null}
-                  </div>
-
-                  <div className="mt-3 rounded-md border border-dashed border-slate-300 bg-white px-3 py-2 text-sm text-slate-600">
-                    {asamblea.firmaNombreOriginal
-                      ? `Firma cargada: ${asamblea.firmaNombreOriginal}`
-                      : "Todavia no hay una firma cargada para esta convocatoria."}
-                  </div>
-
-                  <form action={guardarFirmaConvocatoria} className="mt-4 space-y-4">
-                    <input type="hidden" name="id" value={asamblea.id} />
-                    <input type="hidden" name="consorcioId" value={asamblea.consorcioId} />
-
-                    <div className="space-y-1">
-                      <label htmlFor="firmaArchivo" className="text-sm font-medium text-slate-700">Cambiar firma</label>
-                      <input
-                        id="firmaArchivo"
-                        name="firmaArchivo"
-                        type="file"
-                        accept="image/png,image/jpeg,image/webp"
-                        className="block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 file:mr-3 file:rounded-md file:border-0 file:bg-slate-100 file:px-3 file:py-2 file:text-sm file:font-medium file:text-slate-700"
-                      />
-                    </div>
-
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <div className="space-y-1">
-                        <label htmlFor="firmaAclaracion" className="text-sm font-medium text-slate-700">Aclaracion</label>
-                        <input
-                          id="firmaAclaracion"
-                          name="firmaAclaracion"
-                          defaultValue={asamblea.firmaAclaracion ?? ""}
-                          className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <label htmlFor="firmaRol" className="text-sm font-medium text-slate-700">Rol</label>
-                        <input
-                          id="firmaRol"
-                          name="firmaRol"
-                          defaultValue={asamblea.firmaRol ?? "Administrador"}
-                          className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-                        />
-                      </div>
-                    </div>
-
-                    <button
-                      type="submit"
-                      className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                    >
-                      Guardar firma
-                    </button>
-                  </form>
-                </div>
               </div>
             ) : (
               <p className="mt-4 rounded-lg border border-dashed border-slate-200 px-4 py-3 text-sm text-slate-500">

@@ -4,7 +4,7 @@ import { Buffer } from "node:buffer";
 
 import { sendEmail } from "./email";
 import { buildEmailSummary, EMAIL_ESTADO, type EmailSummary } from "./email-tracking";
-import { buildAsambleaFirmaPath } from "./asamblea-firma";
+import { buildAdministradorFirmaPath } from "./asamblea-firma";
 import { buildAsambleaConvocatoriaPreviewHtml } from "./asamblea-convocatoria-preview";
 import { prisma } from "./prisma";
 import { launchPdfBrowser } from "./pdf-browser";
@@ -409,6 +409,11 @@ async function getAsambleaConvocatoriaRecord(asambleaId: number) {
             },
             orderBy: [{ desde: "desc" }, { id: "desc" }],
             select: {
+              id: true,
+              firmaMimeType: true,
+              firmaContenido: true,
+              firmaAclaracion: true,
+              firmaRol: true,
               persona: {
                 select: {
                   nombre: true,
@@ -433,6 +438,19 @@ async function getAsambleaConvocatoriaRecord(asambleaId: number) {
 }
 
 function buildConvocatoriaPdfHtml(asamblea: NonNullable<AsambleaConvocatoriaRecord>) {
+  const administradorVigente = asamblea.consorcio.administradores.find(
+    (relation) => relation.firmaContenido || relation.firmaAclaracion || relation.firmaRol,
+  ) ?? asamblea.consorcio.administradores[0];
+
+  const firmaMimeType = administradorVigente?.firmaMimeType ?? asamblea.firmaMimeType;
+  const firmaContenido = administradorVigente?.firmaContenido ?? asamblea.firmaContenido;
+  const firmaAclaracion =
+    administradorVigente?.firmaAclaracion?.trim() ||
+    (administradorVigente?.persona ? `${administradorVigente.persona.nombre} ${administradorVigente.persona.apellido}`.trim() : "") ||
+    asamblea.firmaAclaracion ||
+    undefined;
+  const firmaRol = administradorVigente?.firmaRol?.trim() || asamblea.firmaRol || "Administrador";
+
   const html = buildAsambleaConvocatoriaPreviewHtml({
     consorcioNombre: asamblea.consorcio.nombre,
     consorcioNombreLegal: asamblea.consorcio.tituloLegal?.trim() || asamblea.consorcio.nombre,
@@ -444,10 +462,10 @@ function buildConvocatoriaPdfHtml(asamblea: NonNullable<AsambleaConvocatoriaReco
     ordenDelDia: asamblea.ordenDia.map((item) => ({ titulo: item.titulo })),
     logoUrl: getArchivoUrl("/branding/logo-gray-v2.png") ?? "/branding/logo-gray-v2.png",
     firmaUrl:
-      buildFirmaDataUrl(asamblea.firmaMimeType, asamblea.firmaContenido) ??
-      (asamblea.firmaContenido ? getArchivoUrl(buildAsambleaFirmaPath(asamblea.id)) : null),
-    firmaAclaracion: asamblea.firmaAclaracion ?? undefined,
-    firmaRol: asamblea.firmaRol ?? undefined,
+      buildFirmaDataUrl(firmaMimeType, firmaContenido) ??
+      (administradorVigente?.firmaContenido ? getArchivoUrl(buildAdministradorFirmaPath(administradorVigente.id)) : null),
+    firmaAclaracion: firmaAclaracion || undefined,
+    firmaRol: firmaRol || undefined,
   });
 
   return `

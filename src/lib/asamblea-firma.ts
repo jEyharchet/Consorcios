@@ -25,7 +25,7 @@ export function isFirmaFileProvided(file: FormDataEntryValue | null): file is Fi
   return file instanceof File && file.size > 0;
 }
 
-export async function saveAsambleaFirmaFile(file: File): Promise<SaveAsambleaFirmaResult> {
+export async function saveFirmaFile(file: File): Promise<SaveAsambleaFirmaResult> {
   if (!ALLOWED_MIME_TYPES.has(file.type)) {
     return { ok: false, code: "invalid_type" };
   }
@@ -51,8 +51,14 @@ export async function saveAsambleaFirmaFile(file: File): Promise<SaveAsambleaFir
   }
 }
 
+export const saveAsambleaFirmaFile = saveFirmaFile;
+
 export function buildAsambleaFirmaPath(asambleaId: number) {
   return `/api/asambleas/${asambleaId}/firma`;
+}
+
+export function buildAdministradorFirmaPath(relacionId: number) {
+  return `/api/consorcio-administradores/${relacionId}/firma`;
 }
 
 export const firmaValidationMessages = {
