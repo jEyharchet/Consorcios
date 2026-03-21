@@ -1,4 +1,4 @@
-import type { PrismaClient } from "@prisma/client";
+import { Prisma, type PrismaClient } from "@prisma/client";
 
 export type DateRange = {
   desde: Date;
@@ -87,4 +87,47 @@ export async function hasUnidadPersonaOverlap({
   });
 
   return Boolean(overlap);
+}
+
+type UnidadPersonaCreateClient = PrismaClient | Prisma.TransactionClient;
+
+type UnidadPersonaCreateData = {
+  unidadId: number;
+  personaId: number;
+  desde: Date;
+  hasta: Date | null;
+};
+
+export async function createUnidadPersonaWithSequenceRecovery(
+  prisma: UnidadPersonaCreateClient,
+  data: UnidadPersonaCreateData,
+) {
+  try {
+    return await prisma.unidadPersona.create({ data });
+  } catch (error) {
+    const target = error instanceof Prisma.PrismaClientKnownRequestError
+      ? (error.meta as { target?: unknown } | undefined)?.target
+      : undefined;
+    const targetIncludesId =
+      (Array.isArray(target) && target.includes("id")) ||
+      (typeof target === "string" && target.includes("id"));
+    const isDuplicatedId =
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2002" &&
+      targetIncludesId;
+
+    if (!isDuplicatedId) {
+      throw error;
+    }
+
+    await prisma.$executeRawUnsafe(`
+      SELECT setval(
+        pg_get_serial_sequence('"UnidadPersona"', 'id'),
+        COALESCE((SELECT MAX(id) FROM "UnidadPersona"), 1),
+        true
+      );
+    `);
+
+    return prisma.unidadPersona.create({ data });
+  }
 }

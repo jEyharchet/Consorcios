@@ -7,6 +7,7 @@ import { getAccessContext, requireAuth, requireConsorcioRole } from "../../lib/a
 import { updateActiveConsorcio } from "../../lib/consorcio-activo";
 import { ONBOARDING_PATH } from "../../lib/onboarding";
 import { prisma } from "../../lib/prisma";
+import { createUnidadPersonaWithSequenceRecovery } from "../../lib/relaciones";
 
 const ESTADO_PENDIENTE = "PENDIENTE";
 const ESTADO_APROBADA = "APROBADA";
@@ -363,12 +364,11 @@ async function resolveSolicitud(params: {
         });
 
         if (!existingRelation) {
-          await tx.unidadPersona.create({
-            data: {
-              unidadId: unidad.id,
-              personaId,
-              desde: now,
-            },
+          await createUnidadPersonaWithSequenceRecovery(tx, {
+            unidadId: unidad.id,
+            personaId,
+            desde: now,
+            hasta: null,
           });
         }
       }

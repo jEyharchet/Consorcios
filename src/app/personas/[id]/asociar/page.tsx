@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { prisma } from "../../../../../lib/prisma";
-import { overlaps, validateNoOverlap } from "../../../../lib/relaciones";
+import { createUnidadPersonaWithSequenceRecovery, overlaps, validateNoOverlap } from "../../../../lib/relaciones";
 import AsociarUnidadForm from "./AsociarUnidadForm";
 
 export default async function AsociarPersonaUnidadPage({
@@ -117,13 +117,11 @@ export default async function AsociarPersonaUnidadPage({
     }
 
     try {
-      await prisma.unidadPersona.create({
-        data: {
-          unidadId,
-          personaId,
-          desde: nuevoDesde,
-          hasta: nuevoHasta,
-        },
+      await createUnidadPersonaWithSequenceRecovery(prisma, {
+        unidadId,
+        personaId,
+        desde: nuevoDesde,
+        hasta: nuevoHasta,
       });
     } catch {
       qs.set("error", "solape");

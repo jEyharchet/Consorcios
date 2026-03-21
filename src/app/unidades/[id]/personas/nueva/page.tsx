@@ -4,7 +4,7 @@ import { Prisma } from "@prisma/client";
 
 import { prisma } from "../../../../../../lib/prisma";
 import { requireConsorcioRole } from "../../../../../lib/auth";
-import { validateNoOverlap } from "../../../../../lib/relaciones";
+import { createUnidadPersonaWithSequenceRecovery, validateNoOverlap } from "../../../../../lib/relaciones";
 
 async function createPersonaWithSequenceRecovery(data: {
   nombre: string;
@@ -130,8 +130,11 @@ export default async function NuevaPersonaPage({
       redirect(`/unidades/${unidadId}/personas/nueva?${qs.toString()}`);
     }
 
-    await prisma.unidadPersona.create({
-      data: { unidadId, personaId, desde, hasta },
+    await createUnidadPersonaWithSequenceRecovery(prisma, {
+      unidadId,
+      personaId,
+      desde,
+      hasta,
     });
 
     redirect(`/unidades/${unidadId}`);
@@ -189,13 +192,11 @@ export default async function NuevaPersonaPage({
       redirect(`/unidades/${unidadId}/personas/nueva?${qs.toString()}`);
     }
 
-    await prisma.unidadPersona.create({
-      data: {
-        unidadId,
-        personaId: persona.id,
-        desde,
-        hasta,
-      },
+    await createUnidadPersonaWithSequenceRecovery(prisma, {
+      unidadId,
+      personaId: persona.id,
+      desde,
+      hasta,
     });
 
     redirect(`/unidades/${unidadId}`);
