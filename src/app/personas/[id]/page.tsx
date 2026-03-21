@@ -11,7 +11,7 @@ export default async function PersonaDetallePage({
   searchParams,
 }: {
   params: { id: string };
-  searchParams?: { finalizar?: string; error?: string; confirmDelete?: string };
+  searchParams?: { finalizar?: string; error?: string; confirmDelete?: string; ok?: string };
 }) {
   const id = Number(params.id);
   if (Number.isNaN(id) || id <= 0) {
@@ -21,6 +21,7 @@ export default async function PersonaDetallePage({
   const access = await getAccessContext();
   const finalizarId = Number(searchParams?.finalizar);
   const error = searchParams?.error;
+  const ok = searchParams?.ok;
   const confirmDelete = searchParams?.confirmDelete === "1";
 
   const persona = await prisma.persona.findUnique({
@@ -171,6 +172,16 @@ export default async function PersonaDetallePage({
       return b.desde.getTime() - a.desde.getTime();
     });
 
+  const canEditPersona =
+    access.isSuperAdmin ||
+    relacionesVisibles.some((rel) =>
+      access.assignments.some(
+        (assignment) =>
+          assignment.consorcioId === rel.unidad.consorcioId &&
+          (assignment.role === "ADMIN" || assignment.role === "OPERADOR"),
+      ),
+    );
+
   const errorMessage =
     error === "fin_requerido"
       ? "Tenes que indicar una fecha de fin."
@@ -181,6 +192,8 @@ export default async function PersonaDetallePage({
           : error === "delete_vigente"
             ? "No se puede eliminar la persona porque tiene relaciones vigentes."
             : null;
+
+  const okMessage = ok === "updated" ? "Los datos de la persona se guardaron correctamente." : null;
 
   return (
     <main className="mx-auto w-full max-w-6xl px-6 py-10">
@@ -195,6 +208,15 @@ export default async function PersonaDetallePage({
         </div>
 
         <div className="flex items-center gap-2">
+          {canEditPersona ? (
+            <Link
+              href={`/personas/${persona.id}/editar`}
+              className="inline-block rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              Editar
+            </Link>
+          ) : null}
+
           <Link
             href={`/personas/${persona.id}/asociar`}
             className="inline-block rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
@@ -233,6 +255,12 @@ export default async function PersonaDetallePage({
           <Link href={`/personas/${persona.id}`} className="ml-3 text-blue-600 hover:underline">
             Cancelar
           </Link>
+        </div>
+      ) : null}
+
+      {okMessage ? (
+        <div className="mb-4 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+          {okMessage}
         </div>
       ) : null}
 
