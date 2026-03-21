@@ -15,3 +15,14 @@ export const ASAMBLEA_ESTADO = {
   REALIZADA: "REALIZADA",
   CERRADA: "CERRADA",
 } as const;
+
+export const ASAMBLEA_VOTACION_ESTADO = {
+  BORRADOR: "BORRADOR",
+  ABIERTA: "ABIERTA",
+  CERRADA: "CERRADA",
+} as const;
+
+export const ASAMBLEA_VOTO_VALOR = {
+  POSITIVO: "POSITIVO",
+  NEGATIVO: "NEGATIVO",
+} as const;

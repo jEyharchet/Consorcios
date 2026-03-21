@@ -71,6 +71,7 @@ model Persona {
   consorciosAdministrados ConsorcioAdministrador[]
   usuarios                User[]
   solicitudesAcceso       SolicitudAccesoConsorcio[]
+  votosAsamblea           AsambleaVotacionVoto[]
 
   @@index([apellido, nombre])
   @@index([email])
@@ -448,6 +449,7 @@ model User {
   persona                    Persona?                   @relation(fields: [personaId], references: [id], onDelete: SetNull)
   solicitudesAccesoConsorcio SolicitudAccesoConsorcio[] @relation("SolicitudAccesoSolicitante")
   solicitudesResueltas       SolicitudAccesoConsorcio[] @relation("SolicitudAccesoResueltaPor")
+  votosAsambleaRegistrados   AsambleaVotacionVoto[]     @relation("AsambleaVotoRegistradoPor")
 
   @@index([personaId])
 }
@@ -640,9 +642,47 @@ model AsambleaOrdenDia {
   updatedAt   DateTime @updatedAt
 
   asamblea Asamblea @relation(fields: [asambleaId], references: [id], onDelete: Cascade)
+  votaciones AsambleaVotacion[]
 
   @@index([asambleaId])
   @@unique([asambleaId, orden])
+}
+
+model AsambleaVotacion {
+  id                Int      @id @default(autoincrement())
+  asambleaOrdenDiaId Int
+  cuestion          String
+  estado            String   @default("BORRADOR")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  ordenDia AsambleaOrdenDia      @relation(fields: [asambleaOrdenDiaId], references: [id], onDelete: Cascade)
+  votos    AsambleaVotacionVoto[]
+
+  @@index([asambleaOrdenDiaId])
+  @@index([estado])
+}
+
+model AsambleaVotacionVoto {
+  id                       Int      @id @default(autoincrement())
+  votacionId               Int
+  personaId                Int
+  valor                    String
+  votadoAt                 DateTime @default(now())
+  registradoPorAdministrador Boolean @default(false)
+  registradoPorUserId      String?
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+
+  votacion          AsambleaVotacion @relation(fields: [votacionId], references: [id], onDelete: Cascade)
+  persona           Persona          @relation(fields: [personaId], references: [id], onDelete: Cascade)
+  registradoPorUser User?            @relation("AsambleaVotoRegistradoPor", fields: [registradoPorUserId], references: [id], onDelete: SetNull)
+
+  @@unique([votacionId, personaId])
+  @@index([votacionId])
+  @@index([personaId])
+  @@index([registradoPorUserId])
+  @@index([votacionId, valor])
 }
 
 
