@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import ConvocatoriaActions from "./ConvocatoriaActions";
+import IconConfirmSubmitButton from "./IconConfirmSubmitButton";
 import { enviarConvocatoriaAsamblea, enviarSimulacionConvocatoriaAsamblea } from "../../../../lib/administracion";
 import {
   ADMIN_EMAIL_TIPO_ENVIO,
@@ -140,6 +141,8 @@ export default async function AsambleaDetallePage({
     enviados?: string;
     fallidos?: string;
     sinDestinatario?: string;
+    panel?: string;
+    item?: string;
   };
 }) {
   const asambleaId = Number(params.id);
@@ -482,6 +485,14 @@ export default async function AsambleaDetallePage({
   const convocatoriasEnviadas = asamblea.enviosEmail.filter(
     (envio) => envio.estado === "ENVIADO" && envio.tipoEnvio === ADMIN_EMAIL_TIPO_ENVIO.ASAMBLEA_CONVOCATORIA,
   ).length;
+  const activePanel = (searchParams?.panel ?? "").trim();
+  const activeItemId = Number(searchParams?.item);
+  const isActiveItem = Number.isInteger(activeItemId);
+  const buildOrdenDiaUrl = (panel?: string, itemId?: number) =>
+    `/administracion/asambleas/${asamblea.id}${buildReturnQuery({
+      panel: panel ?? null,
+      item: panel && itemId ? String(itemId) : null,
+    })}#orden-dia`;
 
   return (
     <main className="mx-auto w-full max-w-7xl px-6 py-10">
@@ -616,179 +627,251 @@ export default async function AsambleaDetallePage({
               ) : (
                 asamblea.ordenDia.map((item) => (
                   <div key={item.id} className="rounded-lg border border-slate-200 p-4">
-                    {canOperate ? (
-                      <div className="space-y-4">
-                        <form action={actualizarOrdenDia} className="space-y-3">
-                          <input type="hidden" name="asambleaOrdenDiaId" value={item.id} />
-                          <input type="hidden" name="asambleaId" value={asamblea.id} />
-                          <input type="hidden" name="consorcioId" value={asamblea.consorcioId} />
+                    {(() => {
+                      const isEditing = activePanel === "editar" && isActiveItem && activeItemId === item.id;
+                      const isShowingDescription = activePanel === "descripcion" && isActiveItem && activeItemId === item.id;
+                      const isShowingVotes = activePanel === "votaciones" && isActiveItem && activeItemId === item.id;
+                      const hasDescription = Boolean(item.descripcion?.trim());
+                      const hasVotaciones = item.votaciones.length > 0;
 
-                          <div className="grid gap-3 sm:grid-cols-[120px_1fr]">
-                            <div className="space-y-1">
-                              <label className="text-xs font-medium text-slate-600">Orden</label>
-                              <input name="orden" type="number" min="1" defaultValue={item.orden} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
-                            </div>
-                            <div className="space-y-1">
-                              <label className="text-xs font-medium text-slate-600">Titulo</label>
-                              <input name="titulo" defaultValue={item.titulo} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
-                            </div>
-                          </div>
-
-                          <div className="space-y-1">
-                            <label className="text-xs font-medium text-slate-600">Descripcion</label>
-                            <textarea name="descripcion" rows={3} defaultValue={item.descripcion ?? ""} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
-                          </div>
-
-                          <div className="flex gap-3">
-                            <button type="submit" className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
-                              Guardar punto
-                            </button>
-                            <button
-                              formAction={eliminarOrdenDia}
-                              type="submit"
-                              className="rounded-md border border-red-200 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
-                            >
-                              Eliminar
-                            </button>
-                          </div>
-                        </form>
-
-                        <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-                          <div className="flex items-center justify-between gap-3">
-                            <div>
-                              <h3 className="text-sm font-semibold text-slate-900">Votaciones del punto</h3>
-                              <p className="mt-1 text-xs text-slate-500">
-                                Crea una o mas votaciones asociadas a este punto del orden del dia.
+                      return (
+                        <div className="space-y-4">
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div className="min-w-0">
+                              <p className="text-sm font-semibold text-slate-900">
+                                {item.orden}. {item.titulo}
                               </p>
                             </div>
-                            <span className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-slate-600">
-                              {item.votaciones.length}
-                            </span>
-                          </div>
-
-                          <div className="mt-3 space-y-3">
-                            {item.votaciones.length === 0 ? (
-                              <p className="rounded-md border border-dashed border-slate-300 bg-white px-3 py-3 text-sm text-slate-500">
-                                Todavia no hay votaciones creadas para este punto.
-                              </p>
-                            ) : (
-                              item.votaciones.map((votacion) => {
-                                const resumen = summarizeVotacion({
-                                  totalPersonas: personasVotantes.length,
-                                  votos: votacion.votos,
-                                });
-
-                                return (
-                                  <div key={votacion.id} className="rounded-md border border-slate-200 bg-white px-4 py-3">
-                                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                                      <div>
-                                        <p className="text-sm font-semibold text-slate-900">{votacion.cuestion}</p>
-                                        <p className="mt-1 text-xs uppercase tracking-wide text-slate-500">
-                                          Estado: {votacion.estado}
-                                        </p>
-                                      </div>
-                                      <div className="flex flex-wrap items-center gap-2">
-                                        <Link
-                                          href={`/administracion/asambleas/votaciones/${votacion.id}`}
-                                          className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                                        >
-                                          Ver detalle
-                                        </Link>
-                                        <form action={actualizarEstadoVotacion}>
-                                          <input type="hidden" name="asambleaId" value={asamblea.id} />
-                                          <input type="hidden" name="consorcioId" value={asamblea.consorcioId} />
-                                          <input type="hidden" name="votacionId" value={votacion.id} />
-                                          <input type="hidden" name="estado" value={ASAMBLEA_VOTACION_ESTADO.ABIERTA} />
-                                          <button
-                                            type="submit"
-                                            className="rounded-md border border-blue-200 px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50"
-                                          >
-                                            Abrir
-                                          </button>
-                                        </form>
-                                        <form action={actualizarEstadoVotacion}>
-                                          <input type="hidden" name="asambleaId" value={asamblea.id} />
-                                          <input type="hidden" name="consorcioId" value={asamblea.consorcioId} />
-                                          <input type="hidden" name="votacionId" value={votacion.id} />
-                                          <input type="hidden" name="estado" value={ASAMBLEA_VOTACION_ESTADO.CERRADA} />
-                                          <button
-                                            type="submit"
-                                            className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                                          >
-                                            Cerrar
-                                          </button>
-                                        </form>
-                                      </div>
-                                    </div>
-                                    <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-600">
-                                      <span className="rounded-full bg-emerald-50 px-2.5 py-1 font-medium text-emerald-700">
-                                        Positivos: {resumen.positivos}
-                                      </span>
-                                      <span className="rounded-full bg-rose-50 px-2.5 py-1 font-medium text-rose-700">
-                                        Negativos: {resumen.negativos}
-                                      </span>
-                                      <span className="rounded-full bg-slate-100 px-2.5 py-1 font-medium text-slate-700">
-                                        Pendientes: {resumen.pendientes}
-                                      </span>
-                                    </div>
-                                  </div>
-                                );
-                              })
-                            )}
-                          </div>
-
-                          <form action={agregarVotacion} className="mt-4 space-y-3 rounded-md border border-dashed border-slate-300 bg-white p-3">
-                            <input type="hidden" name="asambleaId" value={asamblea.id} />
-                            <input type="hidden" name="consorcioId" value={asamblea.consorcioId} />
-                            <input type="hidden" name="asambleaOrdenDiaId" value={item.id} />
-                            <div className="space-y-1">
-                              <label className="text-xs font-medium text-slate-600">Cuestion a votar</label>
-                              <textarea
-                                name="cuestion"
-                                rows={2}
-                                placeholder="Ej. Aprobar presupuesto de mantenimiento del hall."
-                                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-                              />
-                            </div>
-                            <button
-                              type="submit"
-                              className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
-                            >
-                              Agregar votacion
-                            </button>
-                          </form>
-                        </div>
-                      </div>
-                    ) : (
-                      <div>
-                        <p className="text-sm font-semibold text-slate-900">{item.orden}. {item.titulo}</p>
-                        <p className="mt-1 text-sm text-slate-600">{item.descripcion ?? "Sin descripcion."}</p>
-                        <div className="mt-4 space-y-3">
-                          {item.votaciones.length === 0 ? (
-                            <p className="rounded-md border border-dashed border-slate-200 px-3 py-3 text-sm text-slate-500">
-                              Este punto aun no tiene votaciones.
-                            </p>
-                          ) : (
-                            item.votaciones.map((votacion) => (
-                              <div key={votacion.id} className="rounded-md border border-slate-200 bg-slate-50 px-4 py-3">
-                                <p className="text-sm font-semibold text-slate-900">{votacion.cuestion}</p>
-                                <div className="mt-2 flex flex-wrap items-center gap-2">
-                                  <span className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-slate-600">
-                                    {votacion.estado}
-                                  </span>
+                            <div className="flex items-center justify-end gap-2">
+                              {canOperate ? (
+                                <>
                                   <Link
-                                    href={`/administracion/asambleas/votaciones/${votacion.id}`}
-                                    className="text-xs font-medium text-blue-600 hover:underline"
+                                    href={buildOrdenDiaUrl("editar", item.id)}
+                                    title="Editar"
+                                    aria-label="Editar"
+                                    className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-300 text-slate-700 hover:bg-slate-50"
                                   >
-                                    Ver detalle de votacion
+                                    <span aria-hidden="true">✏️</span>
+                                  </Link>
+                                  <Link
+                                    href={buildOrdenDiaUrl("votaciones", item.id)}
+                                    title="Agregar votación"
+                                    aria-label="Agregar votación"
+                                    className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-300 text-slate-700 hover:bg-slate-50"
+                                  >
+                                    <span aria-hidden="true">☑️</span>
+                                  </Link>
+                                  <form action={eliminarOrdenDia}>
+                                    <input type="hidden" name="asambleaOrdenDiaId" value={item.id} />
+                                    <input type="hidden" name="asambleaId" value={asamblea.id} />
+                                    <input type="hidden" name="consorcioId" value={asamblea.consorcioId} />
+                                    <IconConfirmSubmitButton
+                                      title="Eliminar"
+                                      message="¿Eliminar este punto del orden del día?"
+                                      className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-red-200 text-red-700 hover:bg-red-50"
+                                    >
+                                      <span aria-hidden="true">❌</span>
+                                    </IconConfirmSubmitButton>
+                                  </form>
+                                </>
+                              ) : null}
+
+                              {hasDescription ? (
+                                <Link
+                                  href={buildOrdenDiaUrl("descripcion", item.id)}
+                                  title="Ver descripción"
+                                  aria-label="Ver descripción"
+                                  className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-300 text-slate-700 hover:bg-slate-50"
+                                >
+                                  <span aria-hidden="true">👁️</span>
+                                </Link>
+                              ) : null}
+
+                              {hasVotaciones ? (
+                                <Link
+                                  href={buildOrdenDiaUrl("votaciones", item.id)}
+                                  title="Ver votación"
+                                  aria-label="Ver votación"
+                                  className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-emerald-200 text-emerald-700 hover:bg-emerald-50"
+                                >
+                                  <span aria-hidden="true">✅✅</span>
+                                </Link>
+                              ) : null}
+                            </div>
+                          </div>
+
+                          {isShowingDescription && hasDescription ? (
+                            <div className="rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                              <div className="flex items-start justify-between gap-3">
+                                <p className="whitespace-pre-wrap">{item.descripcion}</p>
+                                <Link
+                                  href={buildOrdenDiaUrl()}
+                                  className="text-xs font-medium text-slate-600 hover:underline"
+                                >
+                                  Cerrar
+                                </Link>
+                              </div>
+                            </div>
+                          ) : null}
+
+                          {isEditing && canOperate ? (
+                            <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                              <form action={actualizarOrdenDia} className="space-y-3">
+                                <input type="hidden" name="asambleaOrdenDiaId" value={item.id} />
+                                <input type="hidden" name="asambleaId" value={asamblea.id} />
+                                <input type="hidden" name="consorcioId" value={asamblea.consorcioId} />
+
+                                <div className="grid gap-3 sm:grid-cols-[120px_1fr]">
+                                  <div className="space-y-1">
+                                    <label className="text-xs font-medium text-slate-600">Orden</label>
+                                    <input name="orden" type="number" min="1" defaultValue={item.orden} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                                  </div>
+                                  <div className="space-y-1">
+                                    <label className="text-xs font-medium text-slate-600">Titulo</label>
+                                    <input name="titulo" defaultValue={item.titulo} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                                  </div>
+                                </div>
+
+                                <div className="space-y-1">
+                                  <label className="text-xs font-medium text-slate-600">Descripcion</label>
+                                  <textarea name="descripcion" rows={3} defaultValue={item.descripcion ?? ""} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                                </div>
+
+                                <div className="flex gap-3">
+                                  <button type="submit" className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800">
+                                    Guardar punto
+                                  </button>
+                                  <Link href={buildOrdenDiaUrl()} className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-white">
+                                    Cancelar
+                                  </Link>
+                                </div>
+                              </form>
+                            </div>
+                          ) : null}
+
+                          {isShowingVotes ? (
+                            <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                              <div className="flex items-center justify-between gap-3">
+                                <div>
+                                  <h3 className="text-sm font-semibold text-slate-900">Votaciones del punto</h3>
+                                  <p className="mt-1 text-xs text-slate-500">
+                                    {hasVotaciones
+                                      ? "Listado y acceso al ABM de votaciones asociadas a este punto."
+                                      : "Crea una o mas votaciones asociadas a este punto del orden del dia."}
+                                  </p>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <span className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-slate-600">
+                                    {item.votaciones.length}
+                                  </span>
+                                  <Link href={buildOrdenDiaUrl()} className="text-xs font-medium text-slate-600 hover:underline">
+                                    Cerrar
                                   </Link>
                                 </div>
                               </div>
-                            ))
-                          )}
+
+                              <div className="mt-3 space-y-3">
+                                {item.votaciones.length === 0 ? (
+                                  <p className="rounded-md border border-dashed border-slate-300 bg-white px-3 py-3 text-sm text-slate-500">
+                                    Todavia no hay votaciones creadas para este punto.
+                                  </p>
+                                ) : (
+                                  item.votaciones.map((votacion) => {
+                                    const resumen = summarizeVotacion({
+                                      totalPersonas: personasVotantes.length,
+                                      votos: votacion.votos,
+                                    });
+
+                                    return (
+                                      <div key={votacion.id} className="rounded-md border border-slate-200 bg-white px-4 py-3">
+                                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                          <div>
+                                            <p className="text-sm font-semibold text-slate-900">{votacion.cuestion}</p>
+                                            <p className="mt-1 text-xs uppercase tracking-wide text-slate-500">
+                                              Estado: {votacion.estado}
+                                            </p>
+                                          </div>
+                                          <div className="flex flex-wrap items-center gap-2">
+                                            <Link
+                                              href={`/administracion/asambleas/votaciones/${votacion.id}`}
+                                              className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                                            >
+                                              Ver detalle
+                                            </Link>
+                                            {canOperate ? (
+                                              <>
+                                                <form action={actualizarEstadoVotacion}>
+                                                  <input type="hidden" name="asambleaId" value={asamblea.id} />
+                                                  <input type="hidden" name="consorcioId" value={asamblea.consorcioId} />
+                                                  <input type="hidden" name="votacionId" value={votacion.id} />
+                                                  <input type="hidden" name="estado" value={ASAMBLEA_VOTACION_ESTADO.ABIERTA} />
+                                                  <button
+                                                    type="submit"
+                                                    className="rounded-md border border-blue-200 px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50"
+                                                  >
+                                                    Abrir
+                                                  </button>
+                                                </form>
+                                                <form action={actualizarEstadoVotacion}>
+                                                  <input type="hidden" name="asambleaId" value={asamblea.id} />
+                                                  <input type="hidden" name="consorcioId" value={asamblea.consorcioId} />
+                                                  <input type="hidden" name="votacionId" value={votacion.id} />
+                                                  <input type="hidden" name="estado" value={ASAMBLEA_VOTACION_ESTADO.CERRADA} />
+                                                  <button
+                                                    type="submit"
+                                                    className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                                                  >
+                                                    Cerrar
+                                                  </button>
+                                                </form>
+                                              </>
+                                            ) : null}
+                                          </div>
+                                        </div>
+                                        <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-600">
+                                          <span className="rounded-full bg-emerald-50 px-2.5 py-1 font-medium text-emerald-700">
+                                            Positivos: {resumen.positivos}
+                                          </span>
+                                          <span className="rounded-full bg-rose-50 px-2.5 py-1 font-medium text-rose-700">
+                                            Negativos: {resumen.negativos}
+                                          </span>
+                                          <span className="rounded-full bg-slate-100 px-2.5 py-1 font-medium text-slate-700">
+                                            Pendientes: {resumen.pendientes}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    );
+                                  })
+                                )}
+                              </div>
+
+                              {canOperate ? (
+                                <form action={agregarVotacion} className="mt-4 space-y-3 rounded-md border border-dashed border-slate-300 bg-white p-3">
+                                  <input type="hidden" name="asambleaId" value={asamblea.id} />
+                                  <input type="hidden" name="consorcioId" value={asamblea.consorcioId} />
+                                  <input type="hidden" name="asambleaOrdenDiaId" value={item.id} />
+                                  <div className="space-y-1">
+                                    <label className="text-xs font-medium text-slate-600">Cuestion a votar</label>
+                                    <textarea
+                                      name="cuestion"
+                                      rows={2}
+                                      placeholder="Ej. Aprobar presupuesto de mantenimiento del hall."
+                                      className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                                    />
+                                  </div>
+                                  <button
+                                    type="submit"
+                                    className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
+                                  >
+                                    Agregar votacion
+                                  </button>
+                                </form>
+                              ) : null}
+                            </div>
+                          ) : null}
                         </div>
-                      </div>
-                    )}
+                      );
+                    })()}
                   </div>
                 ))
               )}
