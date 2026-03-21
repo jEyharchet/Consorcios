@@ -19,7 +19,7 @@ export default async function AdministracionPage() {
     );
   }
 
-  const [consorcio, asambleasCount, comunicacionesCount] = await Promise.all([
+  const [consorcio, asambleasCount, comunicacionesCount, configuracionCount] = await Promise.all([
     prisma.consorcio.findUnique({
       where: { id: activeConsorcioId },
       select: { id: true, nombre: true },
@@ -31,6 +31,11 @@ export default async function AdministracionPage() {
       where: {
         consorcioId: activeConsorcioId,
         tipoEnvio: "COMUNICACION_LIBRE",
+      },
+    }),
+    prisma.consorcioConfiguracion.count({
+      where: {
+        consorcioId: activeConsorcioId,
       },
     }),
   ]);
@@ -55,7 +60,7 @@ export default async function AdministracionPage() {
         </p>
       </header>
 
-      <section className="grid gap-6 md:grid-cols-2">
+      <section className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
         <Link
           href="/administracion/comunicaciones"
           className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:border-slate-300"
@@ -80,6 +85,19 @@ export default async function AdministracionPage() {
           </p>
           <p className="mt-6 text-3xl font-semibold text-slate-950">{asambleasCount}</p>
           <p className="text-sm text-slate-500">asambleas registradas</p>
+        </Link>
+
+        <Link
+          href="/administracion/configuracion"
+          className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:border-slate-300"
+        >
+          <p className="text-sm font-medium uppercase tracking-wide text-slate-500">Submodulo</p>
+          <h2 className="mt-2 text-2xl font-semibold text-slate-950">Configuracion</h2>
+          <p className="mt-3 text-sm text-slate-600">
+            Reglas por consorcio para expensas, votaciones, plazos y comportamiento institucional.
+          </p>
+          <p className="mt-6 text-3xl font-semibold text-slate-950">{configuracionCount}</p>
+          <p className="text-sm text-slate-500">registro por consorcio activo</p>
         </Link>
       </section>
     </main>

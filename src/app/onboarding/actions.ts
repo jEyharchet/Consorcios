@@ -4,6 +4,7 @@ import { Prisma } from "@prisma/client";
 import { redirect } from "next/navigation";
 
 import { getAccessContext, requireAuth, requireConsorcioRole } from "../../lib/auth";
+import { DEFAULT_CONSORCIO_CONFIG } from "../../lib/consorcio-config";
 import { updateActiveConsorcio } from "../../lib/consorcio-activo";
 import { ONBOARDING_PATH } from "../../lib/onboarding";
 import { prisma } from "../../lib/prisma";
@@ -274,6 +275,9 @@ export async function createConsorcioFromOnboarding(formData: FormData) {
         codigoPostal: codigoPostal || null,
         cuit: cuit || null,
         fechaCreacion: now,
+        configuracion: {
+          create: DEFAULT_CONSORCIO_CONFIG,
+        },
         administradores: {
           create: {
             personaId: persona.id,

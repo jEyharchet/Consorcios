@@ -1,6 +1,7 @@
 ﻿import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { DEFAULT_CONSORCIO_CONFIG } from "../../../lib/consorcio-config";
 import { prisma } from "../../../lib/prisma";
 import { requireSuperAdmin } from "../../../lib/auth";
 
@@ -28,6 +29,9 @@ async function createConsorcio(formData: FormData) {
       codigoPostal,
       cuit,
       fechaCreacion,
+      configuracion: {
+        create: DEFAULT_CONSORCIO_CONFIG,
+      },
     } as never,
   });
 

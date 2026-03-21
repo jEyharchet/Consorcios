@@ -31,6 +31,27 @@ model Consorcio {
   pagosGasto          PagoGasto[]
   asambleas           Asamblea[]
   enviosEmail         EnvioEmail[]
+  configuracion       ConsorcioConfiguracion?
+}
+
+model ConsorcioConfiguracion {
+  id                  String   @id @default(cuid())
+  consorcioId         Int      @unique
+  cocherasModo        String
+  votoTipo            String
+  votoMultiplesDueno  String
+  votoMultiplesUnidad String
+  votoPeso            String
+  plazoTipo           String
+  plazoDias           Int
+  votoDefault         String
+  enviarCopiaAdmin    Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  consorcio Consorcio @relation(fields: [consorcioId], references: [id], onDelete: Cascade)
+
+  @@index([consorcioId])
 }
 
 model Unidad {
