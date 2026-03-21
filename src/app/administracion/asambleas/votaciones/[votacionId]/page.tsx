@@ -4,6 +4,8 @@ import { notFound, redirect } from "next/navigation";
 import {
   ASAMBLEA_VOTACION_ESTADO,
   ASAMBLEA_VOTO_VALOR,
+  isAsambleaVotacionEstado,
+  isAsambleaVotoValor,
 } from "../../../../../lib/administracion-shared";
 import {
   canReceiveVotes,
@@ -113,11 +115,13 @@ export default async function AsambleaVotacionDetallePage({
 
     const targetVotacionId = Number(formData.get("votacionId"));
     const targetConsorcioId = Number(formData.get("consorcioId"));
-    const valor = (formData.get("valor")?.toString() ?? "").trim();
+    const rawValor = (formData.get("valor")?.toString() ?? "").trim();
 
-    if (![ASAMBLEA_VOTO_VALOR.POSITIVO, ASAMBLEA_VOTO_VALOR.NEGATIVO].includes(valor)) {
+    if (!isAsambleaVotoValor(rawValor)) {
       redirect(`/administracion/asambleas/votaciones/${targetVotacionId}?error=voto_invalido`);
     }
+
+    const valor = rawValor;
 
     const currentAccess = await requireConsorcioAccess(targetConsorcioId);
 
@@ -174,11 +178,13 @@ export default async function AsambleaVotacionDetallePage({
     const targetVotacionId = Number(formData.get("votacionId"));
     const targetConsorcioId = Number(formData.get("consorcioId"));
     const personaId = Number(formData.get("personaId"));
-    const valor = (formData.get("valor")?.toString() ?? "").trim();
+    const rawValor = (formData.get("valor")?.toString() ?? "").trim();
 
-    if (![ASAMBLEA_VOTO_VALOR.POSITIVO, ASAMBLEA_VOTO_VALOR.NEGATIVO].includes(valor)) {
+    if (!isAsambleaVotoValor(rawValor)) {
       redirect(`/administracion/asambleas/votaciones/${targetVotacionId}?error=voto_invalido`);
     }
+
+    const valor = rawValor;
 
     const currentAccess = await requireConsorcioRole(targetConsorcioId, ["ADMIN", "OPERADOR"]);
 
@@ -230,17 +236,13 @@ export default async function AsambleaVotacionDetallePage({
 
     const targetVotacionId = Number(formData.get("votacionId"));
     const targetConsorcioId = Number(formData.get("consorcioId"));
-    const estado = (formData.get("estado")?.toString() ?? ASAMBLEA_VOTACION_ESTADO.BORRADOR).trim();
+    const rawEstado = (formData.get("estado")?.toString() ?? ASAMBLEA_VOTACION_ESTADO.BORRADOR).trim();
 
-    if (
-      ![
-        ASAMBLEA_VOTACION_ESTADO.BORRADOR,
-        ASAMBLEA_VOTACION_ESTADO.ABIERTA,
-        ASAMBLEA_VOTACION_ESTADO.CERRADA,
-      ].includes(estado)
-    ) {
+    if (!isAsambleaVotacionEstado(rawEstado)) {
       redirect(`/administracion/asambleas/votaciones/${targetVotacionId}?error=estado_invalido`);
     }
+
+    const estado = rawEstado;
 
     await requireConsorcioRole(targetConsorcioId, ["ADMIN", "OPERADOR"]);
 

@@ -8,6 +8,7 @@ import {
   ASAMBLEA_ESTADO,
   ASAMBLEA_TIPO,
   ASAMBLEA_VOTACION_ESTADO,
+  isAsambleaVotacionEstado,
 } from "../../../../lib/administracion-shared";
 import { getPersonasConsorcioParaVotacion, summarizeVotacion } from "../../../../lib/asamblea-votaciones";
 import { requireConsorcioAccess, requireConsorcioRole } from "../../../../lib/auth";
@@ -379,9 +380,15 @@ export default async function AsambleaDetallePage({
     const asambleaIdValue = Number(formData.get("asambleaId"));
     const consorcioId = Number(formData.get("consorcioId"));
     const votacionId = Number(formData.get("votacionId"));
-    const estado = (formData.get("estado")?.toString() ?? ASAMBLEA_VOTACION_ESTADO.BORRADOR).trim();
+    const rawEstado = (formData.get("estado")?.toString() ?? ASAMBLEA_VOTACION_ESTADO.BORRADOR).trim();
 
     await requireConsorcioRole(consorcioId, ["ADMIN", "OPERADOR"]);
+
+    if (!isAsambleaVotacionEstado(rawEstado)) {
+      redirect(`/administracion/asambleas/${asambleaIdValue}${buildReturnQuery({ error: "votacion_inexistente" })}#orden-dia`);
+    }
+
+    const estado = rawEstado;
 
     const votacion = await prisma.asambleaVotacion.findUnique({
       where: { id: votacionId },
