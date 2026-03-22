@@ -12,13 +12,21 @@ function getMessage(error?: string, ok?: string) {
   if (error === "invalid_assignment") return { type: "error", text: "La asignacion indicada no es valida." };
   if (error === "duplicate_assignment") return { type: "error", text: "Ese usuario ya tiene asignado ese consorcio." };
   if (error === "not_found") return { type: "error", text: "No se encontro el usuario o el consorcio." };
+  if (error === "invalid_user") return { type: "error", text: "El usuario indicado no es valido." };
   if (error === "super_admin_assignment") {
     return { type: "error", text: "No se pueden gestionar consorcios para un SUPER_ADMIN." };
+  }
+  if (error === "self_delete_not_allowed") {
+    return { type: "error", text: "No puedes eliminar tu propio usuario." };
+  }
+  if (error === "last_super_admin") {
+    return { type: "error", text: "No se puede eliminar el ultimo usuario con rol SUPER_ADMIN." };
   }
 
   if (ok === "assigned") return { type: "ok", text: "Consorcio asignado correctamente." };
   if (ok === "role_updated") return { type: "ok", text: "Rol actualizado correctamente." };
   if (ok === "assignment_removed") return { type: "ok", text: "Asignacion eliminada correctamente." };
+  if (ok === "user_deleted") return { type: "ok", text: "Usuario eliminado correctamente." };
 
   return null;
 }
@@ -26,9 +34,10 @@ function getMessage(error?: string, ok?: string) {
 export default async function UsuariosPage({
   searchParams,
 }: {
-  searchParams?: { error?: string; ok?: string };
+  searchParams?: { error?: string; ok?: string; confirmDelete?: string };
 }) {
-  await requireSuperAdmin();
+  const currentUser = await requireSuperAdmin();
+  const confirmDeleteUserId = (searchParams?.confirmDelete ?? "").trim();
 
   async function assignConsorcioToUser(formData: FormData) {
     "use server";
@@ -113,6 +122,46 @@ export default async function UsuariosPage({
     redirect("/usuarios?ok=assignment_removed");
   }
 
+  async function deleteUser(formData: FormData) {
+    "use server";
+
+    const currentUser = await requireSuperAdmin();
+    const userId = (formData.get("userId")?.toString() ?? "").trim();
+
+    if (!userId) {
+      redirect("/usuarios?error=invalid_user");
+    }
+
+    if (userId === currentUser.id) {
+      redirect("/usuarios?error=self_delete_not_allowed");
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, role: true },
+    });
+
+    if (!user) {
+      redirect("/usuarios?error=not_found");
+    }
+
+    if (user.role === "SUPER_ADMIN") {
+      const superAdminCount = await prisma.user.count({
+        where: { role: "SUPER_ADMIN" },
+      });
+
+      if (superAdminCount <= 1) {
+        redirect("/usuarios?error=last_super_admin");
+      }
+    }
+
+    await prisma.user.delete({
+      where: { id: userId },
+    });
+
+    redirect("/usuarios?ok=user_deleted");
+  }
+
   const [usuarios, consorcios] = await Promise.all([
     prisma.user.findMany({
       orderBy: [{ createdAt: "asc" }],
@@ -173,18 +222,21 @@ export default async function UsuariosPage({
                 <th className="px-4 py-3 font-semibold text-slate-700">CreatedAt</th>
                 <th className="px-4 py-3 font-semibold text-slate-700">Consorcios asignados</th>
                 <th className="px-4 py-3 font-semibold text-slate-700">Asignar consorcio</th>
+                <th className="px-4 py-3 font-semibold text-slate-700">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {usuarios.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-5 text-slate-500">
+                  <td colSpan={8} className="px-4 py-5 text-slate-500">
                     No hay usuarios cargados.
                   </td>
                 </tr>
               ) : (
                 usuarios.map((usuario) => {
                   const isSuperAdmin = usuario.role === "SUPER_ADMIN";
+                  const isCurrentUser = usuario.id === currentUser.id;
+                  const isConfirmingDelete = confirmDeleteUserId === usuario.id;
 
                   return (
                     <tr key={usuario.id} className={usuario.activo ? "align-top" : "align-top bg-gray-50 text-gray-500"}>
@@ -266,6 +318,36 @@ export default async function UsuariosPage({
                               Asignar
                             </button>
                           </form>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        {isCurrentUser ? (
+                          <span className="text-slate-400">Sesion actual</span>
+                        ) : isConfirmingDelete ? (
+                          <div className="space-y-2 rounded-md border border-red-200 bg-red-50 p-3">
+                            <p className="text-xs text-red-700">Confirma la eliminacion del usuario.</p>
+                            <div className="flex flex-wrap items-center gap-3">
+                              <form action={deleteUser}>
+                                <input type="hidden" name="userId" value={usuario.id} />
+                                <button
+                                  type="submit"
+                                  className="rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700"
+                                >
+                                  Confirmar
+                                </button>
+                              </form>
+                              <Link href="/usuarios" className="text-xs text-slate-700 hover:underline">
+                                Cancelar
+                              </Link>
+                            </div>
+                          </div>
+                        ) : (
+                          <Link
+                            href={`/usuarios?confirmDelete=${usuario.id}`}
+                            className="inline-flex rounded-md border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-700 transition hover:bg-red-100"
+                          >
+                            Eliminar
+                          </Link>
                         )}
                       </td>
                     </tr>
