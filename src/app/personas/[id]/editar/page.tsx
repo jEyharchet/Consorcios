@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { getAccessContext } from "../../../../../lib/auth";
-import { prisma } from "../../../../../lib/prisma";
+import { getAccessContext } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
 
 function normalizeOptionalText(value: FormDataEntryValue | null) {
   const text = value?.toString().trim() ?? "";
