@@ -103,7 +103,14 @@ export default async function OnboardingPage({ searchParams }: OnboardingPagePro
               </div>
               <div className="space-y-1">
                 <label htmlFor="email" className="text-sm font-medium text-slate-700">Email</label>
-                <input id="email" name="email" type="email" defaultValue={defaultUserEmail} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none ring-slate-400 focus:ring-2" />
+                <input
+                  id="email"
+                  name="email"
+                  type="email"
+                  defaultValue={defaultUserEmail}
+                  readOnly={Boolean(defaultUserEmail)}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none ring-slate-400 focus:ring-2 read-only:bg-slate-50 read-only:text-slate-500"
+                />
               </div>
               <div className="space-y-1">
                 <label htmlFor="telefono" className="text-sm font-medium text-slate-700">Telefono</label>
@@ -295,7 +302,14 @@ export default async function OnboardingPage({ searchParams }: OnboardingPagePro
                   </div>
                   <div className="space-y-1">
                     <label htmlFor="email" className="text-sm font-medium text-slate-700">Email</label>
-                    <input id="email" name="email" type="email" defaultValue={user.persona.email ?? user.email ?? ""} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none ring-slate-400 focus:ring-2" />
+                    <input
+                      id="email"
+                      name="email"
+                      type="email"
+                      defaultValue={user.persona.email ?? user.email ?? ""}
+                      readOnly={Boolean(user.email)}
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none ring-slate-400 focus:ring-2 read-only:bg-slate-50 read-only:text-slate-500"
+                    />
                   </div>
                   <div className="space-y-1">
                     <label htmlFor="telefono" className="text-sm font-medium text-slate-700">Telefono</label>

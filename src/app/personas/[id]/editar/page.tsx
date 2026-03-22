@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { getAccessContext } from "@/lib/auth";
+import { findPersonaByEmail, normalizeEmailIdentity } from "@/lib/persona-identity";
 import { prisma } from "@/lib/prisma";
 
 function normalizeOptionalText(value: FormDataEntryValue | null) {
@@ -108,7 +109,8 @@ export default async function EditarPersonaPage({
 
     const nombre = (formData.get("nombre")?.toString() ?? "").trim();
     const apellido = (formData.get("apellido")?.toString() ?? "").trim();
-    const email = normalizeOptionalText(formData.get("email"));
+    const emailRaw = normalizeOptionalText(formData.get("email"));
+    const email = normalizeEmailIdentity(emailRaw);
     const telefono = normalizeOptionalText(formData.get("telefono"));
 
     if (!nombre) {
@@ -121,6 +123,14 @@ export default async function EditarPersonaPage({
 
     if (email && !isValidEmail(email)) {
       redirect(`/personas/${personaId}/editar?error=email_invalido`);
+    }
+
+    if (email) {
+      const existingPersona = await findPersonaByEmail(email, prisma);
+
+      if (existingPersona && existingPersona.id !== personaId) {
+        redirect(`/personas/${personaId}/editar?error=email_duplicado`);
+      }
     }
 
     await prisma.persona.update({
@@ -143,6 +153,8 @@ export default async function EditarPersonaPage({
         ? "El apellido es obligatorio."
         : searchParams?.error === "email_invalido"
           ? "El email informado no es valido."
+          : searchParams?.error === "email_duplicado"
+            ? "Ya existe otra persona con ese email."
           : null;
 
   return (

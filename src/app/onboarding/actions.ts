@@ -7,6 +7,7 @@ import { getAccessContext, requireAuth, requireConsorcioRole } from "../../lib/a
 import { DEFAULT_CONSORCIO_CONFIG } from "../../lib/consorcio-config";
 import { updateActiveConsorcio } from "../../lib/consorcio-activo";
 import { ONBOARDING_PATH } from "../../lib/onboarding";
+import { ensureUserPersona, findPersonaByEmail, normalizeEmailIdentity } from "../../lib/persona-identity";
 import { prisma } from "../../lib/prisma";
 import { createUnidadPersonaWithSequenceRecovery } from "../../lib/relaciones";
 
@@ -73,6 +74,7 @@ async function resolveOrCreatePersonaTx(
     select: {
       personaId: true,
       email: true,
+      name: true,
     },
   });
 
@@ -80,7 +82,7 @@ async function resolveOrCreatePersonaTx(
     throw new Error("Usuario no encontrado al resolver persona.");
   }
 
-  const personaEmail = params.email ?? existingUser.email ?? null;
+  const personaEmail = normalizeEmailIdentity(params.email ?? existingUser.email);
 
   if (existingUser.personaId) {
     return tx.persona.update({
@@ -96,16 +98,7 @@ async function resolveOrCreatePersonaTx(
   }
 
   if (personaEmail) {
-    const matchingPersona = await tx.persona.findFirst({
-      where: {
-        email: {
-          equals: personaEmail,
-          mode: "insensitive",
-        },
-      },
-      orderBy: { id: "asc" },
-      select: { id: true },
-    });
+    const matchingPersona = await findPersonaByEmail(personaEmail, tx);
 
     if (matchingPersona) {
       await tx.persona.update({
@@ -127,22 +120,22 @@ async function resolveOrCreatePersonaTx(
     }
   }
 
-  const persona = await tx.persona.create({
-    data: {
-      nombre: params.nombre,
-      apellido: params.apellido,
+  const personaId = await ensureUserPersona(
+    {
+      userId: params.userId,
       email: personaEmail,
+      name: `${params.nombre} ${params.apellido}`.trim() || existingUser.name,
       telefono: params.telefono,
+      createIfMissing: true,
     },
-    select: { id: true },
-  });
+    tx,
+  );
 
-  await tx.user.update({
-    where: { id: params.userId },
-    data: { personaId: persona.id },
-  });
+  if (!personaId) {
+    throw new Error("No se pudo crear la persona del usuario durante onboarding.");
+  }
 
-  return persona;
+  return { id: personaId };
 }
 
 export async function createPersonaForOnboarding(formData: FormData) {

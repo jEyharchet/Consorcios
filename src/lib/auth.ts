@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { auth } from "../../auth";
+import { ensureUserPersona } from "./persona-identity";
 import { normalizeDate } from "./relaciones";
 import { prisma } from "./prisma";
 import { isConsorcioRole, type ConsorcioRole, type GlobalRole } from "./roles";
@@ -36,34 +37,6 @@ const ROLE_RANK: Record<ConsorcioRole, number> = {
   ADMIN: 3,
 };
 
-async function linkUserToPersonaByEmail(user: UserRecord): Promise<number | null> {
-  if (user.personaId || !user.email) {
-    return user.personaId;
-  }
-
-  const persona = await prisma.persona.findFirst({
-    where: {
-      email: {
-        equals: user.email,
-        mode: "insensitive",
-      },
-    },
-    orderBy: { id: "asc" },
-    select: { id: true },
-  });
-
-  if (!persona) {
-    return null;
-  }
-
-  await prisma.user.update({
-    where: { id: user.id },
-    data: { personaId: persona.id },
-  });
-
-  return persona.id;
-}
-
 async function getCurrentUserRecord(userId: string): Promise<CurrentUser | null> {
   const user = await prisma.user.findUnique({
     where: { id: userId },
@@ -74,7 +47,15 @@ async function getCurrentUserRecord(userId: string): Promise<CurrentUser | null>
     return null;
   }
 
-  const personaId = await linkUserToPersonaByEmail(user);
+  const personaId = await ensureUserPersona(
+    {
+      userId: user.id,
+      email: user.email,
+      name: user.name,
+      createIfMissing: true,
+    },
+    prisma,
+  );
   const role: GlobalRole = user.role === "SUPER_ADMIN" ? "SUPER_ADMIN" : "USER";
 
   return {
