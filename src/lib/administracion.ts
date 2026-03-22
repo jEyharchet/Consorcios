@@ -25,10 +25,21 @@ type ResponsableRelacion = {
 };
 
 type UnidadDestinataria = {
-  unidadId: number;
+  unidadId: number | null;
   unidadLabel: string;
   responsablesLabel: string;
   emails: string[];
+};
+
+export type ConvocatoriaResponsableElegible = {
+  key: string;
+  personaId: number;
+  unidadId: number;
+  nombre: string;
+  apellido: string;
+  nombreCompleto: string;
+  unidadLabel: string;
+  email: string;
 };
 
 type EmailAttachment = {
@@ -200,21 +211,97 @@ async function getDestinatariosConsorcio(consorcioId: number, unidadIds?: number
   });
 }
 
+export async function getResponsablesConvocatoriaElegibles(consorcioId: number): Promise<ConvocatoriaResponsableElegible[]> {
+  const unidades = await prisma.unidad.findMany({
+    where: { consorcioId },
+    orderBy: [{ identificador: "asc" }, { id: "asc" }],
+    select: {
+      id: true,
+      identificador: true,
+      tipo: true,
+      personas: {
+        orderBy: [{ desde: "desc" }, { persona: { apellido: "asc" } }, { persona: { nombre: "asc" } }],
+        select: {
+          desde: true,
+          hasta: true,
+          persona: {
+            select: {
+              id: true,
+              nombre: true,
+              apellido: true,
+              email: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  const rows = unidades.flatMap((unidad) => {
+    const responsablesBase = resolveBaseResponsables(unidad.personas);
+
+    return responsablesBase.flatMap((rel) => {
+      const email = normalizeEmail(rel.persona.email);
+
+      if (!email) {
+        return [];
+      }
+
+      const nombreCompleto = `${rel.persona.apellido}, ${rel.persona.nombre}`.trim();
+
+      return [
+        {
+          key: `${unidad.id}:${rel.persona.id}:${email}`,
+          personaId: rel.persona.id,
+          unidadId: unidad.id,
+          nombre: rel.persona.nombre,
+          apellido: rel.persona.apellido,
+          nombreCompleto,
+          unidadLabel: `${unidad.identificador} (${unidad.tipo})`,
+          email,
+        } satisfies ConvocatoriaResponsableElegible,
+      ];
+    });
+  });
+
+  const deduped = new Map<string, ConvocatoriaResponsableElegible>();
+
+  for (const row of rows) {
+    if (!deduped.has(row.key)) {
+      deduped.set(row.key, row);
+    }
+  }
+
+  return Array.from(deduped.values()).sort((a, b) => {
+    const apellidoCompare = a.apellido.localeCompare(b.apellido, "es-AR");
+    if (apellidoCompare !== 0) return apellidoCompare;
+
+    const nombreCompare = a.nombre.localeCompare(b.nombre, "es-AR");
+    if (nombreCompare !== 0) return nombreCompare;
+
+    return a.unidadLabel.localeCompare(b.unidadLabel, "es-AR");
+  });
+}
+
 function mergeDestinatariosPorUnidad(destinatarios: UnidadDestinataria[]) {
-  const grouped = new Map<number, UnidadDestinataria>();
+  const grouped = new Map<string, UnidadDestinataria>();
 
   for (const destinatario of destinatarios) {
-    const current = grouped.get(destinatario.unidadId);
+    const groupKey =
+      destinatario.unidadId === null
+        ? `null:${destinatario.unidadLabel}:${destinatario.responsablesLabel}`
+        : String(destinatario.unidadId);
+    const current = grouped.get(groupKey);
 
     if (!current) {
-      grouped.set(destinatario.unidadId, {
+      grouped.set(groupKey, {
         ...destinatario,
         emails: Array.from(new Set(destinatario.emails)),
       });
       continue;
     }
 
-    grouped.set(destinatario.unidadId, {
+    grouped.set(groupKey, {
       unidadId: destinatario.unidadId,
       unidadLabel: current.unidadLabel || destinatario.unidadLabel,
       responsablesLabel:
@@ -228,6 +315,55 @@ function mergeDestinatariosPorUnidad(destinatarios: UnidadDestinataria[]) {
   return Array.from(grouped.values());
 }
 
+function buildDestinatariosSelectivos(
+  elegibles: ConvocatoriaResponsableElegible[],
+  selectedKeys: string[],
+): UnidadDestinataria[] {
+  const selectedKeySet = new Set(selectedKeys);
+  const grouped = new Map<
+    string,
+    {
+      unidadIds: Set<number>;
+      unidadLabels: Set<string>;
+      responsablesLabels: Set<string>;
+      email: string;
+    }
+  >();
+
+  for (const row of elegibles) {
+    if (!selectedKeySet.has(row.key)) {
+      continue;
+    }
+
+    const current = grouped.get(row.email);
+
+    if (!current) {
+      grouped.set(row.email, {
+        unidadIds: new Set([row.unidadId]),
+        unidadLabels: new Set([row.unidadLabel]),
+        responsablesLabels: new Set([row.nombreCompleto]),
+        email: row.email,
+      });
+      continue;
+    }
+
+    current.unidadIds.add(row.unidadId);
+    current.unidadLabels.add(row.unidadLabel);
+    current.responsablesLabels.add(row.nombreCompleto);
+  }
+
+  return Array.from(grouped.values()).map((group) => {
+    const unidadIds = Array.from(group.unidadIds);
+
+    return {
+      unidadId: unidadIds.length === 1 ? unidadIds[0] : null,
+      unidadLabel: Array.from(group.unidadLabels).join(" / "),
+      responsablesLabel: Array.from(group.responsablesLabels).join(" / "),
+      emails: [group.email],
+    };
+  });
+}
+
 async function registrarYEnviar(params: {
   consorcioId: number;
   consorcioNombre: string;
@@ -235,13 +371,15 @@ async function registrarYEnviar(params: {
   asuntoTemplate: string;
   cuerpoTemplate: string;
   destinatarios: UnidadDestinataria[];
+  groupStrategy?: "unidad" | "none";
   asambleaId?: number;
   detailLines?: string[];
   attachments?: EmailAttachment[];
   afterSuccess?: () => Promise<void>;
 }) {
   const results: Array<{ estado: string }> = [];
-  const destinatariosAgrupados = mergeDestinatariosPorUnidad(params.destinatarios);
+  const destinatariosAgrupados =
+    params.groupStrategy === "none" ? params.destinatarios : mergeDestinatariosPorUnidad(params.destinatarios);
 
   for (const destinatario of destinatariosAgrupados) {
     const placeholders = {
@@ -259,7 +397,7 @@ async function registrarYEnviar(params: {
           consorcioId: params.consorcioId,
           asambleaId: params.asambleaId ?? null,
           tipoEnvio: params.tipoEnvio,
-          unidadId: destinatario.unidadId,
+          unidadId: destinatario.unidadId ?? null,
           destinatario: null,
           asunto,
           cuerpo,
@@ -276,7 +414,7 @@ async function registrarYEnviar(params: {
         consorcioId: params.consorcioId,
         asambleaId: params.asambleaId ?? null,
         tipoEnvio: params.tipoEnvio,
-        unidadId: destinatario.unidadId,
+        unidadId: destinatario.unidadId ?? null,
         destinatario: destinatario.emails.join(", "),
         asunto,
         cuerpo,
@@ -505,7 +643,10 @@ async function renderConvocatoriaPdfBuffer(asamblea: NonNullable<AsambleaConvoca
   }
 }
 
-export async function enviarConvocatoriaAsamblea(asambleaId: number): Promise<EmailSummary> {
+export async function enviarConvocatoriaAsamblea(
+  asambleaId: number,
+  options?: { selectedDestinatarioKeys?: string[] },
+): Promise<EmailSummary> {
   const asamblea = await getAsambleaConvocatoriaRecord(asambleaId);
 
   if (!asamblea) {
@@ -526,22 +667,35 @@ export async function enviarConvocatoriaAsamblea(asambleaId: number): Promise<Em
     ordenDelDia: asamblea.ordenDia,
   });
 
-  const destinatarios = await getDestinatariosConsorcio(asamblea.consorcioId);
+  const selectedKeys = Array.from(new Set(options?.selectedDestinatarioKeys ?? []));
+  const isSelectivo = selectedKeys.length > 0;
+  const destinatarios = isSelectivo
+    ? buildDestinatariosSelectivos(await getResponsablesConvocatoriaElegibles(asamblea.consorcioId), selectedKeys)
+    : await getDestinatariosConsorcio(asamblea.consorcioId);
+
+  if (isSelectivo && destinatarios.length === 0) {
+    throw new Error("convocatoria_sin_destinatarios");
+  }
+
   const pdfBuffer = await renderConvocatoriaPdfBuffer(asamblea);
 
   return registrarYEnviar({
     consorcioId: asamblea.consorcioId,
     consorcioNombre: asamblea.consorcio.nombre,
     asambleaId: asamblea.id,
-    tipoEnvio: ADMIN_EMAIL_TIPO_ENVIO.ASAMBLEA_CONVOCATORIA,
+    tipoEnvio: isSelectivo
+      ? ADMIN_EMAIL_TIPO_ENVIO.ASAMBLEA_CONVOCATORIA_SELECTIVA
+      : ADMIN_EMAIL_TIPO_ENVIO.ASAMBLEA_CONVOCATORIA,
     asuntoTemplate: `Convocatoria a asamblea ${asamblea.tipo.toLowerCase()} - {{consorcio}}`,
     cuerpoTemplate: cuerpo,
     destinatarios,
+    groupStrategy: isSelectivo ? "none" : "unidad",
     detailLines: [
       `Consorcio: ${asamblea.consorcio.nombre}`,
       `Fecha: ${formatDate(asamblea.fecha)}`,
       `Hora: ${asamblea.hora}`,
       `Lugar: ${asamblea.lugar}`,
+      `Tipo de envio: ${isSelectivo ? "convocatoria selectiva" : "convocatoria a todos los responsables vigentes"}`,
     ],
     attachments: [
       {

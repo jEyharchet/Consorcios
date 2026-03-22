@@ -3,7 +3,12 @@ import { redirect } from "next/navigation";
 
 import ConvocatoriaActions from "./ConvocatoriaActions";
 import IconConfirmSubmitButton from "./IconConfirmSubmitButton";
-import { enviarConvocatoriaAsamblea, enviarSimulacionConvocatoriaAsamblea } from "../../../../lib/administracion";
+import {
+  enviarConvocatoriaAsamblea,
+  enviarSimulacionConvocatoriaAsamblea,
+  getResponsablesConvocatoriaElegibles,
+  type ConvocatoriaResponsableElegible,
+} from "../../../../lib/administracion";
 import {
   ADMIN_EMAIL_TIPO_ENVIO,
   ASAMBLEA_ESTADO,
@@ -105,6 +110,10 @@ function tipoEnvioLabel(tipoEnvio: string) {
 
   if (tipoEnvio === ADMIN_EMAIL_TIPO_ENVIO.ASAMBLEA_CONVOCATORIA) {
     return "Convocatoria real";
+  }
+
+  if (tipoEnvio === ADMIN_EMAIL_TIPO_ENVIO.ASAMBLEA_CONVOCATORIA_SELECTIVA) {
+    return "Convocatoria selectiva";
   }
 
   return tipoEnvio;
@@ -210,6 +219,9 @@ export default async function AsambleaDetallePage({
         assignment.consorcioId === asamblea.consorcioId &&
         (assignment.role === "ADMIN" || assignment.role === "OPERADOR"),
     );
+  const responsablesConvocatoria = canOperate
+    ? await getResponsablesConvocatoriaElegibles(asamblea.consorcioId)
+    : ([] as ConvocatoriaResponsableElegible[]);
 
   async function actualizarAsamblea(formData: FormData) {
     "use server";
@@ -415,6 +427,11 @@ export default async function AsambleaDetallePage({
 
     const id = Number(formData.get("id"));
     const consorcioId = Number(formData.get("consorcioId"));
+    const alcance = (formData.get("alcance")?.toString() ?? "ALL").trim();
+    const selectedDestinatarioKeys = formData
+      .getAll("selectedDestinatario")
+      .map((value) => value.toString())
+      .filter((value) => value.trim().length > 0);
 
     await requireConsorcioRole(consorcioId, ["ADMIN", "OPERADOR"]);
 
@@ -436,12 +453,35 @@ export default async function AsambleaDetallePage({
       return { ok: false, errorMessage: "Debes cargar al menos un punto del orden del dia antes de convocar." };
     }
 
-    const summary = await enviarConvocatoriaAsamblea(id);
+    try {
+      const summary = await enviarConvocatoriaAsamblea(id, {
+        selectedDestinatarioKeys: alcance === "SELECTED" ? selectedDestinatarioKeys : undefined,
+      });
 
-    return {
-      ok: true,
-      successMessage: formatEmailSummary(summary),
-    };
+      return {
+        ok: true,
+        successMessage: formatEmailSummary(summary),
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "error_desconocido";
+
+      if (message === "convocatoria_sin_destinatarios") {
+        return { ok: false, errorMessage: "Debes seleccionar al menos un destinatario para enviar la convocatoria." };
+      }
+
+      if (message === "asamblea_sin_orden") {
+        return { ok: false, errorMessage: "Debes cargar al menos un punto del orden del dia antes de convocar." };
+      }
+
+      if (message === "asamblea_inexistente") {
+        return { ok: false, errorMessage: "No se encontro la asamblea indicada." };
+      }
+
+      return {
+        ok: false,
+        errorMessage: "No se pudo enviar la convocatoria. Intenta nuevamente en unos minutos.",
+      };
+    }
   }
 
   async function enviarSimulacionConvocatoria(formData: FormData): Promise<EnvioConvocatoriaActionResult> {
@@ -483,7 +523,10 @@ export default async function AsambleaDetallePage({
 
   const feedback = getFeedback(searchParams ?? {});
   const convocatoriasEnviadas = asamblea.enviosEmail.filter(
-    (envio) => envio.estado === "ENVIADO" && envio.tipoEnvio === ADMIN_EMAIL_TIPO_ENVIO.ASAMBLEA_CONVOCATORIA,
+    (envio) =>
+      envio.estado === "ENVIADO" &&
+      (envio.tipoEnvio === ADMIN_EMAIL_TIPO_ENVIO.ASAMBLEA_CONVOCATORIA ||
+        envio.tipoEnvio === ADMIN_EMAIL_TIPO_ENVIO.ASAMBLEA_CONVOCATORIA_SELECTIVA),
   ).length;
   const activePanel = (searchParams?.panel ?? "").trim();
   const activeItemId = Number(searchParams?.item);
@@ -923,6 +966,7 @@ export default async function AsambleaDetallePage({
                 <ConvocatoriaActions
                   asambleaId={asamblea.id}
                   consorcioId={asamblea.consorcioId}
+                  destinatariosElegibles={responsablesConvocatoria}
                   enviarSimulacion={enviarSimulacionConvocatoria}
                   enviarConvocatoria={enviarConvocatoria}
                 />

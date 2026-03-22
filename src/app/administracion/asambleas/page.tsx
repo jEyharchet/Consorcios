@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { ADMIN_EMAIL_TIPO_ENVIO } from "../../../lib/administracion-shared";
 import { getActiveConsorcioContext } from "../../../lib/consorcio-activo";
 import { redirectToOnboardingIfNoConsorcios } from "../../../lib/onboarding";
 import { prisma } from "../../../lib/prisma";
@@ -67,7 +68,12 @@ export default async function AsambleasPage() {
     prisma.envioEmail.findMany({
       where: {
         consorcioId: activeConsorcioId,
-        tipoEnvio: "ASAMBLEA_CONVOCATORIA",
+        tipoEnvio: {
+          in: [
+            ADMIN_EMAIL_TIPO_ENVIO.ASAMBLEA_CONVOCATORIA,
+            ADMIN_EMAIL_TIPO_ENVIO.ASAMBLEA_CONVOCATORIA_SELECTIVA,
+          ],
+        },
       },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       take: 10,
