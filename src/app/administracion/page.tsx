@@ -19,7 +19,7 @@ export default async function AdministracionPage() {
     );
   }
 
-  const [consorcio, asambleasCount, comunicacionesCount, configuracionCount] = await Promise.all([
+  const [consorcio, asambleasCount, comunicacionesCount, configuracionCount, respuestasCount] = await Promise.all([
     prisma.consorcio.findUnique({
       where: { id: activeConsorcioId },
       select: { id: true, nombre: true },
@@ -34,6 +34,11 @@ export default async function AdministracionPage() {
       },
     }),
     prisma.consorcioConfiguracion.count({
+      where: {
+        consorcioId: activeConsorcioId,
+      },
+    }),
+    prisma.respuestaEmail.count({
       where: {
         consorcioId: activeConsorcioId,
       },
@@ -98,6 +103,19 @@ export default async function AdministracionPage() {
           </p>
           <p className="mt-6 text-3xl font-semibold text-slate-950">{configuracionCount}</p>
           <p className="text-sm text-slate-500">registro por consorcio activo</p>
+        </Link>
+
+        <Link
+          href="/administracion/respuestas"
+          className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:border-slate-300"
+        >
+          <p className="text-sm font-medium uppercase tracking-wide text-slate-500">Submodulo</p>
+          <h2 className="mt-2 text-2xl font-semibold text-slate-950">Respuestas</h2>
+          <p className="mt-3 text-sm text-slate-600">
+            Bandeja de respuestas recibidas, asociacion con envios originales y gestion de seguimiento.
+          </p>
+          <p className="mt-6 text-3xl font-semibold text-slate-950">{respuestasCount}</p>
+          <p className="text-sm text-slate-500">respuestas registradas</p>
         </Link>
       </section>
     </main>

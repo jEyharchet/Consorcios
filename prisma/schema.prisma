@@ -31,6 +31,7 @@ model Consorcio {
   pagosGasto          PagoGasto[]
   asambleas           Asamblea[]
   enviosEmail         EnvioEmail[]
+  respuestasEmail     RespuestaEmail[]
   configuracion       ConsorcioConfiguracion?
 }
 
@@ -93,6 +94,7 @@ model Persona {
   usuarios                User[]
   solicitudesAcceso       SolicitudAccesoConsorcio[]
   votosAsamblea           AsambleaVotacionVoto[]
+  respuestasEmail         RespuestaEmail[]
 
   @@index([apellido, nombre])
   @@index([email])
@@ -607,21 +609,58 @@ model EnvioEmail {
   estado            String
   errorMensaje      String?
   providerMessageId String?
+  replyKey          String?  @unique
   enviadoAt         DateTime?
   createdAt         DateTime @default(now())
 
-  consorcio   Consorcio   @relation(fields: [consorcioId], references: [id], onDelete: Cascade)
-  liquidacion Liquidacion? @relation(fields: [liquidacionId], references: [id], onDelete: Cascade)
-  asamblea    Asamblea?   @relation(fields: [asambleaId], references: [id], onDelete: Cascade)
-  unidad      Unidad?     @relation(fields: [unidadId], references: [id], onDelete: SetNull)
+  consorcio       Consorcio        @relation(fields: [consorcioId], references: [id], onDelete: Cascade)
+  liquidacion     Liquidacion?     @relation(fields: [liquidacionId], references: [id], onDelete: Cascade)
+  asamblea        Asamblea?        @relation(fields: [asambleaId], references: [id], onDelete: Cascade)
+  unidad          Unidad?          @relation(fields: [unidadId], references: [id], onDelete: SetNull)
+  respuestasEmail RespuestaEmail[]
 
   @@index([consorcioId])
   @@index([liquidacionId])
   @@index([asambleaId])
   @@index([unidadId])
+  @@index([providerMessageId])
   @@index([consorcioId, tipoEnvio, createdAt])
   @@index([tipoEnvio, createdAt])
   @@index([estado, createdAt])
+}
+
+model RespuestaEmail {
+  id           Int      @id @default(autoincrement())
+  consorcioId  Int
+  envioEmailId Int?
+  asambleaId   Int?
+  personaId    Int?
+  fromEmail    String
+  fromNombre   String?
+  toEmail      String?
+  subject      String
+  bodyTexto    String?
+  bodyHtml     String?
+  messageId    String?  @unique
+  inReplyTo    String?
+  receivedAt   DateTime
+  estado       String   @default("PENDIENTE")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  consorcio  Consorcio  @relation(fields: [consorcioId], references: [id], onDelete: Cascade)
+  envioEmail EnvioEmail? @relation(fields: [envioEmailId], references: [id], onDelete: SetNull)
+  asamblea   Asamblea?  @relation(fields: [asambleaId], references: [id], onDelete: SetNull)
+  persona    Persona?   @relation(fields: [personaId], references: [id], onDelete: SetNull)
+
+  @@index([consorcioId])
+  @@index([envioEmailId])
+  @@index([asambleaId])
+  @@index([personaId])
+  @@index([estado, receivedAt])
+  @@index([receivedAt])
+  @@index([fromEmail])
+  @@index([inReplyTo])
 }
 
 model Asamblea {
@@ -647,6 +686,7 @@ model Asamblea {
   consorcio   Consorcio            @relation(fields: [consorcioId], references: [id], onDelete: Cascade)
   ordenDia    AsambleaOrdenDia[]
   enviosEmail EnvioEmail[]
+  respuestasEmail RespuestaEmail[]
 
   @@index([consorcioId])
   @@index([consorcioId, fecha])

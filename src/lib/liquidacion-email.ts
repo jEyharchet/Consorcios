@@ -3,6 +3,7 @@ import { readFile } from "fs/promises";
 
 import { sendEmail } from "./email";
 import { buildEmailSummary, EMAIL_ESTADO, formatEmailSummary, type EmailSummary } from "./email-tracking";
+import { buildReplyToAddress, createEmailReplyKey } from "./email-replies";
 import { prisma } from "./prisma";
 
 export { formatEmailSummary } from "./email-tracking";
@@ -639,6 +640,8 @@ async function procesarEnviosLiquidacion(params: {
     });
 
     if (destinatarios.emails.length === 0) {
+      const replyKey = createEmailReplyKey();
+
       await prisma.envioEmail.create({
         data: {
           consorcioId: liquidacion.consorcioId,
@@ -650,12 +653,14 @@ async function procesarEnviosLiquidacion(params: {
           cuerpo: template.body,
           estado: EMAIL_ESTADO.SIN_DESTINATARIO,
           errorMensaje: "No se encontro un email valido para el responsable vigente de la unidad.",
+          replyKey,
         },
       });
       results.push({ estado: EMAIL_ESTADO.SIN_DESTINATARIO });
       continue;
     }
 
+    const replyKey = createEmailReplyKey();
     const envio = await prisma.envioEmail.create({
       data: {
         consorcioId: liquidacion.consorcioId,
@@ -666,8 +671,9 @@ async function procesarEnviosLiquidacion(params: {
         asunto: template.subject,
         cuerpo: template.body,
         estado: EMAIL_ESTADO.PENDIENTE,
+        replyKey,
       },
-      select: { id: true },
+      select: { id: true, replyKey: true },
     });
 
     try {
@@ -676,6 +682,7 @@ async function procesarEnviosLiquidacion(params: {
         subject: template.subject,
         html: template.html,
         text: template.text,
+        replyTo: buildReplyToAddress(envio.replyKey) ?? undefined,
         attachments: await resolveAttachment(boletaArchivo),
       });
 
@@ -852,6 +859,8 @@ export async function sendReminderDrafts(params: {
     const destinatarios = parseDestinatariosInput(draft.destinatario);
 
     if (destinatarios.length === 0) {
+      const replyKey = createEmailReplyKey();
+
       await prisma.envioEmail.create({
         data: {
           consorcioId: liquidacion.consorcioId,
@@ -863,6 +872,7 @@ export async function sendReminderDrafts(params: {
           cuerpo: draft.cuerpo,
           estado: EMAIL_ESTADO.SIN_DESTINATARIO,
           errorMensaje: "No se encontro un email valido para el borrador seleccionado.",
+          replyKey,
         },
       });
       results.push({ estado: EMAIL_ESTADO.SIN_DESTINATARIO });
@@ -888,6 +898,7 @@ export async function sendReminderDrafts(params: {
       cuentaPago,
     });
 
+    const replyKey = createEmailReplyKey();
     const envio = await prisma.envioEmail.create({
       data: {
         consorcioId: liquidacion.consorcioId,
@@ -898,8 +909,9 @@ export async function sendReminderDrafts(params: {
         asunto: draft.asunto,
         cuerpo: draft.cuerpo,
         estado: EMAIL_ESTADO.PENDIENTE,
+        replyKey,
       },
-      select: { id: true },
+      select: { id: true, replyKey: true },
     });
 
     try {
@@ -908,6 +920,7 @@ export async function sendReminderDrafts(params: {
         subject: draft.asunto,
         html: rendered.html,
         text: rendered.text,
+        replyTo: buildReplyToAddress(envio.replyKey) ?? undefined,
         attachments: await resolveAttachment(boletaArchivo),
       });
 
