@@ -26,6 +26,10 @@ type IngestRespuestaEmailInput = {
   receivedAt?: Date | string | null;
 };
 
+type IngestRespuestaEmailDiagnostics = {
+  log?: (event: string, metadata?: Record<string, unknown>) => void;
+};
+
 function normalizeHeaderId(value: string | null | undefined) {
   const trimmed = value?.trim();
 
@@ -109,7 +113,7 @@ export function getRespuestaBodyPreview(params: {
   return text.length > 220 ? `${text.slice(0, 217)}...` : text;
 }
 
-async function findPersonaByEmail(email: string) {
+async function findPersonaByEmail(email: string, diagnostics?: IngestRespuestaEmailDiagnostics) {
   const personas = await prisma.persona.findMany({
     where: {
       email: {
@@ -124,6 +128,12 @@ async function findPersonaByEmail(email: string) {
     take: 2,
   });
 
+  diagnostics?.log?.("association.persona.email", {
+    email,
+    candidates: personas.length,
+    personaId: personas.length === 1 ? personas[0].id : null,
+  });
+
   if (personas.length !== 1) {
     return null;
   }
@@ -131,7 +141,10 @@ async function findPersonaByEmail(email: string) {
   return personas[0];
 }
 
-async function findEnvioForReply(params: { inReplyTo?: string | null; toEmail?: string | null }) {
+async function findEnvioForReply(
+  params: { inReplyTo?: string | null; toEmail?: string | null },
+  diagnostics?: IngestRespuestaEmailDiagnostics,
+) {
   const inReplyTo = normalizeHeaderId(params.inReplyTo);
 
   if (inReplyTo) {
@@ -146,18 +159,34 @@ async function findEnvioForReply(params: { inReplyTo?: string | null; toEmail?: 
       },
     });
 
+    diagnostics?.log?.("association.envio.in_reply_to", {
+      inReplyTo,
+      envioEmailId: byProviderMessageId?.id ?? null,
+      consorcioId: byProviderMessageId?.consorcioId ?? null,
+    });
+
     if (byProviderMessageId) {
       return byProviderMessageId;
     }
+  } else {
+    diagnostics?.log?.("association.envio.in_reply_to", {
+      inReplyTo: null,
+      envioEmailId: null,
+    });
   }
 
   const replyKey = extractReplyKeyFromAddress(params.toEmail);
+
+  diagnostics?.log?.("association.envio.reply_key", {
+    toEmail: params.toEmail ?? null,
+    replyKey,
+  });
 
   if (!replyKey) {
     return null;
   }
 
-  return prisma.envioEmail.findFirst({
+  const byReplyKey = await prisma.envioEmail.findFirst({
     where: { replyKey },
     select: {
       id: true,
@@ -165,23 +194,49 @@ async function findEnvioForReply(params: { inReplyTo?: string | null; toEmail?: 
       asambleaId: true,
     },
   });
+
+  diagnostics?.log?.("association.envio.reply_key.result", {
+    replyKey,
+    envioEmailId: byReplyKey?.id ?? null,
+    consorcioId: byReplyKey?.consorcioId ?? null,
+  });
+
+  return byReplyKey;
 }
 
-export async function ingestRespuestaEmail(input: IngestRespuestaEmailInput) {
+export async function ingestRespuestaEmail(
+  input: IngestRespuestaEmailInput,
+  diagnostics?: IngestRespuestaEmailDiagnostics,
+) {
   const fromEmail = normalizeEmailAddress(input.fromEmail);
 
+  diagnostics?.log?.("ingest.start", {
+    fromEmail,
+    toEmail: input.toEmail ?? null,
+    subject: input.subject?.trim() || "(sin asunto)",
+    messageId: normalizeHeaderId(input.messageId),
+    inReplyTo: normalizeHeaderId(input.inReplyTo),
+  });
+
   if (!fromEmail) {
+    diagnostics?.log?.("ingest.reject", { reason: "from_email_invalido" });
     throw new Error("from_email_invalido");
   }
 
   const envio = await findEnvioForReply({
     inReplyTo: input.inReplyTo,
     toEmail: input.toEmail,
-  });
+  }, diagnostics);
 
   const consorcioId = envio?.consorcioId ?? (input.consorcioId && input.consorcioId > 0 ? input.consorcioId : null);
 
+  diagnostics?.log?.("association.consorcio", {
+    consorcioId,
+    envioEmailId: envio?.id ?? null,
+  });
+
   if (!consorcioId) {
+    diagnostics?.log?.("ingest.reject", { reason: "consorcio_no_resuelto" });
     throw new Error("consorcio_no_resuelto");
   }
 
@@ -193,19 +248,34 @@ export async function ingestRespuestaEmail(input: IngestRespuestaEmailInput) {
       select: { id: true },
     });
 
+    diagnostics?.log?.("dedupe.message_id", {
+      messageId,
+      existingRespuestaEmailId: existing?.id ?? null,
+    });
+
     if (existing) {
+      diagnostics?.log?.("ingest.skip_existing", {
+        reason: "message_id_duplicate",
+        respuestaEmailId: existing.id,
+      });
       return existing;
     }
+  } else {
+    diagnostics?.log?.("dedupe.message_id", {
+      messageId: null,
+      existingRespuestaEmailId: null,
+    });
   }
 
-  const persona = await findPersonaByEmail(fromEmail);
+  const persona = await findPersonaByEmail(fromEmail, diagnostics);
   const receivedAt = input.receivedAt ? new Date(input.receivedAt) : new Date();
 
   if (Number.isNaN(receivedAt.getTime())) {
+    diagnostics?.log?.("ingest.reject", { reason: "received_at_invalido" });
     throw new Error("received_at_invalido");
   }
 
-  return prisma.respuestaEmail.create({
+  const created = await prisma.respuestaEmail.create({
     data: {
       consorcioId,
       envioEmailId: envio?.id ?? null,
@@ -223,4 +293,13 @@ export async function ingestRespuestaEmail(input: IngestRespuestaEmailInput) {
       estado: EMAIL_RESPUESTA_ESTADO.PENDIENTE,
     },
   });
+
+  diagnostics?.log?.("ingest.created", {
+    respuestaEmailId: created.id,
+    consorcioId,
+    envioEmailId: envio?.id ?? null,
+    personaId: persona?.id ?? null,
+  });
+
+  return created;
 }
