@@ -132,11 +132,13 @@ async function findPersonaByEmail(email: string) {
 }
 
 async function findEnvioForReply(params: { inReplyTo?: string | null; toEmail?: string | null }) {
-  const replyKey = extractReplyKeyFromAddress(params.toEmail);
+  const inReplyTo = normalizeHeaderId(params.inReplyTo);
 
-  if (replyKey) {
-    const byReplyKey = await prisma.envioEmail.findFirst({
-      where: { replyKey },
+  if (inReplyTo) {
+    const byProviderMessageId = await prisma.envioEmail.findFirst({
+      where: {
+        providerMessageId: inReplyTo,
+      },
       select: {
         id: true,
         consorcioId: true,
@@ -144,21 +146,19 @@ async function findEnvioForReply(params: { inReplyTo?: string | null; toEmail?: 
       },
     });
 
-    if (byReplyKey) {
-      return byReplyKey;
+    if (byProviderMessageId) {
+      return byProviderMessageId;
     }
   }
 
-  const inReplyTo = normalizeHeaderId(params.inReplyTo);
+  const replyKey = extractReplyKeyFromAddress(params.toEmail);
 
-  if (!inReplyTo) {
+  if (!replyKey) {
     return null;
   }
 
   return prisma.envioEmail.findFirst({
-    where: {
-      providerMessageId: inReplyTo,
-    },
+    where: { replyKey },
     select: {
       id: true,
       consorcioId: true,
