@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { ingestRespuestaEmail } from "@/lib/email-replies";
+import { isMailgunContentType, parseMailgunInbound } from "@/lib/mailgun-inbound";
 import {
   fetchReceivedEmailRecord,
   hasResendWebhookSignature,
@@ -24,6 +25,8 @@ function isPermanentInboundError(error: string) {
     "consorcio_no_resuelto",
     "from_email_invalido",
     "received_at_invalido",
+    "mailgun_timestamp_invalido",
+    "mailgun_signature_expired",
     "resend_signature_missing",
     "resend_webhook_secret_missing",
   ].includes(error);
@@ -107,7 +110,56 @@ async function handleResendWebhook(rawBody: string, request: Request) {
   }
 }
 
+async function handleMailgunInbound(request: Request) {
+  try {
+    const inbound = await parseMailgunInbound(request);
+    const respuesta = await ingestRespuestaEmail({
+      fromEmail: inbound.fromEmail,
+      fromNombre: inbound.fromNombre,
+      toEmail: inbound.toEmail,
+      subject: inbound.subject,
+      bodyTexto: inbound.bodyTexto,
+      bodyHtml: inbound.bodyHtml,
+      messageId: inbound.messageId,
+      inReplyTo: inbound.inReplyTo,
+      receivedAt: inbound.receivedAt,
+    });
+
+    return NextResponse.json({ ok: true, id: respuesta.id, source: "mailgun" });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "unexpected_error";
+    const status =
+      message === "mailgun_signing_key_missing"
+        ? 500
+        : message === "mailgun_signature_missing" ||
+            message === "mailgun_signature_invalid" ||
+            message === "mailgun_signature_expired" ||
+            message === "mailgun_timestamp_invalido"
+          ? 401
+          : isPermanentInboundError(message)
+            ? 200
+            : 502;
+
+    if (status === 200) {
+      console.warn("[email-respuestas] mailgun inbound ignored", { error: message });
+      return NextResponse.json({ ok: true, ignored: true, error: message });
+    }
+
+    if (status >= 500) {
+      console.error("[email-respuestas] mailgun inbound failed", { error: message });
+    }
+
+    return NextResponse.json({ ok: false, error: message }, { status });
+  }
+}
+
 export async function POST(request: Request) {
+  const contentType = request.headers.get("content-type");
+
+  if (isMailgunContentType(contentType)) {
+    return handleMailgunInbound(request);
+  }
+
   const rawBody = await request.text();
 
   if (!rawBody.trim()) {
