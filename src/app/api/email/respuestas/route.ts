@@ -213,6 +213,7 @@ async function handleMailgunInbound(request: Request) {
 }
 
 export async function POST(request: Request) {
+  console.log("INBOUND EMAIL HIT");
   const contentType = request.headers.get("content-type");
   console.log("[email-respuestas] request.received", {
     method: request.method,

@@ -13,6 +13,7 @@ function isPublicPath(pathname: string) {
   return (
     PUBLIC_PATHS.includes(pathname) ||
     INTERNAL_LIQUIDACION_JOB_RUN_ROUTE.test(pathname) ||
+    pathname.startsWith("/api/email/respuestas") ||
     pathname.startsWith("/api/auth") ||
     pathname.startsWith("/_next") ||
     pathname === "/chromium-pack.tar" ||
