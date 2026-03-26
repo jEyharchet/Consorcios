@@ -3,11 +3,13 @@ import { notFound, redirect } from "next/navigation";
 
 import { getActiveConsorcioContext } from "@/lib/consorcio-activo";
 import { EMAIL_RESPUESTA_ESTADO, getRespuestaBodyText } from "@/lib/email-replies";
+import { ADMIN_EMAIL_TIPO_ENVIO } from "@/lib/administracion-shared";
 import { requireConsorcioRole } from "@/lib/auth";
+import { EMAIL_TIPO_ENVIO } from "@/lib/liquidacion-email";
 import { redirectToOnboardingIfNoConsorcios } from "@/lib/onboarding";
 import { prisma } from "@/lib/prisma";
 
-import { buildReturnQuery, formatDateTime } from "../../shared";
+import { buildReturnQuery, formatDate, formatDateTime } from "../../shared";
 
 const MANAGEABLE_ESTADOS = [EMAIL_RESPUESTA_ESTADO.LEIDA, EMAIL_RESPUESTA_ESTADO.RESUELTA] as const;
 
@@ -40,29 +42,88 @@ function getEstadoBadgeClasses(estado: string) {
   }
 }
 
-function buildContexto(item: {
+function tipoEnvioLabel(tipoEnvio: string) {
+  if (tipoEnvio === ADMIN_EMAIL_TIPO_ENVIO.COMUNICACION_LIBRE) {
+    return "Comunicacion libre";
+  }
+
+  if (tipoEnvio === ADMIN_EMAIL_TIPO_ENVIO.ASAMBLEA_CONVOCATORIA) {
+    return "Convocatoria";
+  }
+
+  if (tipoEnvio === ADMIN_EMAIL_TIPO_ENVIO.ASAMBLEA_CONVOCATORIA_SELECTIVA) {
+    return "Convocatoria selectiva";
+  }
+
+  if (tipoEnvio === ADMIN_EMAIL_TIPO_ENVIO.ASAMBLEA_SIMULACION_ADMIN) {
+    return "Simulacion al administrador";
+  }
+
+  if (tipoEnvio === EMAIL_TIPO_ENVIO.LIQUIDACION_CIERRE) {
+    return "Liquidacion";
+  }
+
+  if (tipoEnvio === EMAIL_TIPO_ENVIO.RECORDATORIO_VENCIMIENTO) {
+    return "Recordatorio de deuda";
+  }
+
+  return tipoEnvio.replaceAll("_", " ").toLowerCase();
+}
+
+function buildRespuestaContexto(item: {
   asamblea: { id: number; fecha: Date; tipo: string } | null;
-  envioEmail: { id: number; tipoEnvio: string; asunto: string; liquidacionId: number | null } | null;
+  envioEmail:
+    | {
+        id: number;
+        tipoEnvio: string;
+        asunto: string;
+        liquidacionId: number | null;
+        unidad: { id: number; identificador: string; tipo: string } | null;
+        liquidacion: { id: number; periodo: string } | null;
+        asamblea: { id: number; fecha: Date; tipo: string } | null;
+      }
+    | null;
 }) {
+  if (item.envioEmail?.asamblea) {
+    return {
+      categoria: "Convocatoria",
+      label: `Asamblea ${item.envioEmail.asamblea.tipo.toLowerCase()} del ${formatDate(item.envioEmail.asamblea.fecha)}`,
+      href: `/administracion/asambleas/${item.envioEmail.asamblea.id}`,
+    };
+  }
+
   if (item.asamblea) {
     return {
-      label: `Asamblea ${item.asamblea.tipo.toLowerCase()} del ${new Intl.DateTimeFormat("es-AR", {
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-      }).format(item.asamblea.fecha)}`,
+      categoria: "Asamblea",
+      label: `Asamblea ${item.asamblea.tipo.toLowerCase()} del ${formatDate(item.asamblea.fecha)}`,
       href: `/administracion/asambleas/${item.asamblea.id}`,
     };
   }
 
-  if (item.envioEmail?.liquidacionId) {
+  if (item.envioEmail?.liquidacion) {
     return {
-      label: `Liquidacion #${item.envioEmail.liquidacionId}`,
-      href: `/liquidaciones/${item.envioEmail.liquidacionId}`,
+      categoria:
+        item.envioEmail.tipoEnvio === EMAIL_TIPO_ENVIO.RECORDATORIO_VENCIMIENTO ? "Deuda" : "Liquidacion",
+      label: `Liquidacion ${item.envioEmail.liquidacion.periodo}`,
+      href: `/liquidaciones/${item.envioEmail.liquidacion.id}`,
     };
   }
 
-  return null;
+  if (item.envioEmail?.tipoEnvio === ADMIN_EMAIL_TIPO_ENVIO.COMUNICACION_LIBRE) {
+    return {
+      categoria: "Comunicacion",
+      label: "Comunicacion institucional",
+      href: "/administracion/comunicaciones",
+    };
+  }
+
+  return item.envioEmail
+    ? {
+        categoria: "Envio",
+        label: tipoEnvioLabel(item.envioEmail.tipoEnvio),
+        href: null,
+      }
+    : null;
 }
 
 export default async function RespuestaEmailDetailPage({
@@ -80,6 +141,7 @@ export default async function RespuestaEmailDetailPage({
 
   const { access, activeConsorcioId } = await getActiveConsorcioContext();
   redirectToOnboardingIfNoConsorcios(access);
+  const now = new Date();
 
   const respuesta = await prisma.respuestaEmail.findUnique({
     where: { id: respuestaId },
@@ -88,7 +150,56 @@ export default async function RespuestaEmailDetailPage({
         select: { id: true, nombre: true },
       },
       persona: {
-        select: { id: true, nombre: true, apellido: true, email: true, telefono: true },
+        select: {
+          id: true,
+          nombre: true,
+          apellido: true,
+          email: true,
+          telefono: true,
+          unidades: {
+            where: {
+              desde: { lte: now },
+              OR: [{ hasta: null }, { hasta: { gte: now } }],
+            },
+            orderBy: [{ desde: "desc" }, { id: "desc" }],
+            select: {
+              id: true,
+              desde: true,
+              hasta: true,
+              unidad: {
+                select: {
+                  id: true,
+                  identificador: true,
+                  tipo: true,
+                  consorcio: {
+                    select: {
+                      id: true,
+                      nombre: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+          consorciosAdministrados: {
+            where: {
+              desde: { lte: now },
+              OR: [{ hasta: null }, { hasta: { gte: now } }],
+            },
+            orderBy: [{ desde: "desc" }, { id: "desc" }],
+            select: {
+              id: true,
+              desde: true,
+              hasta: true,
+              consorcio: {
+                select: {
+                  id: true,
+                  nombre: true,
+                },
+              },
+            },
+          },
+        },
       },
       asamblea: {
         select: { id: true, fecha: true, tipo: true, lugar: true },
@@ -102,6 +213,33 @@ export default async function RespuestaEmailDetailPage({
           providerMessageId: true,
           liquidacionId: true,
           enviadoAt: true,
+          createdAt: true,
+          consorcio: {
+            select: {
+              id: true,
+              nombre: true,
+            },
+          },
+          unidad: {
+            select: {
+              id: true,
+              identificador: true,
+              tipo: true,
+            },
+          },
+          liquidacion: {
+            select: {
+              id: true,
+              periodo: true,
+            },
+          },
+          asamblea: {
+            select: {
+              id: true,
+              fecha: true,
+              tipo: true,
+            },
+          },
         },
       },
     },
@@ -156,7 +294,7 @@ export default async function RespuestaEmailDetailPage({
   const remitenteNombre =
     respuesta.fromNombre?.trim() ||
     (respuesta.persona ? `${respuesta.persona.apellido}, ${respuesta.persona.nombre}` : respuesta.fromEmail);
-  const contexto = buildContexto({
+  const contexto = buildRespuestaContexto({
     asamblea: respuesta.asamblea,
     envioEmail: respuesta.envioEmail,
   });
@@ -164,6 +302,48 @@ export default async function RespuestaEmailDetailPage({
     bodyTexto: respuesta.bodyTexto,
     bodyHtml: respuesta.bodyHtml,
   });
+  const personaNombreCompleto = respuesta.persona
+    ? `${respuesta.persona.apellido}, ${respuesta.persona.nombre}`
+    : null;
+  const unidadesVigentes = respuesta.persona?.unidades ?? [];
+  const consorcioMap = new Map<number, { id: number; nombre: string; origenes: string[] }>();
+
+  for (const relacion of unidadesVigentes) {
+    const current = consorcioMap.get(relacion.unidad.consorcio.id);
+
+    if (!current) {
+      consorcioMap.set(relacion.unidad.consorcio.id, {
+        id: relacion.unidad.consorcio.id,
+        nombre: relacion.unidad.consorcio.nombre,
+        origenes: ["Unidad vigente"],
+      });
+      continue;
+    }
+
+    if (!current.origenes.includes("Unidad vigente")) {
+      current.origenes.push("Unidad vigente");
+    }
+  }
+
+  for (const relacion of respuesta.persona?.consorciosAdministrados ?? []) {
+    const current = consorcioMap.get(relacion.consorcio.id);
+
+    if (!current) {
+      consorcioMap.set(relacion.consorcio.id, {
+        id: relacion.consorcio.id,
+        nombre: relacion.consorcio.nombre,
+        origenes: ["Administrador vigente"],
+      });
+      continue;
+    }
+
+    if (!current.origenes.includes("Administrador vigente")) {
+      current.origenes.push("Administrador vigente");
+    }
+  }
+
+  const consorciosRelacionados = Array.from(consorcioMap.values()).sort((a, b) => a.nombre.localeCompare(b.nombre));
+  const fechaEnvioOriginal = respuesta.envioEmail?.enviadoAt ?? respuesta.envioEmail?.createdAt ?? null;
 
   return (
     <main className="mx-auto w-full max-w-5xl px-6 py-10">
@@ -266,18 +446,112 @@ export default async function RespuestaEmailDetailPage({
           </article>
 
           <article className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-            <h2 className="text-lg font-semibold text-slate-900">Asociaciones</h2>
+            <h2 className="text-lg font-semibold text-slate-900">Persona</h2>
+            <div className="mt-4 text-sm text-slate-600">
+              {respuesta.persona ? (
+                <div className="space-y-2">
+                  <Link href={`/personas/${respuesta.persona.id}`} className="text-base font-semibold text-slate-900 hover:text-slate-700">
+                    {personaNombreCompleto}
+                  </Link>
+                  <p>{respuesta.persona.email || "Sin email"}</p>
+                  {respuesta.persona.telefono ? <p>Telefono: {respuesta.persona.telefono}</p> : null}
+                </div>
+              ) : (
+                <p>No se identifico una Persona del sistema para este remitente.</p>
+              )}
+            </div>
+          </article>
+
+          <article className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            <h2 className="text-lg font-semibold text-slate-900">Unidades</h2>
+            <div className="mt-4 space-y-3 text-sm text-slate-600">
+              {unidadesVigentes.length > 0 ? (
+                unidadesVigentes.map((relacion) => (
+                  <div key={relacion.id} className="rounded-xl border border-slate-200 px-4 py-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <Link href={`/unidades/${relacion.unidad.id}`} className="font-semibold text-slate-900 hover:text-slate-700">
+                          {relacion.unidad.identificador} ({relacion.unidad.tipo})
+                        </Link>
+                        <p className="mt-1 text-slate-500">{relacion.unidad.consorcio.nombre}</p>
+                      </div>
+                      <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">
+                        Unidad vigente
+                      </span>
+                    </div>
+                    <p className="mt-2 text-slate-500">Vinculo desde {formatDate(relacion.desde)}</p>
+                  </div>
+                ))
+              ) : (
+                <p>No hay unidades vigentes asociadas a la Persona identificada.</p>
+              )}
+            </div>
+          </article>
+
+          <article className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            <h2 className="text-lg font-semibold text-slate-900">Consorcios</h2>
+            <div className="mt-4 space-y-3 text-sm text-slate-600">
+              {consorciosRelacionados.length > 0 ? (
+                consorciosRelacionados.map((consorcio) => (
+                  <div key={consorcio.id} className="rounded-xl border border-slate-200 px-4 py-3">
+                    <Link href={`/consorcios/${consorcio.id}`} className="font-semibold text-slate-900 hover:text-slate-700">
+                      {consorcio.nombre}
+                    </Link>
+                    <p className="mt-1 text-slate-500">{consorcio.origenes.join(" / ")}</p>
+                  </div>
+                ))
+              ) : (
+                <p>No hay consorcios vigentes relacionados a la Persona identificada.</p>
+              )}
+            </div>
+          </article>
+
+          <article className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            <h2 className="text-lg font-semibold text-slate-900">Responde a</h2>
             <dl className="mt-4 space-y-4 text-sm text-slate-600">
               <div>
-                <dt className="font-medium text-slate-500">Envio original</dt>
+                <dt className="font-medium text-slate-500">Categoria</dt>
                 <dd className="mt-1 text-slate-900">
                   {respuesta.envioEmail ? (
-                    <>
-                      <span>{respuesta.envioEmail.tipoEnvio.replaceAll("_", " ").toLowerCase()}</span>
-                      <p className="mt-1 text-slate-500">{respuesta.envioEmail.asunto}</p>
-                    </>
+                    tipoEnvioLabel(respuesta.envioEmail.tipoEnvio)
                   ) : (
                     "No asociado"
+                  )}
+                </dd>
+              </div>
+              <div>
+                <dt className="font-medium text-slate-500">Asunto original</dt>
+                <dd className="mt-1 text-slate-900">
+                  {respuesta.envioEmail?.asunto || "No asociado"}
+                </dd>
+              </div>
+              <div>
+                <dt className="font-medium text-slate-500">Fecha del envio original</dt>
+                <dd className="mt-1 text-slate-900">
+                  {fechaEnvioOriginal ? formatDateTime(fechaEnvioOriginal) : "No disponible"}
+                </dd>
+              </div>
+              <div>
+                <dt className="font-medium text-slate-500">Consorcio relacionado</dt>
+                <dd className="mt-1 text-slate-900">
+                  {respuesta.envioEmail?.consorcio ? (
+                    <Link href={`/consorcios/${respuesta.envioEmail.consorcio.id}`} className="font-medium text-slate-700 hover:text-slate-950">
+                      {respuesta.envioEmail.consorcio.nombre}
+                    </Link>
+                  ) : (
+                    respuesta.consorcio.nombre
+                  )}
+                </dd>
+              </div>
+              <div>
+                <dt className="font-medium text-slate-500">Unidad relacionada</dt>
+                <dd className="mt-1 text-slate-900">
+                  {respuesta.envioEmail?.unidad ? (
+                    <Link href={`/unidades/${respuesta.envioEmail.unidad.id}`} className="font-medium text-slate-700 hover:text-slate-950">
+                      {respuesta.envioEmail.unidad.identificador} ({respuesta.envioEmail.unidad.tipo})
+                    </Link>
+                  ) : (
+                    "No aplica"
                   )}
                 </dd>
               </div>
@@ -286,37 +560,24 @@ export default async function RespuestaEmailDetailPage({
                 <dd className="mt-1 text-slate-900">
                   {contexto?.href ? (
                     <Link href={contexto.href} className="font-medium text-slate-700 hover:text-slate-950">
-                      {contexto.label}
+                      {contexto.categoria}: {contexto.label}
                     </Link>
                   ) : (
-                    contexto?.label || "Sin contexto asociado"
+                    contexto ? `${contexto.categoria}: ${contexto.label}` : "Sin contexto asociado"
                   )}
-                </dd>
-              </div>
-              <div>
-                <dt className="font-medium text-slate-500">Persona identificada</dt>
-                <dd className="mt-1 text-slate-900">
-                  {respuesta.persona ? (
-                    <>
-                      <Link href={`/personas/${respuesta.persona.id}`} className="font-medium text-slate-700 hover:text-slate-950">
-                        {respuesta.persona.apellido}, {respuesta.persona.nombre}
-                      </Link>
-                      <p className="mt-1 text-slate-500">{respuesta.persona.email || "Sin email"}</p>
-                    </>
-                  ) : (
-                    "No resuelta automaticamente"
-                  )}
-                </dd>
-              </div>
-              <div>
-                <dt className="font-medium text-slate-500">Cabeceras de asociacion</dt>
-                <dd className="mt-1 break-all text-slate-900">
-                  Message-ID: {respuesta.messageId || "No informado"}
-                  <br />
-                  In-Reply-To: {respuesta.inReplyTo || "No informado"}
                 </dd>
               </div>
             </dl>
+
+            <details className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <summary className="cursor-pointer text-sm font-medium text-slate-700">Ver datos tecnicos</summary>
+              <div className="mt-3 space-y-2 break-all text-xs text-slate-600">
+                <p>EnvioEmail ID: {respuesta.envioEmail?.id ?? "No asociado"}</p>
+                <p>Provider Message ID: {respuesta.envioEmail?.providerMessageId || "No informado"}</p>
+                <p>Message-ID respuesta: {respuesta.messageId || "No informado"}</p>
+                <p>In-Reply-To: {respuesta.inReplyTo || "No informado"}</p>
+              </div>
+            </details>
           </article>
         </aside>
       </section>
