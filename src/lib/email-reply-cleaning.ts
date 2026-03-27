@@ -1,6 +1,13 @@
+function normalizeComparableLine(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim();
+}
+
 const REPLY_CUT_PATTERNS = [
   /^\s*On .+ wrote:\s*$/i,
-  /^\s*El .+ escribi[oó]:\s*$/i,
+  /^\s*El .+ escribio:\s*$/i,
   /^\s*-----Original Message-----\s*$/i,
   /^\s*De:\s.+$/i,
 ];
@@ -15,7 +22,9 @@ export function extractLatestReplyText(value: string | null | undefined) {
   const keptLines: string[] = [];
 
   for (const line of raw.split("\n")) {
-    if (REPLY_CUT_PATTERNS.some((pattern) => pattern.test(line))) {
+    const comparableLine = normalizeComparableLine(line);
+
+    if (REPLY_CUT_PATTERNS.some((pattern) => pattern.test(comparableLine))) {
       break;
     }
 

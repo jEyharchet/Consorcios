@@ -19,6 +19,7 @@ export async function sendEmail({
   html,
   text,
   replyTo,
+  headers,
   attachments,
 }: {
   to: string | string[];
@@ -26,6 +27,7 @@ export async function sendEmail({
   html: string;
   text?: string;
   replyTo?: string | string[];
+  headers?: Record<string, string>;
   attachments?: Attachment[];
 }) {
   const resend = getResendClient();
@@ -36,6 +38,7 @@ export async function sendEmail({
     html,
     text,
     replyTo,
+    headers,
     attachments,
   });
 

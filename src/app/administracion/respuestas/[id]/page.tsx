@@ -2,10 +2,12 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import { getActiveConsorcioContext } from "@/lib/consorcio-activo";
-import { EMAIL_RESPUESTA_ESTADO, getRespuestaBodyText } from "@/lib/email-replies";
+import { buildReplyToAddress, createEmailReplyKey, EMAIL_RESPUESTA_ESTADO, getRespuestaBodyText } from "@/lib/email-replies";
 import { extractLatestReplyText } from "@/lib/email-reply-cleaning";
+import { sendEmail } from "@/lib/email";
 import { ADMIN_EMAIL_TIPO_ENVIO } from "@/lib/administracion-shared";
 import { requireConsorcioRole } from "@/lib/auth";
+import { EMAIL_ESTADO } from "@/lib/email-tracking";
 import { EMAIL_TIPO_ENVIO } from "@/lib/liquidacion-email";
 import { redirectToOnboardingIfNoConsorcios } from "@/lib/onboarding";
 import { prisma } from "@/lib/prisma";
@@ -33,10 +35,39 @@ function CheckIcon() {
   );
 }
 
+function normalizeMessageHeader(value: string | null | undefined) {
+  const trimmed = value?.trim();
+
+  if (!trimmed) {
+    return null;
+  }
+
+  return trimmed.replace(/^<+|>+$/g, "") || null;
+}
+
+function ensureReplySubject(value: string) {
+  const trimmed = value.trim() || "(sin asunto)";
+  return /^re:/i.test(trimmed) ? trimmed : `Re: ${trimmed}`;
+}
+
+function buildReplyReferences(values: Array<string | null | undefined>) {
+  const normalized = values
+    .map((value) => normalizeMessageHeader(value))
+    .filter((value): value is string => Boolean(value));
+
+  if (normalized.length === 0) {
+    return undefined;
+  }
+
+  return normalized.map((value) => `<${value}>`).join(" ");
+}
+
 function getFeedback(searchParams: { ok?: string; error?: string }) {
   switch (searchParams.ok) {
     case "estado_actualizado":
       return { type: "ok" as const, text: "El estado de la respuesta fue actualizado." };
+    case "respuesta_enviada":
+      return { type: "ok" as const, text: "La respuesta fue enviada correctamente." };
     default:
       break;
   }
@@ -46,6 +77,10 @@ function getFeedback(searchParams: { ok?: string; error?: string }) {
       return { type: "error" as const, text: "No se encontro la respuesta solicitada." };
     case "estado_invalido":
       return { type: "error" as const, text: "El estado solicitado no es valido." };
+    case "respuesta_vacia":
+      return { type: "error" as const, text: "Escribe un mensaje antes de enviar la respuesta." };
+    case "envio_fallido":
+      return { type: "error" as const, text: "No se pudo enviar la respuesta. Intenta nuevamente." };
     default:
       return null;
   }
@@ -310,6 +345,109 @@ export default async function RespuestaEmailDetailPage({
     redirect(`/administracion/respuestas/${targetRespuestaId}${buildReturnQuery({ ok: "estado_actualizado" })}`);
   }
 
+  async function enviarRespuesta(formData: FormData) {
+    "use server";
+
+    const targetRespuestaId = Number(formData.get("respuestaId"));
+    const bodyHtml = formData.get("bodyHtml")?.toString().trim() ?? "";
+    const bodyText = formData.get("bodyText")?.toString().trim() ?? "";
+
+    if (!Number.isInteger(targetRespuestaId) || targetRespuestaId <= 0) {
+      redirect(`/administracion/respuestas/${params.id}${buildReturnQuery({ error: "respuesta_invalida" })}`);
+    }
+
+    if (!bodyText) {
+      redirect(`/administracion/respuestas/${targetRespuestaId}${buildReturnQuery({ error: "respuesta_vacia" })}`);
+    }
+
+    const actual = await prisma.respuestaEmail.findUnique({
+      where: { id: targetRespuestaId },
+      select: {
+        id: true,
+        consorcioId: true,
+        asambleaId: true,
+        fromEmail: true,
+        messageId: true,
+        inReplyTo: true,
+        subject: true,
+        envioEmail: {
+          select: {
+            id: true,
+            tipoEnvio: true,
+            liquidacionId: true,
+            asambleaId: true,
+            unidadId: true,
+          },
+        },
+      },
+    });
+
+    if (!actual) {
+      redirect(`/administracion/respuestas/${params.id}${buildReturnQuery({ error: "respuesta_invalida" })}`);
+    }
+
+    await requireConsorcioRole(actual.consorcioId, ["ADMIN", "OPERADOR"]);
+
+    const asunto = ensureReplySubject(actual.subject);
+    const inReplyToHeader = normalizeMessageHeader(actual.messageId);
+    const referencesHeader = buildReplyReferences([actual.inReplyTo, actual.messageId]);
+    const replyKey = createEmailReplyKey();
+    const envio = await prisma.envioEmail.create({
+      data: {
+        consorcioId: actual.consorcioId,
+        tipoEnvio: actual.envioEmail?.tipoEnvio ?? "RESPUESTA_ADMIN",
+        liquidacionId: actual.envioEmail?.liquidacionId ?? null,
+        asambleaId: actual.envioEmail?.asambleaId ?? actual.asambleaId ?? null,
+        unidadId: actual.envioEmail?.unidadId ?? null,
+        destinatario: actual.fromEmail,
+        asunto,
+        cuerpo: bodyText,
+        estado: EMAIL_ESTADO.PENDIENTE,
+        replyKey,
+      },
+      select: { id: true, replyKey: true },
+    });
+
+    try {
+      const response = await sendEmail({
+        to: actual.fromEmail,
+        subject: asunto,
+        html: bodyHtml || bodyText.replace(/\n/g, "<br />"),
+        text: bodyText,
+        replyTo: buildReplyToAddress(envio.replyKey) ?? undefined,
+        headers: {
+          ...(inReplyToHeader ? { "In-Reply-To": `<${inReplyToHeader}>` } : {}),
+          ...(referencesHeader ? { References: referencesHeader } : {}),
+        },
+      });
+
+      await prisma.envioEmail.update({
+        where: { id: envio.id },
+        data: {
+          estado: EMAIL_ESTADO.ENVIADO,
+          providerMessageId: response?.id ?? null,
+          errorMensaje: null,
+          enviadoAt: new Date(),
+        },
+      });
+
+      redirect(`/administracion/respuestas/${targetRespuestaId}${buildReturnQuery({ ok: "respuesta_enviada" })}`);
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message.slice(0, 1000) : "Error desconocido al enviar la respuesta.";
+
+      await prisma.envioEmail.update({
+        where: { id: envio.id },
+        data: {
+          estado: EMAIL_ESTADO.ERROR,
+          errorMensaje: errorMessage,
+        },
+      });
+
+      redirect(`/administracion/respuestas/${targetRespuestaId}${buildReturnQuery({ error: "envio_fallido" })}`);
+    }
+  }
+
   const feedback = getFeedback(searchParams ?? {});
   const remitenteNombre =
     respuesta.fromNombre?.trim() ||
@@ -489,15 +627,14 @@ export default async function RespuestaEmailDetailPage({
               ) : null}
             </dl>
 
-            <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Ultima respuesta recibida</p>
-              <pre className="mt-2 whitespace-pre-wrap break-words font-sans text-sm leading-6 text-slate-700">
-                {latestReplyText || "No se pudo aislar un mensaje util sin historial citado."}
-              </pre>
-            </div>
           </div>
 
-          <RespuestaReplySection receivedBody={receivedBody} />
+          <RespuestaReplySection
+            receivedBody={receivedBody}
+            latestReplyText={latestReplyText}
+            respuestaId={respuesta.id}
+            sendAction={enviarRespuesta}
+          />
 
         </article>
 

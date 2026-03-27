@@ -24,7 +24,18 @@ function ToolbarButton({
   );
 }
 
-export default function RespuestaRichComposer({ active }: { active: boolean }) {
+type ComposerValue = {
+  html: string;
+  text: string;
+};
+
+export default function RespuestaRichComposer({
+  active,
+  onChange,
+}: {
+  active: boolean;
+  onChange: (value: ComposerValue) => void;
+}) {
   const editorRef = useRef<HTMLDivElement | null>(null);
   const [html, setHtml] = useState("");
 
@@ -40,10 +51,20 @@ export default function RespuestaRichComposer({ active }: { active: boolean }) {
     return () => cancelAnimationFrame(frame);
   }, [active]);
 
+  const syncValue = () => {
+    const nextHtml = editorRef.current?.innerHTML ?? "";
+    const nextText = editorRef.current?.innerText?.replace(/\r/g, "").trim() ?? "";
+    setHtml(nextHtml);
+    onChange({
+      html: nextHtml,
+      text: nextText,
+    });
+  };
+
   const runCommand = (command: string, value?: string) => {
     editorRef.current?.focus();
     document.execCommand(command, false, value);
-    setHtml(editorRef.current?.innerHTML ?? "");
+    syncValue();
   };
 
   return (
@@ -80,7 +101,7 @@ export default function RespuestaRichComposer({ active }: { active: boolean }) {
         <ToolbarButton label="L" title="Alinear a la izquierda" onClick={() => runCommand("justifyLeft")} />
         <ToolbarButton label="C" title="Centrar" onClick={() => runCommand("justifyCenter")} />
         <ToolbarButton label="R" title="Alinear a la derecha" onClick={() => runCommand("justifyRight")} />
-        <ToolbarButton label="UL" title="Lista con viñetas" onClick={() => runCommand("insertUnorderedList")} />
+        <ToolbarButton label="UL" title="Lista con vinetas" onClick={() => runCommand("insertUnorderedList")} />
         <ToolbarButton label="1." title="Lista numerada" onClick={() => runCommand("insertOrderedList")} />
         <ToolbarButton label='""' title="Cita" onClick={() => runCommand("formatBlock", "blockquote")} />
         <ToolbarButton label="Tx" title="Limpiar formato" onClick={() => runCommand("removeFormat")} />
@@ -95,9 +116,7 @@ export default function RespuestaRichComposer({ active }: { active: boolean }) {
           ref={editorRef}
           contentEditable
           suppressContentEditableWarning
-          onInput={(event) => {
-            setHtml((event.target as HTMLDivElement).innerHTML);
-          }}
+          onInput={syncValue}
           className="relative z-10 min-h-[260px] px-4 py-4 text-sm leading-6 text-slate-800 outline-none"
         />
 
