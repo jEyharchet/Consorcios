@@ -347,7 +347,7 @@ export default async function RespuestaEmailDetailPage({
 
   return (
     <main className="mx-auto w-full max-w-5xl px-6 py-10">
-      <header className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <header className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <Link href="/administracion/respuestas" className="text-sm font-medium text-slate-600 hover:text-slate-900">
             Volver a Respuestas
@@ -356,9 +356,37 @@ export default async function RespuestaEmailDetailPage({
           <p className="mt-1 text-sm text-slate-600">Respuesta recibida y asociada al consorcio {respuesta.consorcio.nombre}.</p>
         </div>
 
-        <span className={`inline-flex rounded-full px-3 py-1.5 text-sm font-semibold ${getEstadoBadgeClasses(respuesta.estado)}`}>
-          {respuesta.estado}
-        </span>
+        <div className="flex flex-wrap items-center justify-end gap-3">
+          {respuesta.estado !== EMAIL_RESPUESTA_ESTADO.LEIDA ? (
+            <form action={actualizarEstado}>
+              <input type="hidden" name="respuestaId" value={respuesta.id} />
+              <input type="hidden" name="estado" value={EMAIL_RESPUESTA_ESTADO.LEIDA} />
+              <button
+                type="submit"
+                className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              >
+                Marcar como leida
+              </button>
+            </form>
+          ) : null}
+
+          {respuesta.estado !== EMAIL_RESPUESTA_ESTADO.RESUELTA ? (
+            <form action={actualizarEstado}>
+              <input type="hidden" name="respuestaId" value={respuesta.id} />
+              <input type="hidden" name="estado" value={EMAIL_RESPUESTA_ESTADO.RESUELTA} />
+              <button
+                type="submit"
+                className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
+              >
+                Marcar como resuelta
+              </button>
+            </form>
+          ) : null}
+
+          <span className={`inline-flex rounded-full px-3 py-1.5 text-sm font-semibold ${getEstadoBadgeClasses(respuesta.estado)}`}>
+            {respuesta.estado}
+          </span>
+        </div>
       </header>
 
       {feedback ? (
@@ -376,27 +404,60 @@ export default async function RespuestaEmailDetailPage({
       <section className="grid gap-6 lg:grid-cols-[1.3fr_0.7fr]">
         <article className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
           <h2 className="text-lg font-semibold text-slate-900">Mensaje recibido</h2>
-          <dl className="mt-4 grid gap-4 text-sm text-slate-600 sm:grid-cols-2">
+          <dl className="mt-4 grid gap-x-5 gap-y-3 text-sm text-slate-600 sm:grid-cols-3">
             <div>
               <dt className="font-medium text-slate-500">Fecha de recepcion</dt>
-              <dd className="mt-1 text-slate-900">{formatDateTime(respuesta.receivedAt)}</dd>
+              <dd className="mt-1 leading-5 text-slate-900">{formatDateTime(respuesta.receivedAt)}</dd>
             </div>
             <div>
               <dt className="font-medium text-slate-500">Remitente</dt>
-              <dd className="mt-1 text-slate-900">{remitenteNombre}</dd>
-              <dd className="text-slate-500">{respuesta.fromEmail}</dd>
-            </div>
-            <div>
-              <dt className="font-medium text-slate-500">Para</dt>
-              <dd className="mt-1 text-slate-900">{respuesta.toEmail || "No informado"}</dd>
+              <dd className="mt-1 leading-5 text-slate-900">{remitenteNombre}</dd>
+              <dd className="leading-5 text-slate-500">{respuesta.fromEmail}</dd>
             </div>
             <div>
               <dt className="font-medium text-slate-500">Asunto</dt>
-              <dd className="mt-1 text-slate-900">{respuesta.subject}</dd>
+              <dd className="mt-1 leading-5 text-slate-900">{respuesta.subject}</dd>
             </div>
           </dl>
 
-          <div className="mt-6 rounded-xl border border-slate-200 bg-slate-50 p-4">
+          <div className="mt-5 rounded-xl border border-slate-200 bg-white p-4">
+            <h3 className="text-sm font-semibold text-slate-900">Responde a</h3>
+            <dl className="mt-3 grid gap-x-5 gap-y-3 text-sm text-slate-600 sm:grid-cols-2">
+              <div>
+                <dt className="font-medium text-slate-500">Tipo / contexto</dt>
+                <dd className="mt-1 text-slate-900">
+                  {contexto ? `${contexto.categoria}: ${contexto.label}` : respuesta.envioEmail ? tipoEnvioLabel(respuesta.envioEmail.tipoEnvio) : "No asociado"}
+                </dd>
+              </div>
+              <div>
+                <dt className="font-medium text-slate-500">Asunto original</dt>
+                <dd className="mt-1 text-slate-900">{respuesta.envioEmail?.asunto || "No asociado"}</dd>
+              </div>
+              <div>
+                <dt className="font-medium text-slate-500">Fecha del envio</dt>
+                <dd className="mt-1 text-slate-900">{fechaEnvioOriginal ? formatDateTime(fechaEnvioOriginal) : "No disponible"}</dd>
+              </div>
+              <div>
+                <dt className="font-medium text-slate-500">Consorcio y unidad</dt>
+                <dd className="mt-1 text-slate-900">
+                  {respuesta.envioEmail?.consorcio ? respuesta.envioEmail.consorcio.nombre : respuesta.consorcio.nombre}
+                  {respuesta.envioEmail?.unidad ? ` / ${respuesta.envioEmail.unidad.identificador} (${respuesta.envioEmail.unidad.tipo})` : ""}
+                </dd>
+              </div>
+              {contexto?.href ? (
+                <div className="sm:col-span-2">
+                  <dt className="font-medium text-slate-500">Acceso relacionado</dt>
+                  <dd className="mt-1">
+                    <Link href={contexto.href} className="font-medium text-slate-700 hover:text-slate-950">
+                      Ir a {contexto.categoria.toLowerCase()}
+                    </Link>
+                  </dd>
+                </div>
+              ) : null}
+            </dl>
+          </div>
+
+          <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
             <h3 className="text-sm font-semibold text-slate-900">Contenido</h3>
             <pre className="mt-3 whitespace-pre-wrap break-words font-sans text-sm leading-6 text-slate-700">
               {visibleBody || "No se pudo extraer contenido legible del email recibido."}
@@ -414,37 +475,6 @@ export default async function RespuestaEmailDetailPage({
         </article>
 
         <aside className="space-y-6">
-          <article className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-            <h2 className="text-lg font-semibold text-slate-900">Gestion</h2>
-            <div className="mt-4 flex flex-col gap-3">
-              {respuesta.estado !== EMAIL_RESPUESTA_ESTADO.LEIDA ? (
-                <form action={actualizarEstado}>
-                  <input type="hidden" name="respuestaId" value={respuesta.id} />
-                  <input type="hidden" name="estado" value={EMAIL_RESPUESTA_ESTADO.LEIDA} />
-                  <button
-                    type="submit"
-                    className="w-full rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                  >
-                    Marcar como leida
-                  </button>
-                </form>
-              ) : null}
-
-              {respuesta.estado !== EMAIL_RESPUESTA_ESTADO.RESUELTA ? (
-                <form action={actualizarEstado}>
-                  <input type="hidden" name="respuestaId" value={respuesta.id} />
-                  <input type="hidden" name="estado" value={EMAIL_RESPUESTA_ESTADO.RESUELTA} />
-                  <button
-                    type="submit"
-                    className="w-full rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
-                  >
-                    Marcar como resuelta
-                  </button>
-                </form>
-              ) : null}
-            </div>
-          </article>
-
           <article className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
             <h2 className="text-lg font-semibold text-slate-900">Persona</h2>
             <div className="mt-4 text-sm text-slate-600">
@@ -507,68 +537,6 @@ export default async function RespuestaEmailDetailPage({
           </article>
 
           <article className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-            <h2 className="text-lg font-semibold text-slate-900">Responde a</h2>
-            <dl className="mt-4 space-y-4 text-sm text-slate-600">
-              <div>
-                <dt className="font-medium text-slate-500">Categoria</dt>
-                <dd className="mt-1 text-slate-900">
-                  {respuesta.envioEmail ? (
-                    tipoEnvioLabel(respuesta.envioEmail.tipoEnvio)
-                  ) : (
-                    "No asociado"
-                  )}
-                </dd>
-              </div>
-              <div>
-                <dt className="font-medium text-slate-500">Asunto original</dt>
-                <dd className="mt-1 text-slate-900">
-                  {respuesta.envioEmail?.asunto || "No asociado"}
-                </dd>
-              </div>
-              <div>
-                <dt className="font-medium text-slate-500">Fecha del envio original</dt>
-                <dd className="mt-1 text-slate-900">
-                  {fechaEnvioOriginal ? formatDateTime(fechaEnvioOriginal) : "No disponible"}
-                </dd>
-              </div>
-              <div>
-                <dt className="font-medium text-slate-500">Consorcio relacionado</dt>
-                <dd className="mt-1 text-slate-900">
-                  {respuesta.envioEmail?.consorcio ? (
-                    <Link href={`/consorcios/${respuesta.envioEmail.consorcio.id}`} className="font-medium text-slate-700 hover:text-slate-950">
-                      {respuesta.envioEmail.consorcio.nombre}
-                    </Link>
-                  ) : (
-                    respuesta.consorcio.nombre
-                  )}
-                </dd>
-              </div>
-              <div>
-                <dt className="font-medium text-slate-500">Unidad relacionada</dt>
-                <dd className="mt-1 text-slate-900">
-                  {respuesta.envioEmail?.unidad ? (
-                    <Link href={`/unidades/${respuesta.envioEmail.unidad.id}`} className="font-medium text-slate-700 hover:text-slate-950">
-                      {respuesta.envioEmail.unidad.identificador} ({respuesta.envioEmail.unidad.tipo})
-                    </Link>
-                  ) : (
-                    "No aplica"
-                  )}
-                </dd>
-              </div>
-              <div>
-                <dt className="font-medium text-slate-500">Contexto relacionado</dt>
-                <dd className="mt-1 text-slate-900">
-                  {contexto?.href ? (
-                    <Link href={contexto.href} className="font-medium text-slate-700 hover:text-slate-950">
-                      {contexto.categoria}: {contexto.label}
-                    </Link>
-                  ) : (
-                    contexto ? `${contexto.categoria}: ${contexto.label}` : "Sin contexto asociado"
-                  )}
-                </dd>
-              </div>
-            </dl>
-
             <details className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
               <summary className="cursor-pointer text-sm font-medium text-slate-700">Ver datos tecnicos</summary>
               <div className="mt-3 space-y-2 break-all text-xs text-slate-600">
