@@ -356,36 +356,38 @@ export default async function RespuestaEmailDetailPage({
           <p className="mt-1 text-sm text-slate-600">Respuesta recibida y asociada al consorcio {respuesta.consorcio.nombre}.</p>
         </div>
 
-        <div className="flex flex-wrap items-center justify-end gap-3">
-          {respuesta.estado !== EMAIL_RESPUESTA_ESTADO.LEIDA ? (
-            <form action={actualizarEstado}>
-              <input type="hidden" name="respuestaId" value={respuesta.id} />
-              <input type="hidden" name="estado" value={EMAIL_RESPUESTA_ESTADO.LEIDA} />
-              <button
-                type="submit"
-                className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-              >
-                Marcar como leida
-              </button>
-            </form>
-          ) : null}
-
-          {respuesta.estado !== EMAIL_RESPUESTA_ESTADO.RESUELTA ? (
-            <form action={actualizarEstado}>
-              <input type="hidden" name="respuestaId" value={respuesta.id} />
-              <input type="hidden" name="estado" value={EMAIL_RESPUESTA_ESTADO.RESUELTA} />
-              <button
-                type="submit"
-                className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
-              >
-                Marcar como resuelta
-              </button>
-            </form>
-          ) : null}
-
+        <div className="flex flex-col items-end">
           <span className={`inline-flex rounded-full px-3 py-1.5 text-sm font-semibold ${getEstadoBadgeClasses(respuesta.estado)}`}>
             {respuesta.estado}
           </span>
+
+          <div className="mt-2 flex flex-wrap items-center justify-end gap-3">
+            {respuesta.estado !== EMAIL_RESPUESTA_ESTADO.LEIDA ? (
+              <form action={actualizarEstado}>
+                <input type="hidden" name="respuestaId" value={respuesta.id} />
+                <input type="hidden" name="estado" value={EMAIL_RESPUESTA_ESTADO.LEIDA} />
+                <button
+                  type="submit"
+                  className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  Marcar como leida
+                </button>
+              </form>
+            ) : null}
+
+            {respuesta.estado !== EMAIL_RESPUESTA_ESTADO.RESUELTA ? (
+              <form action={actualizarEstado}>
+                <input type="hidden" name="respuestaId" value={respuesta.id} />
+                <input type="hidden" name="estado" value={EMAIL_RESPUESTA_ESTADO.RESUELTA} />
+                <button
+                  type="submit"
+                  className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
+                >
+                  Marcar como resuelta
+                </button>
+              </form>
+            ) : null}
+          </div>
         </div>
       </header>
 
@@ -464,14 +466,6 @@ export default async function RespuestaEmailDetailPage({
             </pre>
           </div>
 
-          {respuesta.bodyHtml ? (
-            <details className="mt-4 rounded-xl border border-slate-200 bg-white p-4">
-              <summary className="cursor-pointer text-sm font-medium text-slate-700">Ver HTML almacenado</summary>
-              <pre className="mt-3 max-h-80 overflow-auto whitespace-pre-wrap break-words text-xs text-slate-600">
-                {respuesta.bodyHtml}
-              </pre>
-            </details>
-          ) : null}
         </article>
 
         <aside className="space-y-6">
@@ -536,17 +530,6 @@ export default async function RespuestaEmailDetailPage({
             </div>
           </article>
 
-          <article className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-            <details className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
-              <summary className="cursor-pointer text-sm font-medium text-slate-700">Ver datos tecnicos</summary>
-              <div className="mt-3 space-y-2 break-all text-xs text-slate-600">
-                <p>EnvioEmail ID: {respuesta.envioEmail?.id ?? "No asociado"}</p>
-                <p>Provider Message ID: {respuesta.envioEmail?.providerMessageId || "No informado"}</p>
-                <p>Message-ID respuesta: {respuesta.messageId || "No informado"}</p>
-                <p>In-Reply-To: {respuesta.inReplyTo || "No informado"}</p>
-              </div>
-            </details>
-          </article>
         </aside>
       </section>
     </main>
