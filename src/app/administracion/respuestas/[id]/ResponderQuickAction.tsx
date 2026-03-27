@@ -1,7 +1,5 @@
 "use client";
 
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
-
 function ReplyIcon() {
   return (
     <svg viewBox="0 0 20 20" aria-hidden="true" className="h-5 w-5 fill-none stroke-current stroke-[1.8]">
@@ -11,26 +9,16 @@ function ReplyIcon() {
   );
 }
 
-export default function ResponderQuickAction({ active }: { active: boolean }) {
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-
+export default function ResponderQuickAction() {
   return (
     <button
       type="button"
       aria-label="Responder"
       title="Responder"
       onClick={() => {
-        const params = new URLSearchParams(searchParams.toString());
-        params.set("reply", "1");
-        router.replace(`${pathname}?${params.toString()}#reply-editor`, { scroll: false });
+        window.dispatchEvent(new CustomEvent("amiconsorcio:reply-start"));
       }}
-      className={`inline-flex h-10 w-10 items-center justify-center rounded-full border transition ${
-        active
-          ? "border-slate-900 bg-slate-900 text-white"
-          : "border-slate-300 text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-      }`}
+      className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-300 text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
     >
       <ReplyIcon />
     </button>

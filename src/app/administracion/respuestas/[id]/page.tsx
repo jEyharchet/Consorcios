@@ -11,7 +11,7 @@ import { redirectToOnboardingIfNoConsorcios } from "@/lib/onboarding";
 import { prisma } from "@/lib/prisma";
 
 import { buildReturnQuery, formatDate, formatDateTime } from "../../shared";
-import RespuestaRichComposer from "./RespuestaRichComposer";
+import RespuestaReplySection from "./RespuestaReplySection";
 import ResponderQuickAction from "./ResponderQuickAction";
 
 const MANAGEABLE_ESTADOS = [EMAIL_RESPUESTA_ESTADO.LEIDA, EMAIL_RESPUESTA_ESTADO.RESUELTA] as const;
@@ -151,7 +151,7 @@ export default async function RespuestaEmailDetailPage({
   searchParams,
 }: {
   params: { id: string };
-  searchParams?: { ok?: string; error?: string; reply?: string };
+  searchParams?: { ok?: string; error?: string };
 }) {
   const respuestaId = Number(params.id);
 
@@ -365,7 +365,6 @@ export default async function RespuestaEmailDetailPage({
 
   const consorciosRelacionados = Array.from(consorcioMap.values()).sort((a, b) => a.nombre.localeCompare(b.nombre));
   const fechaEnvioOriginal = respuesta.envioEmail?.enviadoAt ?? respuesta.envioEmail?.createdAt ?? null;
-  const replyMode = searchParams?.reply === "1";
 
   return (
     <main className="mx-auto w-full max-w-5xl px-6 py-10">
@@ -418,7 +417,7 @@ export default async function RespuestaEmailDetailPage({
               </button>
             </form>
 
-            <ResponderQuickAction active={replyMode} />
+            <ResponderQuickAction />
           </div>
         </div>
       </header>
@@ -498,12 +497,7 @@ export default async function RespuestaEmailDetailPage({
             </div>
           </div>
 
-          <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
-            <h3 className="text-sm font-semibold text-slate-900">Contenido</h3>
-            <div className="mt-3">
-              <RespuestaRichComposer active={replyMode} />
-            </div>
-          </div>
+          <RespuestaReplySection receivedBody={receivedBody} />
 
         </article>
 
