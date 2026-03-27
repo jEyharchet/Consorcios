@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 
 import { getActiveConsorcioContext } from "@/lib/consorcio-activo";
 import { EMAIL_RESPUESTA_ESTADO, getRespuestaBodyText } from "@/lib/email-replies";
+import { extractLatestReplyText } from "@/lib/email-reply-cleaning";
 import { ADMIN_EMAIL_TIPO_ENVIO } from "@/lib/administracion-shared";
 import { requireConsorcioRole } from "@/lib/auth";
 import { EMAIL_TIPO_ENVIO } from "@/lib/liquidacion-email";
@@ -10,9 +11,27 @@ import { redirectToOnboardingIfNoConsorcios } from "@/lib/onboarding";
 import { prisma } from "@/lib/prisma";
 
 import { buildReturnQuery, formatDate, formatDateTime } from "../../shared";
+import RespuestaRichComposer from "./RespuestaRichComposer";
 import ResponderQuickAction from "./ResponderQuickAction";
 
 const MANAGEABLE_ESTADOS = [EMAIL_RESPUESTA_ESTADO.LEIDA, EMAIL_RESPUESTA_ESTADO.RESUELTA] as const;
+
+function EyeIcon() {
+  return (
+    <svg viewBox="0 0 20 20" aria-hidden="true" className="h-5 w-5 fill-none stroke-current stroke-[1.8]">
+      <path d="M1.75 10s2.75-5 8.25-5 8.25 5 8.25 5-2.75 5-8.25 5-8.25-5-8.25-5Z" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="10" cy="10" r="2.5" />
+    </svg>
+  );
+}
+
+function CheckIcon() {
+  return (
+    <svg viewBox="0 0 20 20" aria-hidden="true" className="h-5 w-5 fill-none stroke-current stroke-[1.8]">
+      <path d="m4.5 10.5 3.5 3.5 7-8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
 
 function getFeedback(searchParams: { ok?: string; error?: string }) {
   switch (searchParams.ok) {
@@ -132,7 +151,7 @@ export default async function RespuestaEmailDetailPage({
   searchParams,
 }: {
   params: { id: string };
-  searchParams?: { ok?: string; error?: string };
+  searchParams?: { ok?: string; error?: string; reply?: string };
 }) {
   const respuestaId = Number(params.id);
 
@@ -299,10 +318,11 @@ export default async function RespuestaEmailDetailPage({
     asamblea: respuesta.asamblea,
     envioEmail: respuesta.envioEmail,
   });
-  const visibleBody = getRespuestaBodyText({
+  const receivedBody = getRespuestaBodyText({
     bodyTexto: respuesta.bodyTexto,
     bodyHtml: respuesta.bodyHtml,
   });
+  const latestReplyText = extractLatestReplyText(receivedBody);
   const personaNombreCompleto = respuesta.persona
     ? `${respuesta.persona.apellido}, ${respuesta.persona.nombre}`
     : null;
@@ -345,6 +365,7 @@ export default async function RespuestaEmailDetailPage({
 
   const consorciosRelacionados = Array.from(consorcioMap.values()).sort((a, b) => a.nombre.localeCompare(b.nombre));
   const fechaEnvioOriginal = respuesta.envioEmail?.enviadoAt ?? respuesta.envioEmail?.createdAt ?? null;
+  const replyMode = searchParams?.reply === "1";
 
   return (
     <main className="mx-auto w-full max-w-5xl px-6 py-10">
@@ -376,7 +397,7 @@ export default async function RespuestaEmailDetailPage({
                     : "border-slate-300 text-slate-600 hover:bg-slate-100 hover:text-slate-900"
                 }`}
               >
-                👁
+                <EyeIcon />
               </button>
             </form>
 
@@ -393,11 +414,11 @@ export default async function RespuestaEmailDetailPage({
                     : "border-slate-300 text-slate-600 hover:bg-slate-100 hover:text-slate-900"
                 }`}
               >
-                ✔
+                <CheckIcon />
               </button>
             </form>
 
-            <ResponderQuickAction />
+            <ResponderQuickAction active={replyMode} />
           </div>
         </div>
       </header>
@@ -468,13 +489,20 @@ export default async function RespuestaEmailDetailPage({
                 </div>
               ) : null}
             </dl>
+
+            <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Ultima respuesta recibida</p>
+              <pre className="mt-2 whitespace-pre-wrap break-words font-sans text-sm leading-6 text-slate-700">
+                {latestReplyText || "No se pudo aislar un mensaje util sin historial citado."}
+              </pre>
+            </div>
           </div>
 
           <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
             <h3 className="text-sm font-semibold text-slate-900">Contenido</h3>
-            <pre className="mt-3 whitespace-pre-wrap break-words font-sans text-sm leading-6 text-slate-700">
-              {visibleBody || "No se pudo extraer contenido legible del email recibido."}
-            </pre>
+            <div className="mt-3">
+              <RespuestaRichComposer active={replyMode} />
+            </div>
           </div>
 
         </article>
