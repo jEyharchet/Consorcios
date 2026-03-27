@@ -10,6 +10,7 @@ import { redirectToOnboardingIfNoConsorcios } from "@/lib/onboarding";
 import { prisma } from "@/lib/prisma";
 
 import { buildReturnQuery, formatDate, formatDateTime } from "../../shared";
+import ResponderQuickAction from "./ResponderQuickAction";
 
 const MANAGEABLE_ESTADOS = [EMAIL_RESPUESTA_ESTADO.LEIDA, EMAIL_RESPUESTA_ESTADO.RESUELTA] as const;
 
@@ -362,31 +363,41 @@ export default async function RespuestaEmailDetailPage({
           </span>
 
           <div className="mt-2 flex flex-wrap items-center justify-end gap-3">
-            {respuesta.estado !== EMAIL_RESPUESTA_ESTADO.LEIDA ? (
-              <form action={actualizarEstado}>
-                <input type="hidden" name="respuestaId" value={respuesta.id} />
-                <input type="hidden" name="estado" value={EMAIL_RESPUESTA_ESTADO.LEIDA} />
-                <button
-                  type="submit"
-                  className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                >
-                  Marcar como leida
-                </button>
-              </form>
-            ) : null}
+            <form action={actualizarEstado}>
+              <input type="hidden" name="respuestaId" value={respuesta.id} />
+              <input type="hidden" name="estado" value={EMAIL_RESPUESTA_ESTADO.LEIDA} />
+              <button
+                type="submit"
+                aria-label="Marcar como leída"
+                title="Marcar como leída"
+                className={`inline-flex h-10 w-10 items-center justify-center rounded-full border text-xl transition ${
+                  respuesta.estado === EMAIL_RESPUESTA_ESTADO.LEIDA || respuesta.estado === EMAIL_RESPUESTA_ESTADO.RESUELTA
+                    ? "border-sky-200 bg-sky-50 text-sky-700"
+                    : "border-slate-300 text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                }`}
+              >
+                👁
+              </button>
+            </form>
 
-            {respuesta.estado !== EMAIL_RESPUESTA_ESTADO.RESUELTA ? (
-              <form action={actualizarEstado}>
-                <input type="hidden" name="respuestaId" value={respuesta.id} />
-                <input type="hidden" name="estado" value={EMAIL_RESPUESTA_ESTADO.RESUELTA} />
-                <button
-                  type="submit"
-                  className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
-                >
-                  Marcar como resuelta
-                </button>
-              </form>
-            ) : null}
+            <form action={actualizarEstado}>
+              <input type="hidden" name="respuestaId" value={respuesta.id} />
+              <input type="hidden" name="estado" value={EMAIL_RESPUESTA_ESTADO.RESUELTA} />
+              <button
+                type="submit"
+                aria-label="Marcar como resuelta"
+                title="Marcar como resuelta"
+                className={`inline-flex h-10 w-10 items-center justify-center rounded-full border text-xl transition ${
+                  respuesta.estado === EMAIL_RESPUESTA_ESTADO.RESUELTA
+                    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                    : "border-slate-300 text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                }`}
+              >
+                ✔
+              </button>
+            </form>
+
+            <ResponderQuickAction />
           </div>
         </div>
       </header>
