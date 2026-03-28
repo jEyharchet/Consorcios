@@ -430,8 +430,6 @@ export default async function RespuestaEmailDetailPage({
           enviadoAt: new Date(),
         },
       });
-
-      redirect(`/administracion/respuestas/${targetRespuestaId}${buildReturnQuery({ ok: "respuesta_enviada" })}`);
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message.slice(0, 1000) : "Error desconocido al enviar la respuesta.";
@@ -446,6 +444,8 @@ export default async function RespuestaEmailDetailPage({
 
       redirect(`/administracion/respuestas/${targetRespuestaId}${buildReturnQuery({ error: "envio_fallido" })}`);
     }
+
+    redirect(`/administracion/respuestas/${targetRespuestaId}${buildReturnQuery({ ok: "respuesta_enviada" })}`);
   }
 
   const feedback = getFeedback(searchParams ?? {});
