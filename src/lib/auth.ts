@@ -2,7 +2,6 @@ import { redirect } from "next/navigation";
 
 import { auth } from "../../auth";
 import { ensureUserPersona } from "./persona-identity";
-import { normalizeDate } from "./relaciones";
 import { prisma } from "./prisma";
 import { isConsorcioRole, type ConsorcioRole, type GlobalRole } from "./roles";
 
@@ -93,7 +92,7 @@ async function buildAccessContextForUser(user: CurrentUser): Promise<AccessConte
   }
 
   const consorcioRoleMap = new Map<number, { nombre: string; role: ConsorcioRole }>();
-  const today = normalizeDate(new Date());
+  const now = new Date();
 
   const mergeAssignment = (consorcioId: number, nombre: string, role: ConsorcioRole) => {
     const current = consorcioRoleMap.get(consorcioId);
@@ -107,8 +106,8 @@ async function buildAccessContextForUser(user: CurrentUser): Promise<AccessConte
       prisma.consorcioAdministrador.findMany({
         where: {
           personaId: user.personaId,
-          desde: { lte: today },
-          OR: [{ hasta: null }, { hasta: { gte: today } }],
+          desde: { lte: now },
+          OR: [{ hasta: null }, { hasta: { gte: now } }],
         },
         select: {
           consorcio: {
@@ -119,8 +118,8 @@ async function buildAccessContextForUser(user: CurrentUser): Promise<AccessConte
       prisma.unidadPersona.findMany({
         where: {
           personaId: user.personaId,
-          desde: { lte: today },
-          OR: [{ hasta: null }, { hasta: { gte: today } }],
+          desde: { lte: now },
+          OR: [{ hasta: null }, { hasta: { gte: now } }],
         },
         select: {
           unidad: {

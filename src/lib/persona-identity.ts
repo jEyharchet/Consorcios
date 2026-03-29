@@ -1,6 +1,5 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
 
-import { normalizeDate } from "./relaciones";
 import { prisma } from "./prisma";
 import type { ConsorcioRole } from "./roles";
 
@@ -61,7 +60,7 @@ async function syncUserConsorcioAccessFromPersona(
   },
   db: PrismaClientLike = prisma,
 ) {
-  const today = normalizeDate(new Date());
+  const now = new Date();
   const roleByConsorcio = new Map<number, ConsorcioRole>();
 
   const mergeRole = (consorcioId: number, role: ConsorcioRole) => {
@@ -76,16 +75,16 @@ async function syncUserConsorcioAccessFromPersona(
     db.consorcioAdministrador.findMany({
       where: {
         personaId: params.personaId,
-        desde: { lte: today },
-        OR: [{ hasta: null }, { hasta: { gte: today } }],
+        desde: { lte: now },
+        OR: [{ hasta: null }, { hasta: { gte: now } }],
       },
       select: { consorcioId: true },
     }),
     db.unidadPersona.findMany({
       where: {
         personaId: params.personaId,
-        desde: { lte: today },
-        OR: [{ hasta: null }, { hasta: { gte: today } }],
+        desde: { lte: now },
+        OR: [{ hasta: null }, { hasta: { gte: now } }],
       },
       select: {
         unidad: {
@@ -155,7 +154,7 @@ async function findPersonaCandidatesByEmail(
     return [];
   }
 
-  const today = normalizeDate(new Date());
+  const now = new Date();
   const personas = await db.persona.findMany({
     where: {
       email: {
@@ -171,16 +170,16 @@ async function findPersonaCandidatesByEmail(
       telefono: true,
       consorciosAdministrados: {
         where: {
-          desde: { lte: today },
-          OR: [{ hasta: null }, { hasta: { gte: today } }],
+          desde: { lte: now },
+          OR: [{ hasta: null }, { hasta: { gte: now } }],
         },
         select: { id: true },
         take: 1,
       },
       unidades: {
         where: {
-          desde: { lte: today },
-          OR: [{ hasta: null }, { hasta: { gte: today } }],
+          desde: { lte: now },
+          OR: [{ hasta: null }, { hasta: { gte: now } }],
         },
         select: { id: true },
         take: 1,
@@ -213,7 +212,7 @@ async function getPersonaCandidateById(
   personaId: number,
   db: PrismaClientLike = prisma,
 ) {
-  const today = normalizeDate(new Date());
+  const now = new Date();
   const persona = await db.persona.findUnique({
     where: { id: personaId },
     select: {
@@ -224,16 +223,16 @@ async function getPersonaCandidateById(
       telefono: true,
       consorciosAdministrados: {
         where: {
-          desde: { lte: today },
-          OR: [{ hasta: null }, { hasta: { gte: today } }],
+          desde: { lte: now },
+          OR: [{ hasta: null }, { hasta: { gte: now } }],
         },
         select: { id: true },
         take: 1,
       },
       unidades: {
         where: {
-          desde: { lte: today },
-          OR: [{ hasta: null }, { hasta: { gte: today } }],
+          desde: { lte: now },
+          OR: [{ hasta: null }, { hasta: { gte: now } }],
         },
         select: { id: true },
         take: 1,
