@@ -467,7 +467,7 @@ export default async function RespuestaEmailDetailPage({
           envioEmailId: envio.id,
           toEmail: actual.fromEmail,
           subject: asunto,
-          bodyTexto,
+          bodyTexto: bodyText,
           bodyHtml: bodyHtml || null,
           providerMessageId,
           sentAt: sentAt ?? new Date(),
