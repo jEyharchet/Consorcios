@@ -3,8 +3,10 @@ import { notFound, redirect } from "next/navigation";
 
 import { ASAMBLEA_VOTO_VALOR } from "@/lib/administracion-shared";
 import {
-  canReceiveVotes,
+  canEditVotos,
   formatPersonaNombre,
+  getVoteBlockedError,
+  getVoteBlockedMessage,
   getPersonasConsorcioParaVotacion,
   registrarVotoAsamblea,
 } from "@/lib/asamblea-votaciones";
@@ -33,6 +35,14 @@ function getFeedback(ok?: string, error?: string) {
 
   if (error === "votacion_cerrada") {
     return { type: "error" as const, text: "La votacion ya no se encuentra abierta." };
+  }
+
+  if (error === "votacion_no_habilitada") {
+    return { type: "error" as const, text: "La votacion todavia no esta habilitada." };
+  }
+
+  if (error === "votacion_bloqueada") {
+    return { type: "error" as const, text: "La votacion esta cerrada y no admite modificaciones." };
   }
 
   if (error === "persona_no_habilitada") {
@@ -96,6 +106,7 @@ export default async function VotacionDetallePage({
             select: {
               id: true,
               tipo: true,
+              estado: true,
               fecha: true,
               lugar: true,
               consorcioId: true,
@@ -161,7 +172,10 @@ export default async function VotacionDetallePage({
         ordenDia: {
           select: {
             asamblea: {
-              select: { consorcioId: true },
+              select: {
+                consorcioId: true,
+                estado: true,
+              },
             },
           },
         },
@@ -172,8 +186,15 @@ export default async function VotacionDetallePage({
       redirect(`/votaciones/${targetVotacionId}?error=votacion_inexistente`);
     }
 
-    if (!canReceiveVotes(targetVotacion.estado)) {
-      redirect(`/votaciones/${targetVotacionId}?error=votacion_cerrada`);
+    if (
+      !canEditVotos({
+        votacionEstado: targetVotacion.estado,
+        asambleaEstado: targetVotacion.ordenDia.asamblea.estado,
+      })
+    ) {
+      redirect(
+        `/votaciones/${targetVotacionId}?error=${getVoteBlockedError(targetVotacion.ordenDia.asamblea.estado)}`,
+      );
     }
 
     const personasDisponibles = await getPersonasConsorcioParaVotacion(targetConsorcioId);
@@ -196,7 +217,11 @@ export default async function VotacionDetallePage({
 
   const feedback = getFeedback(searchParams?.ok, searchParams?.error);
   const votoPropio = votacion.votos[0] ?? null;
-  const canVote = canReceiveVotes(votacion.estado);
+  const canVote = canEditVotos({
+    votacionEstado: votacion.estado,
+    asambleaEstado: votacion.ordenDia.asamblea.estado,
+  });
+  const blockedMessage = getVoteBlockedMessage(votacion.ordenDia.asamblea.estado);
 
   return (
     <main className="mx-auto w-full max-w-5xl px-6 py-10">
@@ -297,7 +322,7 @@ export default async function VotacionDetallePage({
             </div>
           ) : (
             <div className="mt-5 rounded-lg border border-dashed border-slate-200 px-4 py-3 text-sm text-slate-500">
-              Esta votacion no se encuentra abierta en este momento.
+              {blockedMessage}
             </div>
           )}
         </article>

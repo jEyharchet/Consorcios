@@ -1,6 +1,6 @@
 import "server-only";
 
-import { ASAMBLEA_VOTACION_ESTADO, ASAMBLEA_VOTO_VALOR } from "./administracion-shared";
+import { ASAMBLEA_ESTADO, ASAMBLEA_VOTACION_ESTADO, ASAMBLEA_VOTO_VALOR } from "./administracion-shared";
 import { prisma } from "./prisma";
 
 export function formatPersonaNombre(persona: { nombre: string; apellido: string }) {
@@ -123,4 +123,35 @@ export async function registrarVotoAsamblea(params: {
 
 export function canReceiveVotes(estado: string) {
   return estado === ASAMBLEA_VOTACION_ESTADO.ABIERTA;
+}
+
+export function canEditVotos(params: { votacionEstado: string; asambleaEstado: string }) {
+  return (
+    params.votacionEstado === ASAMBLEA_VOTACION_ESTADO.ABIERTA &&
+    (params.asambleaEstado === ASAMBLEA_ESTADO.CONVOCADA || params.asambleaEstado === ASAMBLEA_ESTADO.REALIZADA)
+  );
+}
+
+export function getVoteBlockedMessage(asambleaEstado: string) {
+  if (asambleaEstado === ASAMBLEA_ESTADO.BORRADOR) {
+    return "La votacion todavia no esta habilitada.";
+  }
+
+  if (asambleaEstado === ASAMBLEA_ESTADO.CERRADA) {
+    return "La votacion esta cerrada y no admite modificaciones.";
+  }
+
+  return "La votacion no esta abierta para recibir votos.";
+}
+
+export function getVoteBlockedError(asambleaEstado: string) {
+  if (asambleaEstado === ASAMBLEA_ESTADO.BORRADOR) {
+    return "votacion_no_habilitada";
+  }
+
+  if (asambleaEstado === ASAMBLEA_ESTADO.CERRADA) {
+    return "votacion_bloqueada";
+  }
+
+  return "votacion_cerrada";
 }

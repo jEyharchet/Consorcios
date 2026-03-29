@@ -8,8 +8,10 @@ import {
   isAsambleaVotoValor,
 } from "../../../../../lib/administracion-shared";
 import {
-  canReceiveVotes,
+  canEditVotos,
   formatPersonaNombre,
+  getVoteBlockedError,
+  getVoteBlockedMessage,
   getPersonasConsorcioParaVotacion,
   registrarVotoAsamblea,
   summarizeVotacion,
@@ -139,6 +141,7 @@ export default async function AsambleaVotacionDetallePage({
             asamblea: {
               select: {
                 consorcioId: true,
+                estado: true,
               },
             },
           },
@@ -150,8 +153,17 @@ export default async function AsambleaVotacionDetallePage({
       redirect(`/administracion/asambleas/votaciones/${targetVotacionId}?error=votacion_inexistente`);
     }
 
-    if (!canReceiveVotes(targetVotacion.estado)) {
-      redirect(`/administracion/asambleas/votaciones/${targetVotacionId}?error=votacion_cerrada`);
+    if (
+      !canEditVotos({
+        votacionEstado: targetVotacion.estado,
+        asambleaEstado: targetVotacion.ordenDia.asamblea.estado,
+      })
+    ) {
+      redirect(
+        `/administracion/asambleas/votaciones/${targetVotacionId}?error=${getVoteBlockedError(
+          targetVotacion.ordenDia.asamblea.estado,
+        )}`,
+      );
     }
 
     const personasDisponibles = await getPersonasConsorcioParaVotacion(targetConsorcioId);
@@ -198,6 +210,7 @@ export default async function AsambleaVotacionDetallePage({
             asamblea: {
               select: {
                 consorcioId: true,
+                estado: true,
               },
             },
           },
@@ -209,8 +222,17 @@ export default async function AsambleaVotacionDetallePage({
       redirect(`/administracion/asambleas/votaciones/${targetVotacionId}?error=votacion_inexistente`);
     }
 
-    if (!canReceiveVotes(targetVotacion.estado)) {
-      redirect(`/administracion/asambleas/votaciones/${targetVotacionId}?error=votacion_cerrada`);
+    if (
+      !canEditVotos({
+        votacionEstado: targetVotacion.estado,
+        asambleaEstado: targetVotacion.ordenDia.asamblea.estado,
+      })
+    ) {
+      redirect(
+        `/administracion/asambleas/votaciones/${targetVotacionId}?error=${getVoteBlockedError(
+          targetVotacion.ordenDia.asamblea.estado,
+        )}`,
+      );
     }
 
     const personasDisponibles = await getPersonasConsorcioParaVotacion(targetConsorcioId);
@@ -267,8 +289,12 @@ export default async function AsambleaVotacionDetallePage({
         ? "El estado de la votacion se actualizo correctamente."
         : searchParams?.error === "votacion_cerrada"
           ? "La votacion no esta abierta para recibir votos."
-        : searchParams?.error === "persona_no_habilitada"
-          ? "Tu persona no esta habilitada para votar en este consorcio."
+          : searchParams?.error === "votacion_no_habilitada"
+            ? "La votacion todavia no esta habilitada."
+            : searchParams?.error === "votacion_bloqueada"
+              ? "La votacion esta cerrada y no admite modificaciones."
+          : searchParams?.error === "persona_no_habilitada"
+            ? "Tu persona no esta habilitada para votar en este consorcio."
           : searchParams?.error === "voto_invalido"
             ? "El valor del voto no es valido."
             : searchParams?.error === "estado_invalido"
@@ -283,6 +309,11 @@ export default async function AsambleaVotacionDetallePage({
       : searchParams?.error
         ? "error"
         : null;
+  const canEditCurrentVotes = canEditVotos({
+    votacionEstado: votacion.estado,
+    asambleaEstado: votacion.ordenDia.asamblea.estado,
+  });
+  const blockedMessage = getVoteBlockedMessage(votacion.ordenDia.asamblea.estado);
 
   return (
     <main className="mx-auto w-full max-w-7xl px-6 py-10">
@@ -391,7 +422,7 @@ export default async function AsambleaVotacionDetallePage({
                   <p><strong>Estado actual:</strong> {votoPropio ? votoPropio.valor : "Pendiente"}</p>
                 </div>
 
-                {canReceiveVotes(votacion.estado) ? (
+                {canEditCurrentVotes ? (
                   <div className="flex flex-wrap gap-3">
                     <form action={emitirVotoPropio}>
                       <input type="hidden" name="votacionId" value={votacion.id} />
@@ -412,7 +443,7 @@ export default async function AsambleaVotacionDetallePage({
                   </div>
                 ) : (
                   <p className="rounded-lg border border-dashed border-slate-200 px-4 py-3 text-sm text-slate-500">
-                    La votacion no esta abierta en este momento.
+                    {blockedMessage}
                   </p>
                 )}
               </div>
@@ -492,7 +523,7 @@ export default async function AsambleaVotacionDetallePage({
                           </td>
                           <td className="px-4 py-4">
                             {canManage ? (
-                              canReceiveVotes(votacion.estado) ? (
+                              canEditCurrentVotes ? (
                                 <div className="flex justify-end gap-2">
                                   <form action={registrarVotoAdministrador}>
                                     <input type="hidden" name="votacionId" value={votacion.id} />
@@ -514,7 +545,7 @@ export default async function AsambleaVotacionDetallePage({
                                   </form>
                                 </div>
                               ) : (
-                                <div className="text-right text-xs text-slate-500">Votacion cerrada</div>
+                                <div className="text-right text-xs text-slate-500">{blockedMessage}</div>
                               )
                             ) : (
                               <div className="text-right text-xs text-slate-500">Sin permisos de carga</div>

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { ASAMBLEA_VOTACION_ESTADO } from "@/lib/administracion-shared";
+import { ASAMBLEA_ESTADO, ASAMBLEA_VOTACION_ESTADO } from "@/lib/administracion-shared";
 import { getAccessContext } from "@/lib/auth";
 import { redirectToOnboardingIfNoConsorcios } from "@/lib/onboarding";
 import { prisma } from "@/lib/prisma";
@@ -30,6 +30,14 @@ function getFeedback(ok?: string, error?: string) {
 
   if (error === "votacion_cerrada") {
     return { type: "error" as const, text: "La votacion ya no se encuentra abierta." };
+  }
+
+  if (error === "votacion_no_habilitada") {
+    return { type: "error" as const, text: "La votacion todavia no esta habilitada." };
+  }
+
+  if (error === "votacion_bloqueada") {
+    return { type: "error" as const, text: "La votacion esta cerrada y no admite modificaciones." };
   }
 
   if (error === "votacion_inexistente") {
@@ -111,6 +119,9 @@ export default async function VotacionesPage({
         ordenDia: {
           asamblea: {
             consorcioId: { in: eligibleConsorcioIds },
+            estado: {
+              in: [ASAMBLEA_ESTADO.CONVOCADA, ASAMBLEA_ESTADO.REALIZADA],
+            },
           },
         },
         votos: {
