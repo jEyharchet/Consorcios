@@ -135,13 +135,19 @@ export function buildAsambleaConvocatoriaPreviewHtml(data: AsambleaConvocatoriaP
           </p>
 
           <div style="margin:18px 0 24px;border:1px solid #dbe3ec;border-radius:10px;background:#f8fafc;padding:12px 16px;">
-            <div style="display:grid;grid-template-columns:96px 1fr;row-gap:6px;column-gap:12px;font-size:13px;line-height:1.35;">
-              <div style="font-weight:700;color:#475569;">Fecha:</div>
-              <div>${escapeHtml(formatFecha(data.fecha))}</div>
-              <div style="font-weight:700;color:#475569;">Hora:</div>
-              <div>${escapeHtml(data.hora || "A completar")}</div>
-              <div style="font-weight:700;color:#475569;">Lugar:</div>
-              <div>${escapeHtml(data.lugar || "A completar")}</div>
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:24px;flex-wrap:wrap;font-size:13px;line-height:1.35;">
+              <div style="min-width:150px;flex:1 1 180px;">
+                <div style="font-weight:700;color:#475569;">Fecha:</div>
+                <div style="margin-top:4px;">${escapeHtml(formatFecha(data.fecha))}</div>
+              </div>
+              <div style="min-width:100px;flex:0 1 120px;">
+                <div style="font-weight:700;color:#475569;">Hora:</div>
+                <div style="margin-top:4px;">${escapeHtml(data.hora || "A completar")}</div>
+              </div>
+              <div style="min-width:180px;flex:1 1 220px;">
+                <div style="font-weight:700;color:#475569;">Lugar:</div>
+                <div style="margin-top:4px;">${escapeHtml(data.lugar || "A completar")}</div>
+              </div>
             </div>
           </div>
 
