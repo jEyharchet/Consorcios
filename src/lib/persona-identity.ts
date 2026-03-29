@@ -115,30 +115,34 @@ async function syncUserConsorcioAccessFromPersona(
     existingAssignments.map((assignment) => [assignment.consorcioId, assignment])
   );
 
-  for (const [consorcioId, derivedRole] of roleByConsorcio.entries()) {
+  const updates: Promise<unknown>[] = [];
+
+  roleByConsorcio.forEach((derivedRole, consorcioId) => {
     const existing = existingByConsorcio.get(consorcioId);
 
     if (!existing) {
-      await db.userConsorcio.create({
+      updates.push(db.userConsorcio.create({
         data: {
           userId: params.userId,
           consorcioId,
           role: derivedRole,
         },
-      });
-      continue;
+      }));
+      return;
     }
 
     const currentRole = (existing.role as ConsorcioRole) ?? "LECTURA";
     if (ROLE_RANK[currentRole] >= ROLE_RANK[derivedRole]) {
-      continue;
+      return;
     }
 
-    await db.userConsorcio.update({
+    updates.push(db.userConsorcio.update({
       where: { id: existing.id },
       data: { role: derivedRole },
-    });
-  }
+    }));
+  });
+
+  await Promise.all(updates);
 }
 
 async function findPersonaCandidatesByEmail(
