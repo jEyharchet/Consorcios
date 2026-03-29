@@ -81,18 +81,18 @@ export function buildAsambleaConvocatoriaPreviewHtml(data: AsambleaConvocatoriaP
   const firmaHtml =
     data.firmaUrl || data.firmaAclaracion?.trim() || data.firmaRol?.trim()
       ? `
-          <div style="display:flex;justify-content:flex-end;">
+          <div style="display:flex;justify-content:flex-end;page-break-inside:avoid;">
             <div style="width:420px;text-align:center;">
-              <div style="position:relative;height:110px;">
+              <div style="display:flex;min-height:0;align-items:flex-end;justify-content:center;">
                 ${
-                data.firmaUrl
-                  ? `<img src="${escapeHtml(data.firmaUrl)}" alt="Firma del administrador" style="display:block;position:absolute;left:50%;bottom:18px;transform:translateX(-50%);z-index:1;max-width:380px;max-height:170px;width:auto;height:auto;object-fit:contain;margin:0 auto;" />`
-                  : ``
+                  data.firmaUrl
+                    ? `<img src="${escapeHtml(data.firmaUrl)}" alt="Firma del administrador" style="display:block;max-width:320px;max-height:120px;width:auto;height:auto;object-fit:contain;margin:0 auto 10px;" />`
+                    : ``
                 }
-                <div style="position:absolute;left:50%;width:260px;bottom:10px;transform:translateX(-50%);z-index:2;border-top:1px solid #94a3b8;"></div>
               </div>
-              <div style="margin-top:4px;font-size:13px;font-weight:700;color:#334155;">
-                ${escapeHtml(data.firmaAclaracion?.trim() || "Aclaración")}
+              <div style="width:260px;margin:0 auto;border-top:1px solid #94a3b8;"></div>
+              <div style="margin-top:12px;font-size:13px;font-weight:700;color:#334155;">
+                ${escapeHtml(data.firmaAclaracion?.trim() || "Aclaracion")}
               </div>
               <div style="margin-top:2px;font-size:12px;color:#64748b;">
                 ${escapeHtml(data.firmaRol?.trim() || "Administrador")}
@@ -101,13 +101,12 @@ export function buildAsambleaConvocatoriaPreviewHtml(data: AsambleaConvocatoriaP
           </div>
         `
       : `
-          <div style="display:flex;justify-content:flex-end;">
+          <div style="display:flex;justify-content:flex-end;page-break-inside:avoid;">
             <div style="width:420px;text-align:center;">
-              <div style="position:relative;height:110px;">
-                <div style="position:absolute;left:50%;width:260px;bottom:10px;transform:translateX(-50%);border-top:1px solid #94a3b8;"></div>
-              </div>
-              <div style="margin-top:4px;font-size:13px;color:#475569;">Firma</div>
-              <div style="margin-top:2px;font-size:13px;color:#475569;">Aclaración</div>
+              <div style="height:28px;"></div>
+              <div style="width:260px;margin:0 auto;border-top:1px solid #94a3b8;"></div>
+              <div style="margin-top:12px;font-size:13px;color:#475569;">Firma</div>
+              <div style="margin-top:2px;font-size:13px;color:#475569;">Aclaracion</div>
             </div>
           </div>
         `;
@@ -132,7 +131,7 @@ export function buildAsambleaConvocatoriaPreviewHtml(data: AsambleaConvocatoriaP
 
         <section style="font-size:14px;line-height:1.72;color:#1f2937;">
           <p style="margin:0 0 18px 0;">
-            Por la presente se convoca a los propietarios del ${escapeHtml(data.consorcioNombreLegal)}, a la ${escapeHtml(buildTipoLabel(data.tipo))}, que se celebrará conforme al Reglamento de Propiedad y Administración.
+            Por la presente se convoca a los propietarios del ${escapeHtml(data.consorcioNombreLegal)}, a la ${escapeHtml(buildTipoLabel(data.tipo))}, que se celebrara conforme al Reglamento de Propiedad y Administracion.
           </p>
 
           <div style="margin:18px 0 24px;border:1px solid #dbe3ec;border-radius:10px;background:#f8fafc;padding:12px 16px;">
@@ -154,12 +153,12 @@ export function buildAsambleaConvocatoriaPreviewHtml(data: AsambleaConvocatoriaP
           ${observacionesHtml}
 
           <p style="margin:20px 0 0 0;">
-            Se deja constancia que la presente convocatoria se realiza conforme a lo dispuesto en el Reglamento de Propiedad y Administración,
+            Se deja constancia que la presente convocatoria se realiza conforme a lo dispuesto en el Reglamento de Propiedad y Administracion,
             cursandose en forma escrita y con la antelacion alli prevista.
           </p>
         </section>
 
-        <footer style="margin-top:44px;padding-top:22px;">
+        <footer style="margin-top:28px;padding-top:0;page-break-inside:avoid;">
           ${firmaHtml}
         </footer>
       </div>
