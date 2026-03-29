@@ -81,7 +81,7 @@ export function buildAsambleaConvocatoriaPreviewHtml(data: AsambleaConvocatoriaP
   const firmaHtml =
     data.firmaUrl || data.firmaAclaracion?.trim() || data.firmaRol?.trim()
       ? `
-          <div style="display:flex;justify-content:flex-end;page-break-inside:avoid;">
+          <div style="display:flex;justify-content:flex-end;">
             <div style="width:420px;text-align:center;">
               <div style="display:flex;min-height:0;align-items:flex-end;justify-content:center;">
                 ${
@@ -101,7 +101,7 @@ export function buildAsambleaConvocatoriaPreviewHtml(data: AsambleaConvocatoriaP
           </div>
         `
       : `
-          <div style="display:flex;justify-content:flex-end;page-break-inside:avoid;">
+          <div style="display:flex;justify-content:flex-end;">
             <div style="width:420px;text-align:center;">
               <div style="height:28px;"></div>
               <div style="width:260px;margin:0 auto;border-top:1px solid #94a3b8;"></div>
@@ -112,8 +112,8 @@ export function buildAsambleaConvocatoriaPreviewHtml(data: AsambleaConvocatoriaP
         `;
 
   return `
-    <div style="height:100%;box-sizing:border-box;font-family:Arial,sans-serif;background:#fff;color:#0f172a;padding:48px 52px 58px;">
-      <div style="height:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:8px;padding:28px 30px 36px;">
+    <div style="box-sizing:border-box;font-family:Arial,sans-serif;background:#fff;color:#0f172a;padding:48px 52px 58px;">
+      <div style="box-sizing:border-box;border:1px solid #cbd5e1;border-radius:8px;padding:28px 30px 36px;">
         <header style="border-bottom:1px solid #dbe3ec;padding-bottom:16px;margin-bottom:22px;">
           <div style="display:flex;align-items:center;gap:18px;">
             <div style="width:154px;display:flex;align-items:center;justify-content:center;flex:0 0 154px;">
@@ -158,9 +158,9 @@ export function buildAsambleaConvocatoriaPreviewHtml(data: AsambleaConvocatoriaP
           </p>
         </section>
 
-        <footer style="margin-top:28px;padding-top:0;page-break-inside:avoid;">
+        <div style="margin-top:28px;padding-top:0;">
           ${firmaHtml}
-        </footer>
+        </div>
       </div>
     </div>
   `;
