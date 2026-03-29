@@ -2,6 +2,7 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 
 import { normalizeDate } from "./relaciones";
 import { prisma } from "./prisma";
+import type { ConsorcioRole } from "./roles";
 
 type PrismaClientLike = PrismaClient | Prisma.TransactionClient;
 
@@ -45,6 +46,99 @@ function getPersonaCandidateScore(candidate: PersonaEmailCandidate) {
 
 function hasConsorcioRelations(candidate: PersonaEmailCandidate) {
   return candidate.hasActiveAdminRelation || candidate.hasActiveUnidadRelation;
+}
+
+const ROLE_RANK: Record<ConsorcioRole, number> = {
+  LECTURA: 1,
+  OPERADOR: 2,
+  ADMIN: 3,
+};
+
+async function syncUserConsorcioAccessFromPersona(
+  params: {
+    userId: string;
+    personaId: number;
+  },
+  db: PrismaClientLike = prisma,
+) {
+  const today = normalizeDate(new Date());
+  const roleByConsorcio = new Map<number, ConsorcioRole>();
+
+  const mergeRole = (consorcioId: number, role: ConsorcioRole) => {
+    const current = roleByConsorcio.get(consorcioId);
+
+    if (!current || ROLE_RANK[role] > ROLE_RANK[current]) {
+      roleByConsorcio.set(consorcioId, role);
+    }
+  };
+
+  const [adminRelations, unidadRelations, existingAssignments] = await Promise.all([
+    db.consorcioAdministrador.findMany({
+      where: {
+        personaId: params.personaId,
+        desde: { lte: today },
+        OR: [{ hasta: null }, { hasta: { gte: today } }],
+      },
+      select: { consorcioId: true },
+    }),
+    db.unidadPersona.findMany({
+      where: {
+        personaId: params.personaId,
+        desde: { lte: today },
+        OR: [{ hasta: null }, { hasta: { gte: today } }],
+      },
+      select: {
+        unidad: {
+          select: { consorcioId: true },
+        },
+      },
+    }),
+    db.userConsorcio.findMany({
+      where: { userId: params.userId },
+      select: { id: true, consorcioId: true, role: true },
+    }),
+  ]);
+
+  for (const relation of unidadRelations) {
+    mergeRole(relation.unidad.consorcioId, "LECTURA");
+  }
+
+  for (const relation of adminRelations) {
+    mergeRole(relation.consorcioId, "ADMIN");
+  }
+
+  if (roleByConsorcio.size === 0) {
+    return;
+  }
+
+  const existingByConsorcio = new Map(
+    existingAssignments.map((assignment) => [assignment.consorcioId, assignment])
+  );
+
+  for (const [consorcioId, derivedRole] of roleByConsorcio.entries()) {
+    const existing = existingByConsorcio.get(consorcioId);
+
+    if (!existing) {
+      await db.userConsorcio.create({
+        data: {
+          userId: params.userId,
+          consorcioId,
+          role: derivedRole,
+        },
+      });
+      continue;
+    }
+
+    const currentRole = (existing.role as ConsorcioRole) ?? "LECTURA";
+    if (ROLE_RANK[currentRole] >= ROLE_RANK[derivedRole]) {
+      continue;
+    }
+
+    await db.userConsorcio.update({
+      where: { id: existing.id },
+      data: { role: derivedRole },
+    });
+  }
 }
 
 async function findPersonaCandidatesByEmail(
@@ -236,8 +330,24 @@ export async function ensureUserPersona(
         data: { personaId: bestPersonaByEmail.id },
       });
 
+      await syncUserConsorcioAccessFromPersona(
+        {
+          userId: params.userId,
+          personaId: bestPersonaByEmail.id,
+        },
+        db,
+      );
+
       return bestPersonaByEmail.id;
     }
+
+    await syncUserConsorcioAccessFromPersona(
+      {
+        userId: params.userId,
+        personaId: user.personaId,
+      },
+      db,
+    );
 
     return user.personaId;
   }
@@ -247,6 +357,14 @@ export async function ensureUserPersona(
       where: { id: params.userId },
       data: { personaId: bestPersonaByEmail.id },
     });
+
+    await syncUserConsorcioAccessFromPersona(
+      {
+        userId: params.userId,
+        personaId: bestPersonaByEmail.id,
+      },
+      db,
+    );
 
     return bestPersonaByEmail.id;
   }
@@ -275,6 +393,14 @@ export async function ensureUserPersona(
     where: { id: params.userId },
     data: { personaId: persona.id },
   });
+
+  await syncUserConsorcioAccessFromPersona(
+    {
+      userId: params.userId,
+      personaId: persona.id,
+    },
+    db,
+  );
 
   return persona.id;
 }
