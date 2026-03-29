@@ -297,6 +297,14 @@ export default async function RespuestaEmailDetailPage({
           },
         },
       },
+      respuestasSalientes: {
+        orderBy: [{ sentAt: "asc" }, { id: "asc" }],
+        select: {
+          id: true,
+          bodyTexto: true,
+          sentAt: true,
+        },
+      },
     },
   });
 
@@ -335,7 +343,7 @@ export default async function RespuestaEmailDetailPage({
       redirect(`/administracion/respuestas/${params.id}${buildReturnQuery({ error: "respuesta_invalida" })}`);
     }
 
-    await requireConsorcioRole(actual.consorcioId, ["ADMIN", "OPERADOR"]);
+    const access = await requireConsorcioRole(actual.consorcioId, ["ADMIN", "OPERADOR"]);
 
     await prisma.respuestaEmail.update({
       where: { id: targetRespuestaId },
@@ -408,7 +416,11 @@ export default async function RespuestaEmailDetailPage({
       select: { id: true, replyKey: true },
     });
 
+    let sentAt: Date | null = null;
+    let providerMessageId: string | null = null;
+
     try {
+      sentAt = new Date();
       const response = await sendEmail({
         to: actual.fromEmail,
         subject: asunto,
@@ -420,14 +432,15 @@ export default async function RespuestaEmailDetailPage({
           ...(referencesHeader ? { References: referencesHeader } : {}),
         },
       });
+      providerMessageId = response?.id ?? null;
 
       await prisma.envioEmail.update({
         where: { id: envio.id },
         data: {
           estado: EMAIL_ESTADO.ENVIADO,
-          providerMessageId: response?.id ?? null,
+          providerMessageId,
           errorMensaje: null,
-          enviadoAt: new Date(),
+          enviadoAt: sentAt ?? new Date(),
         },
       });
     } catch (error) {
@@ -445,12 +458,30 @@ export default async function RespuestaEmailDetailPage({
       redirect(`/administracion/respuestas/${targetRespuestaId}${buildReturnQuery({ error: "envio_fallido" })}`);
     }
 
-    redirect(
-      `/administracion/respuestas/${targetRespuestaId}${buildReturnQuery({
-        ok: "respuesta_enviada",
-        sent: String(envio.id),
-      })}`,
-    );
+    try {
+      await prisma.respuestaEmailSaliente.create({
+        data: {
+          respuestaEmailId: actual.id,
+          consorcioId: actual.consorcioId,
+          enviadoPorUserId: access.user.id,
+          envioEmailId: envio.id,
+          toEmail: actual.fromEmail,
+          subject: asunto,
+          bodyTexto,
+          bodyHtml: bodyHtml || null,
+          providerMessageId,
+          sentAt: sentAt ?? new Date(),
+        },
+      });
+    } catch (error) {
+      console.error("No se pudo persistir la respuesta saliente", {
+        respuestaEmailId: actual.id,
+        envioEmailId: envio.id,
+        error: error instanceof Error ? error.message : "unknown_error",
+      });
+    }
+
+    redirect(`/administracion/respuestas/${targetRespuestaId}${buildReturnQuery({ ok: "respuesta_enviada", sent: String(envio.id) })}`);
   }
 
   const feedback = getFeedback(searchParams ?? {});
@@ -508,21 +539,7 @@ export default async function RespuestaEmailDetailPage({
 
   const consorciosRelacionados = Array.from(consorcioMap.values()).sort((a, b) => a.nombre.localeCompare(b.nombre));
   const fechaEnvioOriginal = respuesta.envioEmail?.enviadoAt ?? respuesta.envioEmail?.createdAt ?? null;
-  const sentEnvioId = Number(searchParams?.sent);
-  const respuestaEnviada =
-    Number.isInteger(sentEnvioId) && sentEnvioId > 0
-      ? await prisma.envioEmail.findFirst({
-          where: {
-            id: sentEnvioId,
-            consorcioId: respuesta.consorcioId,
-          },
-          select: {
-            id: true,
-            cuerpo: true,
-            enviadoAt: true,
-          },
-        })
-      : null;
+  const successKey = searchParams?.ok === "respuesta_enviada" ? searchParams?.sent ?? "ok" : null;
 
   return (
     <main className="mx-auto w-full max-w-5xl px-6 py-10">
@@ -653,9 +670,12 @@ export default async function RespuestaEmailDetailPage({
             receivedBody={receivedBody}
             latestReplyText={latestReplyText}
             respuestaId={respuesta.id}
-            sentReplyBody={respuestaEnviada?.cuerpo ?? ""}
-            sentReplyAt={respuestaEnviada?.enviadoAt ? formatDateTime(respuestaEnviada.enviadoAt) : null}
-            successKey={respuestaEnviada?.id ?? null}
+            sentReplies={respuesta.respuestasSalientes.map((item) => ({
+              id: item.id,
+              bodyText: item.bodyTexto,
+              sentAtLabel: formatDateTime(item.sentAt),
+            }))}
+            successKey={successKey}
             sendAction={enviarRespuesta}
           />
 

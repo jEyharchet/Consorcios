@@ -23,17 +23,15 @@ export default function RespuestaReplySection({
   receivedBody,
   latestReplyText,
   respuestaId,
-  sentReplyBody,
-  sentReplyAt,
+  sentReplies,
   successKey,
   sendAction,
 }: {
   receivedBody: string;
   latestReplyText: string;
   respuestaId: number;
-  sentReplyBody: string;
-  sentReplyAt: string | null;
-  successKey: number | null;
+  sentReplies: Array<{ id: number; bodyText: string; sentAtLabel: string }>;
+  successKey: string | null;
   sendAction: (formData: FormData) => void | Promise<void>;
 }) {
   const [isReplying, setIsReplying] = useState(false);
@@ -123,17 +121,17 @@ export default function RespuestaReplySection({
             {receivedBody || "No se pudo extraer contenido legible del email recibido."}
           </pre>
 
-          {sentReplyBody ? (
-            <div className="rounded-lg border border-slate-200 bg-white px-4 py-3">
+          {sentReplies.map((item) => (
+            <div key={item.id} className="rounded-lg border border-slate-200 bg-white px-4 py-3">
               <div className="flex items-center justify-between gap-3">
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Respuesta enviada</p>
-                {sentReplyAt ? <span className="text-xs text-slate-400">{sentReplyAt}</span> : null}
+                <span className="text-xs text-slate-400">{item.sentAtLabel}</span>
               </div>
               <pre className="mt-2 whitespace-pre-wrap break-words font-sans text-sm leading-6 text-slate-700">
-                {sentReplyBody}
+                {item.bodyText}
               </pre>
             </div>
-          ) : null}
+          ))}
         </div>
       )}
     </div>

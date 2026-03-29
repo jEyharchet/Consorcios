@@ -32,6 +32,7 @@ model Consorcio {
   asambleas           Asamblea[]
   enviosEmail         EnvioEmail[]
   respuestasEmail     RespuestaEmail[]
+  respuestasEmailSalientes RespuestaEmailSaliente[]
   configuracion       ConsorcioConfiguracion?
 }
 
@@ -468,6 +469,7 @@ model User {
   sessions         Session[]
   userConsorcios   UserConsorcio[]
   pagosRegistrados Pago[] @relation("PagoRegistradoPor")
+  respuestasEmailSalientes RespuestaEmailSaliente[] @relation("RespuestaEmailSalienteEnviadaPor")
 
   persona                    Persona?                   @relation(fields: [personaId], references: [id], onDelete: SetNull)
   solicitudesAccesoConsorcio SolicitudAccesoConsorcio[] @relation("SolicitudAccesoSolicitante")
@@ -618,6 +620,7 @@ model EnvioEmail {
   asamblea        Asamblea?        @relation(fields: [asambleaId], references: [id], onDelete: Cascade)
   unidad          Unidad?          @relation(fields: [unidadId], references: [id], onDelete: SetNull)
   respuestasEmail RespuestaEmail[]
+  respuestasEmailSalientes RespuestaEmailSaliente[]
 
   @@index([consorcioId])
   @@index([liquidacionId])
@@ -652,6 +655,7 @@ model RespuestaEmail {
   envioEmail EnvioEmail? @relation(fields: [envioEmailId], references: [id], onDelete: SetNull)
   asamblea   Asamblea?  @relation(fields: [asambleaId], references: [id], onDelete: SetNull)
   persona    Persona?   @relation(fields: [personaId], references: [id], onDelete: SetNull)
+  respuestasSalientes RespuestaEmailSaliente[]
 
   @@index([consorcioId])
   @@index([envioEmailId])
@@ -661,6 +665,31 @@ model RespuestaEmail {
   @@index([receivedAt])
   @@index([fromEmail])
   @@index([inReplyTo])
+}
+
+model RespuestaEmailSaliente {
+  id               Int      @id @default(autoincrement())
+  respuestaEmailId Int
+  consorcioId      Int
+  enviadoPorUserId String?
+  envioEmailId     Int?     @unique
+  toEmail          String
+  subject          String
+  bodyTexto        String
+  bodyHtml         String?
+  providerMessageId String?
+  sentAt           DateTime
+  createdAt        DateTime @default(now())
+
+  respuestaEmail RespuestaEmail @relation(fields: [respuestaEmailId], references: [id], onDelete: Cascade)
+  consorcio      Consorcio      @relation(fields: [consorcioId], references: [id], onDelete: Cascade)
+  enviadoPorUser User?          @relation("RespuestaEmailSalienteEnviadaPor", fields: [enviadoPorUserId], references: [id], onDelete: SetNull)
+  envioEmail     EnvioEmail?    @relation(fields: [envioEmailId], references: [id], onDelete: SetNull)
+
+  @@index([respuestaEmailId, sentAt])
+  @@index([consorcioId, sentAt])
+  @@index([enviadoPorUserId])
+  @@index([sentAt])
 }
 
 model Asamblea {
