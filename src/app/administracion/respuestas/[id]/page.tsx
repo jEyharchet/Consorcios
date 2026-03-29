@@ -186,7 +186,7 @@ export default async function RespuestaEmailDetailPage({
   searchParams,
 }: {
   params: { id: string };
-  searchParams?: { ok?: string; error?: string };
+  searchParams?: { ok?: string; error?: string; sent?: string };
 }) {
   const respuestaId = Number(params.id);
 
@@ -445,7 +445,12 @@ export default async function RespuestaEmailDetailPage({
       redirect(`/administracion/respuestas/${targetRespuestaId}${buildReturnQuery({ error: "envio_fallido" })}`);
     }
 
-    redirect(`/administracion/respuestas/${targetRespuestaId}${buildReturnQuery({ ok: "respuesta_enviada" })}`);
+    redirect(
+      `/administracion/respuestas/${targetRespuestaId}${buildReturnQuery({
+        ok: "respuesta_enviada",
+        sent: String(envio.id),
+      })}`,
+    );
   }
 
   const feedback = getFeedback(searchParams ?? {});
@@ -503,6 +508,21 @@ export default async function RespuestaEmailDetailPage({
 
   const consorciosRelacionados = Array.from(consorcioMap.values()).sort((a, b) => a.nombre.localeCompare(b.nombre));
   const fechaEnvioOriginal = respuesta.envioEmail?.enviadoAt ?? respuesta.envioEmail?.createdAt ?? null;
+  const sentEnvioId = Number(searchParams?.sent);
+  const respuestaEnviada =
+    Number.isInteger(sentEnvioId) && sentEnvioId > 0
+      ? await prisma.envioEmail.findFirst({
+          where: {
+            id: sentEnvioId,
+            consorcioId: respuesta.consorcioId,
+          },
+          select: {
+            id: true,
+            cuerpo: true,
+            enviadoAt: true,
+          },
+        })
+      : null;
 
   return (
     <main className="mx-auto w-full max-w-5xl px-6 py-10">
@@ -633,6 +653,9 @@ export default async function RespuestaEmailDetailPage({
             receivedBody={receivedBody}
             latestReplyText={latestReplyText}
             respuestaId={respuesta.id}
+            sentReplyBody={respuestaEnviada?.cuerpo ?? ""}
+            sentReplyAt={respuestaEnviada?.enviadoAt ? formatDateTime(respuestaEnviada.enviadoAt) : null}
+            successKey={respuestaEnviada?.id ?? null}
             sendAction={enviarRespuesta}
           />
 

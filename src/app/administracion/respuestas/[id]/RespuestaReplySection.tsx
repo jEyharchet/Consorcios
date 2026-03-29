@@ -23,11 +23,17 @@ export default function RespuestaReplySection({
   receivedBody,
   latestReplyText,
   respuestaId,
+  sentReplyBody,
+  sentReplyAt,
+  successKey,
   sendAction,
 }: {
   receivedBody: string;
   latestReplyText: string;
   respuestaId: number;
+  sentReplyBody: string;
+  sentReplyAt: string | null;
+  successKey: number | null;
   sendAction: (formData: FormData) => void | Promise<void>;
 }) {
   const [isReplying, setIsReplying] = useState(false);
@@ -46,6 +52,17 @@ export default function RespuestaReplySection({
     window.addEventListener("amiconsorcio:reply-start", onStartReply);
     return () => window.removeEventListener("amiconsorcio:reply-start", onStartReply);
   }, []);
+
+  useEffect(() => {
+    if (!successKey) {
+      return;
+    }
+
+    setIsReplying(false);
+    setComposerKey((current) => current + 1);
+    setDraftHtml("");
+    setDraftText("");
+  }, [successKey]);
 
   const handleCancel = () => {
     setIsReplying(false);
@@ -101,9 +118,23 @@ export default function RespuestaReplySection({
           </form>
         </div>
       ) : (
-        <pre className="mt-3 whitespace-pre-wrap break-words font-sans text-sm leading-6 text-slate-700">
-          {receivedBody || "No se pudo extraer contenido legible del email recibido."}
-        </pre>
+        <div className="mt-3 space-y-4">
+          <pre className="whitespace-pre-wrap break-words font-sans text-sm leading-6 text-slate-700">
+            {receivedBody || "No se pudo extraer contenido legible del email recibido."}
+          </pre>
+
+          {sentReplyBody ? (
+            <div className="rounded-lg border border-slate-200 bg-white px-4 py-3">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Respuesta enviada</p>
+                {sentReplyAt ? <span className="text-xs text-slate-400">{sentReplyAt}</span> : null}
+              </div>
+              <pre className="mt-2 whitespace-pre-wrap break-words font-sans text-sm leading-6 text-slate-700">
+                {sentReplyBody}
+              </pre>
+            </div>
+          ) : null}
+        </div>
       )}
     </div>
   );
