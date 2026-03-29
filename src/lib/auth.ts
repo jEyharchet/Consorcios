@@ -51,7 +51,7 @@ async function getCurrentUserRecord(userId: string): Promise<CurrentUser | null>
       userId: user.id,
       email: user.email,
       name: user.name,
-      createIfMissing: true,
+      createIfMissing: false,
     },
     prisma,
   );

@@ -37,7 +37,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             userId: dbUser.id,
             email: normalizedEmail,
             name: user.name,
-            createIfMissing: true,
+            createIfMissing: false,
           },
           prisma,
         );
@@ -70,7 +70,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             userId,
             email: user.email,
             name: user.name,
-            createIfMissing: true,
+            createIfMissing: false,
           },
           tx,
         );
