@@ -525,6 +525,23 @@ function buildConvocatoriaTexto(params: {
   return `${encabezado}${ordenDelDia}`;
 }
 
+function buildCancelacionTexto(params: {
+  consorcioNombre: string;
+  tipo: string;
+  fecha: Date;
+  hora: string;
+  lugar: string;
+  mensajePersonalizado: string;
+}) {
+  return [
+    `Informamos que la convocatoria de asamblea ${params.tipo.toLowerCase()} del consorcio {{consorcio}} prevista para el dia ${formatDate(
+      params.fecha,
+    )} a las ${params.hora} en ${params.lugar} ha sido cancelada.`,
+    "Mensaje del administrador:",
+    params.mensajePersonalizado,
+  ].join("\n\n");
+}
+
 type AsambleaConvocatoriaRecord = Awaited<ReturnType<typeof getAsambleaConvocatoriaRecord>>;
 
 async function getAsambleaConvocatoriaRecord(asambleaId: number) {
@@ -533,6 +550,7 @@ async function getAsambleaConvocatoriaRecord(asambleaId: number) {
     select: {
       id: true,
       consorcioId: true,
+      estado: true,
       tipo: true,
       fecha: true,
       hora: true,
@@ -630,12 +648,130 @@ function buildConvocatoriaPdfHtml(asamblea: NonNullable<AsambleaConvocatoriaReco
   `;
 }
 
+function buildCancelacionPdfHtml(
+  asamblea: NonNullable<AsambleaConvocatoriaRecord>,
+  mensajePersonalizado: string,
+) {
+  const consorcioNombreLegal = asamblea.consorcio.tituloLegal?.trim() || asamblea.consorcio.nombre;
+  const administradorVigente = asamblea.consorcio.administradores[0];
+  const firmaNombre =
+    administradorVigente?.persona
+      ? `${administradorVigente.persona.nombre} ${administradorVigente.persona.apellido}`.trim()
+      : asamblea.firmaAclaracion?.trim() || "Administracion";
+  const firmaRol = administradorVigente?.firmaRol?.trim() || asamblea.firmaRol?.trim() || "Administrador";
+  const firmaDataUrl =
+    buildFirmaDataUrl(administradorVigente?.firmaMimeType ?? asamblea.firmaMimeType, administradorVigente?.firmaContenido ?? asamblea.firmaContenido) ??
+    null;
+  const logoUrl = getArchivoUrl("/branding/logo-gray-v2.png") ?? "/branding/logo-gray-v2.png";
+
+  return `
+    <!doctype html>
+    <html lang="es">
+      <head>
+        <meta charset="utf-8" />
+        <title>Cancelacion de convocatoria a asamblea</title>
+        <style>
+          @page { size: A4; margin: 38px 42px; }
+          body { font-family: Arial, sans-serif; color: #0f172a; margin: 0; }
+          .logo { width: 120px; opacity: 0.78; }
+          .eyebrow { margin-top: 24px; font-size: 12px; font-weight: 700; letter-spacing: 0.28em; color: #64748b; text-transform: uppercase; }
+          h1 { margin: 12px 0 0; font-size: 28px; line-height: 1.15; }
+          h2 { margin: 6px 0 0; font-size: 18px; color: #334155; }
+          p { font-size: 14px; line-height: 1.7; color: #334155; }
+          .card { margin-top: 26px; border: 1px solid #cbd5e1; border-radius: 14px; padding: 18px 20px; background: #f8fafc; }
+          .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 20px; }
+          .label { margin: 0; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #64748b; }
+          .value { margin: 5px 0 0; font-size: 15px; color: #0f172a; }
+          .section-title { margin: 26px 0 10px; font-size: 14px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #475569; }
+          .message { border: 1px solid #e2e8f0; border-radius: 14px; padding: 18px 20px; background: #ffffff; white-space: pre-wrap; }
+          .footer { margin-top: 44px; }
+          .signature { margin-top: 18px; max-height: 72px; max-width: 220px; object-fit: contain; }
+          .signature-line { margin-top: 14px; border-top: 1px solid #cbd5e1; width: 260px; }
+          .signature-meta { margin-top: 10px; }
+        </style>
+      </head>
+      <body>
+        <img src="${escapeHtml(logoUrl)}" alt="AmiConsorcio" class="logo" />
+        <div class="eyebrow">AmiConsorcio</div>
+        <h1>CANCELACION DE CONVOCATORIA A ASAMBLEA</h1>
+        <h2>${escapeHtml(consorcioNombreLegal)}</h2>
+
+        <p>
+          Por la presente se informa la cancelacion de la convocatoria a asamblea oportunamente comunicada a los
+          propietarios del consorcio ${escapeHtml(consorcioNombreLegal)}, prevista para la fecha indicada mas abajo.
+        </p>
+
+        <div class="card">
+          <div class="grid">
+            <div>
+              <p class="label">Fecha prevista</p>
+              <p class="value">${escapeHtml(formatDate(asamblea.fecha))}</p>
+            </div>
+            <div>
+              <p class="label">Hora</p>
+              <p class="value">${escapeHtml(asamblea.hora)}</p>
+            </div>
+            <div>
+              <p class="label">Lugar</p>
+              <p class="value">${escapeHtml(asamblea.lugar)}</p>
+            </div>
+            <div>
+              <p class="label">Tipo de asamblea</p>
+              <p class="value">${escapeHtml(buildTipoLabel(asamblea.tipo))}</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="section-title">Motivo / mensaje del administrador</div>
+        <div class="message">${escapeHtml(mensajePersonalizado)}</div>
+
+        <div class="footer">
+          <p>
+            Se agradece tomar debida nota de la presente comunicacion. Ante una nueva convocatoria o reprogramacion,
+            el consorcio lo informara por los canales institucionales habituales.
+          </p>
+
+          ${firmaDataUrl ? `<img src="${firmaDataUrl}" alt="Firma" class="signature" />` : ""}
+          <div class="signature-line"></div>
+          <div class="signature-meta">
+            <p style="margin:0;font-weight:700;color:#0f172a;">${escapeHtml(firmaNombre)}</p>
+            <p style="margin:4px 0 0;color:#475569;">${escapeHtml(firmaRol)}</p>
+          </div>
+        </div>
+      </body>
+    </html>
+  `;
+}
+
 async function renderConvocatoriaPdfBuffer(asamblea: NonNullable<AsambleaConvocatoriaRecord>) {
   const browser = await launchPdfBrowser();
 
   try {
     const page = await browser.newPage();
     await page.setContent(buildConvocatoriaPdfHtml(asamblea), {
+      waitUntil: "networkidle0",
+    });
+
+    return Buffer.from(
+      await page.pdf({
+        format: "A4",
+        printBackground: true,
+      }),
+    );
+  } finally {
+    await browser.close();
+  }
+}
+
+async function renderCancelacionPdfBuffer(
+  asamblea: NonNullable<AsambleaConvocatoriaRecord>,
+  mensajePersonalizado: string,
+) {
+  const browser = await launchPdfBrowser();
+
+  try {
+    const page = await browser.newPage();
+    await page.setContent(buildCancelacionPdfHtml(asamblea, mensajePersonalizado), {
       waitUntil: "networkidle0",
     });
 
@@ -842,4 +978,95 @@ export async function enviarSimulacionConvocatoriaAsamblea(asambleaId: number): 
 
     throw error;
   }
+}
+
+export async function cancelarConvocatoriaAsamblea(params: {
+  asambleaId: number;
+  mensajePersonalizado: string;
+  canceladaPorUserId: string;
+}): Promise<EmailSummary> {
+  const mensajePersonalizado = params.mensajePersonalizado.trim();
+
+  if (!mensajePersonalizado) {
+    throw new Error("cancelacion_mensaje_requerido");
+  }
+
+  const asamblea = await getAsambleaConvocatoriaRecord(params.asambleaId);
+
+  if (!asamblea) {
+    throw new Error("asamblea_inexistente");
+  }
+
+  if (asamblea.estado !== ASAMBLEA_ESTADO.CONVOCADA) {
+    throw new Error("asamblea_no_cancelable");
+  }
+
+  const destinatarios = await getDestinatariosConsorcio(asamblea.consorcioId);
+
+  if (destinatarios.length === 0) {
+    throw new Error("cancelacion_sin_destinatarios");
+  }
+
+  const pdfBuffer = await renderCancelacionPdfBuffer(asamblea, mensajePersonalizado);
+  const pdfNombre = `cancelacion-convocatoria-asamblea-${asamblea.id}.pdf`;
+  const canceladaAt = new Date();
+
+  const updated = await prisma.asamblea.updateMany({
+    where: {
+      id: asamblea.id,
+      estado: ASAMBLEA_ESTADO.CONVOCADA,
+    },
+    data: {
+      estado: ASAMBLEA_ESTADO.CANCELADA,
+      canceladaAt,
+      canceladaPorUserId: params.canceladaPorUserId,
+      cancelacionMensaje: mensajePersonalizado,
+      cancelacionPdfNombre: pdfNombre,
+    },
+  });
+
+  if (updated.count === 0) {
+    throw new Error("asamblea_no_cancelable");
+  }
+
+  return registrarYEnviar({
+    consorcioId: asamblea.consorcioId,
+    consorcioNombre: asamblea.consorcio.nombre,
+    asambleaId: asamblea.id,
+    tipoEnvio: ADMIN_EMAIL_TIPO_ENVIO.ASAMBLEA_CANCELACION,
+    asuntoTemplate: "Cancelacion de convocatoria de asamblea - {{consorcio}}",
+    cuerpoTemplate: buildCancelacionTexto({
+      consorcioNombre: asamblea.consorcio.nombre,
+      tipo: asamblea.tipo,
+      fecha: asamblea.fecha,
+      hora: asamblea.hora,
+      lugar: asamblea.lugar,
+      mensajePersonalizado,
+    }),
+    destinatarios,
+    detailLines: [
+      `Consorcio: ${asamblea.consorcio.nombre}`,
+      `Tipo de asamblea: ${buildTipoLabel(asamblea.tipo)}`,
+      `Fecha: ${formatDate(asamblea.fecha)}`,
+      `Hora: ${asamblea.hora}`,
+      `Lugar: ${asamblea.lugar}`,
+      "Tipo de envio: cancelacion de convocatoria",
+      `Mensaje del administrador: ${mensajePersonalizado}`,
+    ],
+    attachments: [
+      {
+        content: pdfBuffer,
+        filename: pdfNombre,
+        contentType: "application/pdf",
+      },
+    ],
+    afterSuccess: async () => {
+      await prisma.asamblea.update({
+        where: { id: asamblea.id },
+        data: {
+          cancelacionEnviadaAt: new Date(),
+        },
+      });
+    },
+  });
 }

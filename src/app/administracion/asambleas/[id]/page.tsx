@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import CancelarConvocatoriaAction from "./CancelarConvocatoriaAction";
 import ConvocatoriaActions from "./ConvocatoriaActions";
 import IconConfirmSubmitButton from "./IconConfirmSubmitButton";
 import {
+  cancelarConvocatoriaAsamblea,
   enviarConvocatoriaAsamblea,
   enviarSimulacionConvocatoriaAsamblea,
   getResponsablesConvocatoriaElegibles,
@@ -67,6 +69,8 @@ function getFeedback(searchParams: {
       return { type: "ok" as const, text: "La votacion se agrego correctamente." };
     case "votacion_actualizada":
       return { type: "ok" as const, text: "El estado de la votacion se actualizo correctamente." };
+    case "cancelacion_ok":
+      return { type: "ok" as const, text: "La convocatoria fue cancelada y se notifico a los destinatarios vigentes." };
   }
 
   switch (searchParams.error) {
@@ -98,6 +102,17 @@ function getFeedback(searchParams: {
         type: "error" as const,
         text: "No se pudo enviar la simulacion de convocatoria. Intenta nuevamente en unos minutos.",
       };
+    case "cancelacion_mensaje_requerido":
+      return { type: "error" as const, text: "Debes ingresar un mensaje personalizado para cancelar la convocatoria." };
+    case "asamblea_no_cancelable":
+      return { type: "error" as const, text: "Solo se puede cancelar una asamblea en estado CONVOCADA." };
+    case "cancelacion_sin_destinatarios":
+      return { type: "error" as const, text: "No hay destinatarios vigentes para notificar la cancelacion." };
+    case "cancelacion_error":
+      return {
+        type: "error" as const,
+        text: "No se pudo cancelar la convocatoria. Intenta nuevamente en unos minutos.",
+      };
     default:
       return null;
   }
@@ -116,6 +131,10 @@ function tipoEnvioLabel(tipoEnvio: string) {
     return "Convocatoria selectiva";
   }
 
+  if (tipoEnvio === ADMIN_EMAIL_TIPO_ENVIO.ASAMBLEA_CANCELACION) {
+    return "Cancelacion de convocatoria";
+  }
+
   return tipoEnvio;
 }
 
@@ -130,6 +149,10 @@ function estadoClass(estado: string) {
 
   if (estado === "CERRADA") {
     return "bg-slate-200 text-slate-800";
+  }
+
+  if (estado === "CANCELADA") {
+    return "bg-red-100 text-red-700";
   }
 
   return "bg-amber-100 text-amber-800";
@@ -219,9 +242,27 @@ export default async function AsambleaDetallePage({
         assignment.consorcioId === asamblea.consorcioId &&
         (assignment.role === "ADMIN" || assignment.role === "OPERADOR"),
     );
+  const isCancelled = asamblea.estado === ASAMBLEA_ESTADO.CANCELADA;
+  const canMutateAsamblea = canOperate && !isCancelled;
+  const canCancelConvocatoria = canOperate && asamblea.estado === ASAMBLEA_ESTADO.CONVOCADA;
   const responsablesConvocatoria = canOperate
     ? await getResponsablesConvocatoriaElegibles(asamblea.consorcioId)
     : ([] as ConvocatoriaResponsableElegible[]);
+
+  async function ensureAsambleaEditable(id: number, anchor?: string) {
+    const currentAsamblea = await prisma.asamblea.findUnique({
+      where: { id },
+      select: { estado: true },
+    });
+
+    if (!currentAsamblea) {
+      redirect(`/administracion/asambleas/${id}${buildReturnQuery({ error: "asamblea_inexistente" })}${anchor ?? ""}`);
+    }
+
+    if (currentAsamblea.estado === ASAMBLEA_ESTADO.CANCELADA) {
+      redirect(`/administracion/asambleas/${id}${buildReturnQuery({ error: "asamblea_no_cancelable" })}${anchor ?? ""}`);
+    }
+  }
 
   async function actualizarAsamblea(formData: FormData) {
     "use server";
@@ -237,6 +278,7 @@ export default async function AsambleaDetallePage({
     const estado = (formData.get("estado")?.toString() ?? ASAMBLEA_ESTADO.BORRADOR).trim();
 
     await requireConsorcioRole(consorcioId, ["ADMIN", "OPERADOR"]);
+    await ensureAsambleaEditable(id);
 
     if (!fecha) {
       redirect(`/administracion/asambleas/${id}${buildReturnQuery({ error: "fecha_requerida" })}`);
@@ -274,6 +316,7 @@ export default async function AsambleaDetallePage({
     const actaTexto = (formData.get("actaTexto")?.toString() ?? "").trim();
 
     await requireConsorcioRole(consorcioId, ["ADMIN", "OPERADOR"]);
+    await ensureAsambleaEditable(id, "#acta");
 
     await prisma.asamblea.update({
       where: { id },
@@ -295,6 +338,7 @@ export default async function AsambleaDetallePage({
     const descripcion = (formData.get("descripcion")?.toString() ?? "").trim();
 
     await requireConsorcioRole(consorcioId, ["ADMIN", "OPERADOR"]);
+    await ensureAsambleaEditable(id, "#orden-dia");
 
     if (!Number.isInteger(orden) || orden <= 0) {
       redirect(`/administracion/asambleas/${id}${buildReturnQuery({ error: "orden_invalido" })}#orden-dia`);
@@ -327,6 +371,7 @@ export default async function AsambleaDetallePage({
     const descripcion = (formData.get("descripcion")?.toString() ?? "").trim();
 
     await requireConsorcioRole(consorcioId, ["ADMIN", "OPERADOR"]);
+    await ensureAsambleaEditable(asambleaIdValue, "#orden-dia");
 
     if (!Number.isInteger(orden) || orden <= 0) {
       redirect(`/administracion/asambleas/${asambleaIdValue}${buildReturnQuery({ error: "orden_invalido" })}#orden-dia`);
@@ -356,6 +401,7 @@ export default async function AsambleaDetallePage({
     const asambleaIdValue = Number(formData.get("asambleaId"));
 
     await requireConsorcioRole(consorcioId, ["ADMIN", "OPERADOR"]);
+    await ensureAsambleaEditable(asambleaIdValue, "#orden-dia");
 
     await prisma.asambleaOrdenDia.delete({
       where: { id: asambleaOrdenDiaId },
@@ -373,6 +419,7 @@ export default async function AsambleaDetallePage({
     const cuestion = (formData.get("cuestion")?.toString() ?? "").trim();
 
     await requireConsorcioRole(consorcioId, ["ADMIN", "OPERADOR"]);
+    await ensureAsambleaEditable(asambleaIdValue, "#orden-dia");
 
     if (!cuestion) {
       redirect(`/administracion/asambleas/${asambleaIdValue}${buildReturnQuery({ error: "cuestion_requerida" })}#orden-dia`);
@@ -398,6 +445,7 @@ export default async function AsambleaDetallePage({
     const rawEstado = (formData.get("estado")?.toString() ?? ASAMBLEA_VOTACION_ESTADO.BORRADOR).trim();
 
     await requireConsorcioRole(consorcioId, ["ADMIN", "OPERADOR"]);
+    await ensureAsambleaEditable(asambleaIdValue, "#orden-dia");
 
     if (!isAsambleaVotacionEstado(rawEstado)) {
       redirect(`/administracion/asambleas/${asambleaIdValue}${buildReturnQuery({ error: "votacion_inexistente" })}#orden-dia`);
@@ -439,6 +487,7 @@ export default async function AsambleaDetallePage({
       where: { id },
       select: {
         id: true,
+        estado: true,
         ordenDia: {
           select: { id: true },
         },
@@ -447,6 +496,10 @@ export default async function AsambleaDetallePage({
 
     if (!existente) {
       return { ok: false, errorMessage: "No se encontro la asamblea indicada." };
+    }
+
+    if (existente.estado === ASAMBLEA_ESTADO.CANCELADA) {
+      return { ok: false, errorMessage: "La convocatoria ya esta cancelada y no admite nuevos envios." };
     }
 
     if (existente.ordenDia.length === 0) {
@@ -492,6 +545,15 @@ export default async function AsambleaDetallePage({
 
     await requireConsorcioRole(consorcioId, ["ADMIN", "OPERADOR"]);
 
+    const existente = await prisma.asamblea.findUnique({
+      where: { id },
+      select: { estado: true },
+    });
+
+    if (existente?.estado === ASAMBLEA_ESTADO.CANCELADA) {
+      return { ok: false, errorMessage: "La asamblea ya esta cancelada y no admite nuevas simulaciones." };
+    }
+
     try {
       await enviarSimulacionConvocatoriaAsamblea(id);
     } catch (error) {
@@ -519,6 +581,52 @@ export default async function AsambleaDetallePage({
       ok: true,
       successMessage: "La simulacion de convocatoria se envio correctamente al administrador del consorcio.",
     };
+  }
+
+  async function cancelarConvocatoria(formData: FormData): Promise<EnvioConvocatoriaActionResult> {
+    "use server";
+
+    const id = Number(formData.get("id"));
+    const consorcioId = Number(formData.get("consorcioId"));
+    const mensajePersonalizado = (formData.get("mensajePersonalizado")?.toString() ?? "").trim();
+
+    const currentAccess = await requireConsorcioRole(consorcioId, ["ADMIN", "OPERADOR"]);
+
+    try {
+      const summary = await cancelarConvocatoriaAsamblea({
+        asambleaId: id,
+        mensajePersonalizado,
+        canceladaPorUserId: currentAccess.user.id,
+      });
+
+      return {
+        ok: true,
+        successMessage: `Convocatoria cancelada. ${formatEmailSummary(summary)}`,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "error_desconocido";
+
+      if (message === "cancelacion_mensaje_requerido") {
+        return { ok: false, errorMessage: "Debes ingresar un mensaje personalizado para cancelar la convocatoria." };
+      }
+
+      if (message === "asamblea_inexistente") {
+        return { ok: false, errorMessage: "No se encontro la asamblea indicada." };
+      }
+
+      if (message === "asamblea_no_cancelable") {
+        return { ok: false, errorMessage: "Solo se puede cancelar una asamblea en estado CONVOCADA." };
+      }
+
+      if (message === "cancelacion_sin_destinatarios") {
+        return { ok: false, errorMessage: "No hay destinatarios vigentes para notificar la cancelacion." };
+      }
+
+      return {
+        ok: false,
+        errorMessage: "No se pudo cancelar la convocatoria. Intenta nuevamente en unos minutos.",
+      };
+    }
   }
 
   const feedback = getFeedback(searchParams ?? {});
@@ -594,7 +702,7 @@ export default async function AsambleaDetallePage({
               </div>
             </div>
 
-            {canOperate ? (
+            {canMutateAsamblea ? (
               <form action={actualizarAsamblea} className="mt-4 space-y-4">
                 <input type="hidden" name="id" value={asamblea.id} />
                 <input type="hidden" name="consorcioId" value={asamblea.consorcioId} />
@@ -686,7 +794,7 @@ export default async function AsambleaDetallePage({
                               </p>
                             </div>
                             <div className="flex items-center justify-end gap-2">
-                              {canOperate ? (
+                              {canMutateAsamblea ? (
                                 <>
                                   <Link
                                     href={buildOrdenDiaUrl("editar", item.id)}
@@ -757,7 +865,7 @@ export default async function AsambleaDetallePage({
                             </div>
                           ) : null}
 
-                          {isEditing && canOperate ? (
+                          {isEditing && canMutateAsamblea ? (
                             <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
                               <form action={actualizarOrdenDia} className="space-y-3">
                                 <input type="hidden" name="asambleaOrdenDiaId" value={item.id} />
@@ -841,7 +949,7 @@ export default async function AsambleaDetallePage({
                                             >
                                               Ver detalle
                                             </Link>
-                                            {canOperate ? (
+                                            {canMutateAsamblea ? (
                                               <>
                                                 <form action={actualizarEstadoVotacion}>
                                                   <input type="hidden" name="asambleaId" value={asamblea.id} />
@@ -888,7 +996,7 @@ export default async function AsambleaDetallePage({
                                 )}
                               </div>
 
-                              {canOperate ? (
+                              {canMutateAsamblea ? (
                                 <form action={agregarVotacion} className="mt-4 space-y-3 rounded-md border border-dashed border-slate-300 bg-white p-3">
                                   <input type="hidden" name="asambleaId" value={asamblea.id} />
                                   <input type="hidden" name="consorcioId" value={asamblea.consorcioId} />
@@ -920,7 +1028,7 @@ export default async function AsambleaDetallePage({
               )}
             </div>
 
-            {canOperate ? (
+            {canMutateAsamblea ? (
               <form action={agregarOrdenDia} className="mt-5 space-y-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
                 <input type="hidden" name="id" value={asamblea.id} />
                 <input type="hidden" name="consorcioId" value={asamblea.consorcioId} />
@@ -963,18 +1071,54 @@ export default async function AsambleaDetallePage({
                   <p><strong>Puntos cargados:</strong> {asamblea.ordenDia.length}</p>
                 </div>
 
-                <ConvocatoriaActions
-                  asambleaId={asamblea.id}
-                  consorcioId={asamblea.consorcioId}
-                  destinatariosElegibles={responsablesConvocatoria}
-                  enviarSimulacion={enviarSimulacionConvocatoria}
-                  enviarConvocatoria={enviarConvocatoria}
-                />
+                {isCancelled ? (
+                  <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-4 text-sm text-red-700">
+                    <p className="font-semibold">Convocatoria cancelada</p>
+                    <p className="mt-2">
+                      {asamblea.canceladaAt
+                        ? `Fecha de cancelacion: ${formatDateTime(asamblea.canceladaAt)}`
+                        : "La convocatoria fue cancelada."}
+                    </p>
+                    <p className="mt-2 whitespace-pre-wrap"><strong>Mensaje:</strong> {asamblea.cancelacionMensaje ?? "-"}</p>
+                    {asamblea.cancelacionEnviadaAt ? (
+                      <p className="mt-2">Notificacion enviada: {formatDateTime(asamblea.cancelacionEnviadaAt)}</p>
+                    ) : null}
+                    {asamblea.cancelacionPdfNombre ? (
+                      <p className="mt-2">PDF generado: {asamblea.cancelacionPdfNombre}</p>
+                    ) : null}
+                  </div>
+                ) : (
+                  <>
+                    <ConvocatoriaActions
+                      asambleaId={asamblea.id}
+                      consorcioId={asamblea.consorcioId}
+                      destinatariosElegibles={responsablesConvocatoria}
+                      enviarSimulacion={enviarSimulacionConvocatoria}
+                      enviarConvocatoria={enviarConvocatoria}
+                    />
+
+                    {canCancelConvocatoria ? (
+                      <CancelarConvocatoriaAction
+                        asambleaId={asamblea.id}
+                        consorcioId={asamblea.consorcioId}
+                        cancelarConvocatoria={cancelarConvocatoria}
+                      />
+                    ) : null}
+                  </>
+                )}
               </div>
             ) : (
-              <p className="mt-4 rounded-lg border border-dashed border-slate-200 px-4 py-3 text-sm text-slate-500">
-                Tenes acceso de lectura. El envio de convocatorias esta disponible para administradores u operadores.
-              </p>
+              <div className="mt-4 space-y-3">
+                {isCancelled ? (
+                  <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-4 text-sm text-red-700">
+                    <p className="font-semibold">Convocatoria cancelada</p>
+                    <p className="mt-2 whitespace-pre-wrap"><strong>Mensaje:</strong> {asamblea.cancelacionMensaje ?? "-"}</p>
+                  </div>
+                ) : null}
+                <p className="rounded-lg border border-dashed border-slate-200 px-4 py-3 text-sm text-slate-500">
+                  Tenes acceso de lectura. El envio de convocatorias esta disponible para administradores u operadores.
+                </p>
+              </div>
             )}
           </article>
 
@@ -982,7 +1126,7 @@ export default async function AsambleaDetallePage({
             <h2 className="text-lg font-semibold text-slate-900">Acta</h2>
             <p className="mt-1 text-sm text-slate-500">Texto editable asociado a la asamblea.</p>
 
-            {canOperate ? (
+            {canMutateAsamblea ? (
               <form action={guardarActa} className="mt-4 space-y-4">
                 <input type="hidden" name="id" value={asamblea.id} />
                 <input type="hidden" name="consorcioId" value={asamblea.consorcioId} />

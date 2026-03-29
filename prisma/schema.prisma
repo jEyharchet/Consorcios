@@ -700,6 +700,11 @@ model Asamblea {
   hora              String
   lugar             String
   convocatoriaTexto String?
+  canceladaAt       DateTime?
+  canceladaPorUserId String?
+  cancelacionMensaje String?
+  cancelacionPdfNombre String?
+  cancelacionEnviadaAt DateTime?
   firmaNombreOriginal String?
   firmaMimeType       String?
   firmaContenido      Bytes?
