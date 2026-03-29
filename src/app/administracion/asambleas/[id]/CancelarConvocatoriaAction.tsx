@@ -13,20 +13,39 @@ type Props = {
   asambleaId: number;
   consorcioId: number;
   cancelarConvocatoria: (formData: FormData) => Promise<ActionResult>;
+  enviarSimulacion: (formData: FormData) => Promise<ActionResult>;
 };
 
-const STEPS: ProcesoEnvioStep[] = [
+type FlowKind = "simulacion" | "cancelacion";
+
+const STEP_CONFIGS: Record<FlowKind, ProcesoEnvioStep[]> = {
+  simulacion: [
+    { id: "compose", label: "Preparando simulacion", state: "pending" },
+    { id: "pdf", label: "Generando PDF formal", state: "pending" },
+    { id: "send", label: "Enviando simulacion", state: "pending" },
+    { id: "done", label: "Simulacion completada", state: "pending" },
+  ],
+  cancelacion: [
   { id: "compose", label: "Preparando cancelacion", state: "pending" },
   { id: "pdf", label: "Generando PDF formal", state: "pending" },
   { id: "send", label: "Enviando cancelacion", state: "pending" },
   { id: "done", label: "Cancelacion completada", state: "pending" },
-];
+  ],
+};
 
-const ACTIVE_STATUS_TEXT: Record<string, string> = {
+const ACTIVE_STATUS_TEXT: Record<FlowKind, Record<string, string>> = {
+  simulacion: {
+    compose: "Preparando la simulacion institucional de cancelacion...",
+    pdf: "Generando el PDF formal de cancelacion...",
+    send: "Enviando la simulacion al administrador...",
+    done: "Simulacion enviada correctamente.",
+  },
+  cancelacion: {
   compose: "Preparando la comunicacion institucional de cancelacion...",
   pdf: "Generando el PDF formal de cancelacion...",
   send: "Enviando la cancelacion a los destinatarios vigentes...",
   done: "Cancelacion realizada correctamente.",
+  },
 };
 
 function wait(ms: number) {
@@ -37,6 +56,7 @@ export default function CancelarConvocatoriaAction({
   asambleaId,
   consorcioId,
   cancelarConvocatoria,
+  enviarSimulacion,
 }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -48,6 +68,7 @@ export default function CancelarConvocatoriaAction({
   const [statusText, setStatusText] = useState("Preparando cancelacion...");
   const [progressError, setProgressError] = useState<string | null>(null);
   const [canClose, setCanClose] = useState(false);
+  const [flow, setFlow] = useState<FlowKind>("cancelacion");
   const closeTimeoutRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -58,7 +79,7 @@ export default function CancelarConvocatoriaAction({
     };
   }, []);
 
-  const steps = STEPS.map((step, index) => ({
+  const steps = STEP_CONFIGS[flow].map((step, index) => ({
     ...step,
     state:
       progressError && index === currentStepIndex
@@ -82,7 +103,7 @@ export default function CancelarConvocatoriaAction({
     setStatusText("Preparando cancelacion...");
   }
 
-  async function runCancelacion() {
+  async function runAction(kind: FlowKind) {
     const trimmedMessage = mensaje.trim();
 
     if (!trimmedMessage) {
@@ -93,25 +114,26 @@ export default function CancelarConvocatoriaAction({
     setOpen(false);
     setValidationError(null);
     setProgressOpen(true);
+    setFlow(kind);
     setCurrentStepIndex(0);
-    setStatusText(ACTIVE_STATUS_TEXT.compose);
+    setStatusText(ACTIVE_STATUS_TEXT[kind].compose);
     setProgressError(null);
     setCanClose(false);
 
     await wait(300);
     setCurrentStepIndex(1);
-    setStatusText(ACTIVE_STATUS_TEXT.pdf);
+    setStatusText(ACTIVE_STATUS_TEXT[kind].pdf);
 
     await wait(300);
     setCurrentStepIndex(2);
-    setStatusText(ACTIVE_STATUS_TEXT.send);
+    setStatusText(ACTIVE_STATUS_TEXT[kind].send);
 
     const formData = new FormData();
     formData.set("id", String(asambleaId));
     formData.set("consorcioId", String(consorcioId));
     formData.set("mensajePersonalizado", trimmedMessage);
 
-    const result = await cancelarConvocatoria(formData);
+    const result = await (kind === "simulacion" ? enviarSimulacion(formData) : cancelarConvocatoria(formData));
 
     if (!result.ok) {
       setProgressError(result.errorMessage);
@@ -211,7 +233,19 @@ export default function CancelarConvocatoriaAction({
                 type="button"
                 onClick={() => {
                   startTransition(() => {
-                    void runCancelacion();
+                    void runAction("simulacion");
+                  });
+                }}
+                disabled={isPending}
+                className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Enviar simulacion al administrador
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  startTransition(() => {
+                    void runAction("cancelacion");
                   });
                 }}
                 disabled={isPending}
@@ -226,7 +260,7 @@ export default function CancelarConvocatoriaAction({
 
       <ProcesoEnvioModal
         open={progressOpen}
-        title="Cancelando convocatoria"
+        title={flow === "simulacion" ? "Enviando simulacion de cancelacion" : "Cancelando convocatoria"}
         steps={steps}
         statusText={statusText}
         error={progressError}

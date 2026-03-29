@@ -7,6 +7,7 @@ import IconConfirmSubmitButton from "./IconConfirmSubmitButton";
 import {
   cancelarConvocatoriaAsamblea,
   enviarConvocatoriaAsamblea,
+  enviarSimulacionCancelacionAsamblea,
   enviarSimulacionConvocatoriaAsamblea,
   getResponsablesConvocatoriaElegibles,
   type ConvocatoriaResponsableElegible,
@@ -54,6 +55,13 @@ function getFeedback(searchParams: {
     };
   }
 
+  if (searchParams.ok === "cancelacion_simulacion_ok") {
+    return {
+      type: "ok" as const,
+      text: "La simulacion de cancelacion se envio correctamente al administrador del consorcio.",
+    };
+  }
+
   switch (searchParams.ok) {
     case "asamblea_actualizada":
       return { type: "ok" as const, text: "La asamblea se actualizo correctamente." };
@@ -97,6 +105,11 @@ function getFeedback(searchParams: {
         type: "error" as const,
         text: "El consorcio no tiene un email de administrador vigente configurado para enviar la simulacion.",
       };
+    case "administrador_sin_email_cancelacion":
+      return {
+        type: "error" as const,
+        text: "El consorcio no tiene un email de administrador vigente configurado para enviar la simulacion de cancelacion.",
+      };
     case "simulacion_error":
       return {
         type: "error" as const,
@@ -133,6 +146,10 @@ function tipoEnvioLabel(tipoEnvio: string) {
 
   if (tipoEnvio === ADMIN_EMAIL_TIPO_ENVIO.ASAMBLEA_CANCELACION) {
     return "Cancelacion de convocatoria";
+  }
+
+  if (tipoEnvio === ADMIN_EMAIL_TIPO_ENVIO.ASAMBLEA_CANCELACION_SIMULACION_ADMIN) {
+    return "Simulacion de cancelacion";
   }
 
   return tipoEnvio;
@@ -580,6 +597,54 @@ export default async function AsambleaDetallePage({
     return {
       ok: true,
       successMessage: "La simulacion de convocatoria se envio correctamente al administrador del consorcio.",
+    };
+  }
+
+  async function enviarSimulacionCancelacion(formData: FormData): Promise<EnvioConvocatoriaActionResult> {
+    "use server";
+
+    const id = Number(formData.get("id"));
+    const consorcioId = Number(formData.get("consorcioId"));
+    const mensajePersonalizado = (formData.get("mensajePersonalizado")?.toString() ?? "").trim();
+
+    await requireConsorcioRole(consorcioId, ["ADMIN", "OPERADOR"]);
+
+    try {
+      await enviarSimulacionCancelacionAsamblea({
+        asambleaId: id,
+        mensajePersonalizado,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "error_desconocido";
+
+      if (message === "cancelacion_mensaje_requerido") {
+        return { ok: false, errorMessage: "Debes ingresar un mensaje personalizado para cancelar la convocatoria." };
+      }
+
+      if (message === "asamblea_inexistente") {
+        return { ok: false, errorMessage: "No se encontro la asamblea indicada." };
+      }
+
+      if (message === "asamblea_no_cancelable") {
+        return { ok: false, errorMessage: "Solo se puede simular la cancelacion de una asamblea en estado CONVOCADA." };
+      }
+
+      if (message === "administrador_sin_email") {
+        return {
+          ok: false,
+          errorMessage: "El consorcio no tiene un email de administrador vigente configurado para enviar la simulacion de cancelacion.",
+        };
+      }
+
+      return {
+        ok: false,
+        errorMessage: "No se pudo enviar la simulacion de cancelacion. Intenta nuevamente en unos minutos.",
+      };
+    }
+
+    return {
+      ok: true,
+      successMessage: "La simulacion de cancelacion se envio correctamente al administrador del consorcio.",
     };
   }
 
@@ -1102,6 +1167,7 @@ export default async function AsambleaDetallePage({
                         asambleaId={asamblea.id}
                         consorcioId={asamblea.consorcioId}
                         cancelarConvocatoria={cancelarConvocatoria}
+                        enviarSimulacion={enviarSimulacionCancelacion}
                       />
                     ) : null}
                   </>

@@ -1070,3 +1070,135 @@ export async function cancelarConvocatoriaAsamblea(params: {
     },
   });
 }
+
+export async function enviarSimulacionCancelacionAsamblea(params: {
+  asambleaId: number;
+  mensajePersonalizado: string;
+}): Promise<EmailSummary> {
+  const mensajePersonalizado = params.mensajePersonalizado.trim();
+
+  if (!mensajePersonalizado) {
+    throw new Error("cancelacion_mensaje_requerido");
+  }
+
+  const asamblea = await getAsambleaConvocatoriaRecord(params.asambleaId);
+
+  if (!asamblea) {
+    throw new Error("asamblea_inexistente");
+  }
+
+  if (asamblea.estado !== ASAMBLEA_ESTADO.CONVOCADA) {
+    throw new Error("asamblea_no_cancelable");
+  }
+
+  const adminEmails = Array.from(
+    new Set(
+      asamblea.consorcio.administradores
+        .map((relation) => normalizeEmail(relation.persona.email))
+        .filter((value): value is string => Boolean(value)),
+    ),
+  );
+
+  const administradorLabel =
+    asamblea.consorcio.administradores
+      .map((relation) => `${relation.persona.apellido}, ${relation.persona.nombre}`)
+      .filter((value) => value.trim().length > 0)
+      .join(" / ") || "Administrador del consorcio";
+
+  const asunto = `Simulacion de cancelacion de convocatoria de asamblea - ${asamblea.consorcio.nombre}`;
+  const cuerpo = [
+    "Adjuntamos una simulacion interna de la cancelacion de convocatoria para revision previa.",
+    "Este mensaje fue enviado solo al administrador del consorcio y no fue distribuido a propietarios ni responsables.",
+    `Asamblea prevista: ${buildTipoLabel(asamblea.tipo)} del ${formatLongDate(asamblea.fecha)} a las ${asamblea.hora}.`,
+    "Mensaje del administrador:",
+    mensajePersonalizado,
+  ].join("\n\n");
+  const pdfNombre = `cancelacion-convocatoria-asamblea-${asamblea.id}.pdf`;
+
+  if (adminEmails.length === 0) {
+    await prisma.envioEmail.create({
+      data: {
+        consorcioId: asamblea.consorcioId,
+        asambleaId: asamblea.id,
+        tipoEnvio: ADMIN_EMAIL_TIPO_ENVIO.ASAMBLEA_CANCELACION_SIMULACION_ADMIN,
+        destinatario: null,
+        asunto,
+        cuerpo,
+        estado: EMAIL_ESTADO.SIN_DESTINATARIO,
+        errorMensaje: "El consorcio no tiene un email de administrador vigente configurado.",
+        replyKey: createEmailReplyKey(),
+      },
+    });
+
+    throw new Error("administrador_sin_email");
+  }
+
+  const envio = await prisma.envioEmail.create({
+    data: {
+      consorcioId: asamblea.consorcioId,
+      asambleaId: asamblea.id,
+      tipoEnvio: ADMIN_EMAIL_TIPO_ENVIO.ASAMBLEA_CANCELACION_SIMULACION_ADMIN,
+      destinatario: adminEmails.join(", "),
+      asunto,
+      cuerpo,
+      estado: EMAIL_ESTADO.PENDIENTE,
+      replyKey: createEmailReplyKey(),
+    },
+    select: { id: true, replyKey: true },
+  });
+
+  try {
+    const pdfBuffer = await renderCancelacionPdfBuffer(asamblea, mensajePersonalizado);
+
+    const response = await sendEmail({
+      to: adminEmails,
+      subject: asunto,
+      html: buildEmailHtml({
+        title: asunto,
+        body: cuerpo,
+        detailLines: [
+          `Consorcio: ${asamblea.consorcio.nombre}`,
+          `Administrador destinatario: ${administradorLabel}`,
+          `Fecha prevista: ${formatDate(asamblea.fecha)}`,
+          `Hora: ${asamblea.hora}`,
+          `Lugar: ${asamblea.lugar}`,
+          "Tipo de envio: simulacion interna",
+          `Mensaje del administrador: ${mensajePersonalizado}`,
+        ],
+      }),
+      text: cuerpo,
+      replyTo: buildReplyToAddress(envio.replyKey) ?? undefined,
+      attachments: [
+        {
+          content: pdfBuffer,
+          filename: pdfNombre,
+          contentType: "application/pdf",
+        },
+      ],
+    });
+
+    await prisma.envioEmail.update({
+      where: { id: envio.id },
+      data: {
+        estado: EMAIL_ESTADO.ENVIADO,
+        providerMessageId: response?.id ?? null,
+        errorMensaje: null,
+        enviadoAt: new Date(),
+      },
+    });
+
+    return buildEmailSummary([{ estado: EMAIL_ESTADO.ENVIADO }]);
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message.slice(0, 1000) : "Error desconocido al enviar email.";
+
+    await prisma.envioEmail.update({
+      where: { id: envio.id },
+      data: {
+        estado: EMAIL_ESTADO.ERROR,
+        errorMensaje: errorMessage,
+      },
+    });
+
+    throw error;
+  }
+}
