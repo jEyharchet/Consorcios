@@ -596,13 +596,16 @@ function buildThirdPage(data: LiquidacionData) {
     { coef: 0, total: 0 },
   );
 
-  const saldoCajaPeriodoAnterior = data.resumenCaja.saldoInicial;
-  const ingresosPorCobranza = data.resumenCaja.ingresosPorCobranza;
-  const egresosPorGastos = data.resumenCaja.egresosPorGastos;
-  const egresosPorGastosParticulares = data.resumenCaja.egresosPorGastosParticulares;
-  const saldoCajaCierre = data.resumenCaja.saldoCierre;
+  const cajaInicialPeriodoAnterior = data.resumenCaja.cajaInicialPeriodoAnterior;
+  const ingresosPeriodoAnterior = data.resumenCaja.ingresosPeriodoAnterior;
+  const egresosPeriodoAnterior = data.resumenCaja.egresosPeriodoAnterior;
+  const egresosParticularesPeriodoAnterior = data.resumenCaja.egresosParticularesPeriodoAnterior;
+  const saldoCajaPeriodoAnterior = data.resumenCaja.saldoCajaPeriodoAnterior;
+  const egresosPeriodoActual = data.resumenCaja.egresosPeriodoActual;
+  const egresosParticularesPeriodoActual = data.resumenCaja.egresosParticularesPeriodoActual;
+  const saldoCajaActual = data.resumenCaja.saldoCajaActual;
   const saldoCajaLabel =
-    saldoCajaCierre >= 0
+    saldoCajaActual >= 0
       ? "SALDO DE CAJA AL CIERRE DEL PERIODO"
       : "SALDO DE CAJA EN CONTRA DEL CONSORCIO";
 
@@ -645,11 +648,14 @@ function buildThirdPage(data: LiquidacionData) {
       <table class="resumen-caja-table">
         <thead><tr><th>DESCRIPCION</th><th class="text-right">IMPORTE</th></tr></thead>
         <tbody>
-          <tr><td>Saldo de caja del periodo anterior</td><td class="text-right">${escapeHtml(formatCurrency(saldoCajaPeriodoAnterior))}</td></tr>
-          <tr><td>Mas ingresos del periodo por cobranza</td><td class="text-right">${escapeHtml(formatCurrency(ingresosPorCobranza))}</td></tr>
-          <tr><td>Menos total de egresos por gastos</td><td class="text-right">${escapeHtml(formatCurrency(egresosPorGastos))}</td></tr>
-          <tr><td>Menos egresos por gastos particulares</td><td class="text-right">${escapeHtml(formatCurrency(egresosPorGastosParticulares))}</td></tr>
-          <tr class="totals-row"><td>${saldoCajaLabel}</td><td class="text-right">${escapeHtml(formatCurrency(saldoCajaCierre))}</td></tr>
+          <tr><td>Caja inicial del periodo anterior</td><td class="text-right">${escapeHtml(formatCurrency(cajaInicialPeriodoAnterior))}</td></tr>
+          <tr><td>Ingresos del periodo anterior por cobranza</td><td class="text-right">${escapeHtml(formatCurrency(ingresosPeriodoAnterior))}</td></tr>
+          <tr><td>Egresos del periodo anterior por gastos</td><td class="text-right">${escapeHtml(formatCurrency(egresosPeriodoAnterior))}</td></tr>
+          <tr><td>Egresos del periodo anterior por gastos particulares</td><td class="text-right">${escapeHtml(formatCurrency(egresosParticularesPeriodoAnterior))}</td></tr>
+          <tr class="totals-row"><td>Saldo de caja del periodo anterior</td><td class="text-right">${escapeHtml(formatCurrency(saldoCajaPeriodoAnterior))}</td></tr>
+          <tr><td>Egresos del periodo actual por gastos</td><td class="text-right">${escapeHtml(formatCurrency(egresosPeriodoActual))}</td></tr>
+          <tr><td>Egresos del periodo actual por gastos particulares</td><td class="text-right">${escapeHtml(formatCurrency(egresosParticularesPeriodoActual))}</td></tr>
+          <tr class="totals-row"><td>${saldoCajaLabel}</td><td class="text-right">${escapeHtml(formatCurrency(saldoCajaActual))}</td></tr>
         </tbody>
       </table>
     </div>
