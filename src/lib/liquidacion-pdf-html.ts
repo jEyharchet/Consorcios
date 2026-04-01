@@ -154,6 +154,27 @@ function buildStyles() {
         margin: 0;
       }
 
+      .header-top {
+        display: flex;
+        align-items: center;
+        gap: 20px;
+      }
+
+      .header-logo {
+        width: 104px;
+        height: 72px;
+        object-fit: contain;
+        display: block;
+        flex: 0 0 auto;
+      }
+
+      .header-copy {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        min-width: 0;
+      }
+
       .subtitle {
         font-size: 13pt;
         margin-top: 6px;
@@ -170,6 +191,10 @@ function buildStyles() {
         display: grid;
         grid-template-columns: 120px 1fr 1fr;
         gap: 14px;
+      }
+
+      .header-grid--compact {
+        grid-template-columns: 1fr 1fr;
       }
 
       .logo-placeholder {
@@ -372,6 +397,7 @@ function buildStyles() {
 function buildHeader(data: LiquidacionData) {
   const mesCierre = formatPeriodoLabel(data.liquidacion.mesRendicion ?? data.liquidacion.periodo);
   const fechaVencimiento = formatDateLong(data.liquidacion.fechaVencimiento ?? null);
+  const brandingLogoUrl = "https://app.amiconsorcio.com.ar/branding/logo-gray-v2.png";
   const admin = data.liquidacion.consorcio.administradores[0]?.persona;
   const domicilio = [
     data.liquidacion.consorcio.direccion,
@@ -382,11 +408,15 @@ function buildHeader(data: LiquidacionData) {
 
   return `
     <div class="first-section">
-    <h1 class="title-main">LIQUIDACION DE EXPENSAS</h1>
-    <p class="subtitle">MES DE LIQUIDACION (CIERRE): ${escapeHtml(mesCierre)} - FECHA DE VENCIMIENTO DE LAS EXPENSAS: ${escapeHtml(fechaVencimiento)}</p>
+    <div class="header-top">
+      <img class="header-logo" src="${brandingLogoUrl}" alt="AmiConsorcio" />
+      <div class="header-copy">
+        <h1 class="title-main">LIQUIDACION DE EXPENSAS</h1>
+        <p class="subtitle">MES DE LIQUIDACION (CIERRE): ${escapeHtml(mesCierre)} - FECHA DE VENCIMIENTO DE LAS EXPENSAS: ${escapeHtml(fechaVencimiento)}</p>
+      </div>
+    </div>
     <div class="line"></div>
-    <div class="header-grid">
-      <div class="logo-placeholder"></div>
+    <div class="header-grid header-grid--compact">
       <div>
         <div class="font-bold">ADMINISTRADOR</div>
         <div class="font-bold">${escapeHtml(admin ? `${admin.nombre} ${admin.apellido}` : "Administrador no asignado")}</div>
