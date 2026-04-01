@@ -202,7 +202,7 @@ function getFondosTotalAtBoundary(
 
   let total = 0;
 
-  for (const bucketMovimientos of byBucket.values()) {
+  for (const bucketMovimientos of Array.from(byBucket.values())) {
     const sorted = bucketMovimientos.sort((a, b) => a.fechaMovimiento.getTime() - b.fechaMovimiento.getTime());
     const previous = [...sorted].reverse().find((movimiento) => movimiento.fechaMovimiento < boundary);
 
