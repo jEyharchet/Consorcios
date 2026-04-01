@@ -596,14 +596,15 @@ function buildThirdPage(data: LiquidacionData) {
     { coef: 0, total: 0 },
   );
 
-  const saldoCajaPeriodoAnterior = 0;
-  const ingresosPorCobranza = data.totalCobranzas;
-  const egresosPorGastos = data.totalGastos;
-  const egresosPorGastosParticulares = data.gastos
-    .filter((g) => g.rubroExpensa.toLowerCase().includes("particular"))
-    .reduce((acc, g) => acc + g.monto, 0);
-  const saldoCajaEnContraDelConsorcio =
-    saldoCajaPeriodoAnterior + ingresosPorCobranza - egresosPorGastos - egresosPorGastosParticulares;
+  const saldoCajaPeriodoAnterior = data.resumenCaja.saldoInicial;
+  const ingresosPorCobranza = data.resumenCaja.ingresosPorCobranza;
+  const egresosPorGastos = data.resumenCaja.egresosPorGastos;
+  const egresosPorGastosParticulares = data.resumenCaja.egresosPorGastosParticulares;
+  const saldoCajaCierre = data.resumenCaja.saldoCierre;
+  const saldoCajaLabel =
+    saldoCajaCierre >= 0
+      ? "SALDO DE CAJA AL CIERRE DEL PERIODO"
+      : "SALDO DE CAJA EN CONTRA DEL CONSORCIO";
 
   const saldosPendientes = data.prorrateoRows.filter((row) => row.saldoDeudor > 0 || row.intereses > 0);
   const totalSaldosDeudores = saldosPendientes.reduce((acc, row) => acc + row.saldoDeudor + row.intereses, 0);
@@ -648,7 +649,7 @@ function buildThirdPage(data: LiquidacionData) {
           <tr><td>Mas ingresos del periodo por cobranza</td><td class="text-right">${escapeHtml(formatCurrency(ingresosPorCobranza))}</td></tr>
           <tr><td>Menos total de egresos por gastos</td><td class="text-right">${escapeHtml(formatCurrency(egresosPorGastos))}</td></tr>
           <tr><td>Menos egresos por gastos particulares</td><td class="text-right">${escapeHtml(formatCurrency(egresosPorGastosParticulares))}</td></tr>
-          <tr class="totals-row"><td>SALDO DE CAJA EN CONTRA DEL CONSORCIO</td><td class="text-right">${escapeHtml(formatCurrency(saldoCajaEnContraDelConsorcio))}</td></tr>
+          <tr class="totals-row"><td>${saldoCajaLabel}</td><td class="text-right">${escapeHtml(formatCurrency(saldoCajaCierre))}</td></tr>
         </tbody>
       </table>
     </div>

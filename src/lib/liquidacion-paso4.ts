@@ -160,6 +160,7 @@ export async function getLiquidacionPaso4Data(liquidacionId: number) {
         select: {
           id: true,
           nombre: true,
+          saldoCajaActual: true,
           cuit: true,
           direccion: true,
           ciudad: true,
@@ -194,6 +195,7 @@ export async function getLiquidacionPaso4Data(liquidacionId: number) {
               cuitTitular: true,
               esCuentaExpensas: true,
               activa: true,
+              saldoActual: true,
               qrEnabled: true,
               qrMode: true,
               qrPayloadTemplate: true,
@@ -254,7 +256,7 @@ export async function getLiquidacionPaso4Data(liquidacionId: number) {
     periodo: liquidacion.periodo,
   });
 
-  const [gastosFromSource, cobranzas] = await Promise.all([
+  const [gastosFromSource, cobranzas, pagosGastoPeriodo] = await Promise.all([
     useHistoricalGastos
       ? prisma.liquidacionGastoHistorico.findMany({
           where: { liquidacionId: liquidacion.id },
@@ -281,6 +283,25 @@ export async function getLiquidacionPaso4Data(liquidacionId: number) {
         monto: true,
         fechaPago: true,
         medioPago: true,
+      },
+      orderBy: [{ fechaPago: "asc" }, { id: "asc" }],
+    }),
+    prisma.pagoGasto.findMany({
+      where: {
+        consorcioId: liquidacion.consorcioId,
+        gasto: {
+          liquidacionId: liquidacion.id,
+        },
+      },
+      select: {
+        id: true,
+        monto: true,
+        fechaPago: true,
+        gasto: {
+          select: {
+            rubroExpensa: true,
+          },
+        },
       },
       orderBy: [{ fechaPago: "asc" }, { id: "asc" }],
     }),
@@ -321,6 +342,17 @@ export async function getLiquidacionPaso4Data(liquidacionId: number) {
 
   const totalGastos = gastos.reduce((acc, g) => acc + g.monto, 0);
   const totalCobranzas = cobranzas.reduce((acc, c) => acc + c.monto, 0);
+
+  const totalEgresosParticulares = pagosGastoPeriodo
+    .filter((pago) => pago.gasto.rubroExpensa.toLowerCase().includes("particular"))
+    .reduce((acc, pago) => acc + pago.monto, 0);
+
+  const totalEgresosPagados = pagosGastoPeriodo.reduce((acc, pago) => acc + pago.monto, 0);
+  const totalEgresosGenerales = totalEgresosPagados - totalEgresosParticulares;
+  const saldoCajaCierre =
+    liquidacion.consorcio.saldoCajaActual +
+    liquidacion.consorcio.cuentasBancarias.reduce((acc, cuenta) => acc + cuenta.saldoActual, 0);
+  const saldoCajaInicial = saldoCajaCierre - totalCobranzas + totalEgresosGenerales + totalEgresosParticulares;
 
   const fondoTotal = liquidacion.montoFondoReserva ?? 0;
 
@@ -375,8 +407,16 @@ export async function getLiquidacionPaso4Data(liquidacionId: number) {
     liquidacion,
     gastos,
     cobranzas,
+    pagosGastoPeriodo,
     totalGastos,
     totalCobranzas,
+    resumenCaja: {
+      saldoInicial: saldoCajaInicial,
+      ingresosPorCobranza: totalCobranzas,
+      egresosPorGastos: totalEgresosGenerales,
+      egresosPorGastosParticulares: totalEgresosParticulares,
+      saldoCierre: saldoCajaCierre,
+    },
     prorrateoRows,
     morosos,
     proveedores,
