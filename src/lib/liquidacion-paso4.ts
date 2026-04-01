@@ -416,9 +416,11 @@ export async function getLiquidacionPaso4Data(liquidacionId: number) {
   });
 
   const resumenPeriodoAnterior =
-    resumenesCaja.find((item) => item.periodo !== liquidacion.periodo && item.periodo < liquidacion.periodo) ?? null;
+    resumenesCaja
+      .filter((item) => item.id !== liquidacion.id)
+      .at(-1) ?? null;
   const resumenPeriodoActual =
-    resumenesCaja.find((item) => item.periodo === liquidacion.periodo) ?? null;
+    resumenesCaja.find((item) => item.id === liquidacion.id) ?? null;
   const saldoCajaPeriodoAnterior = resumenPeriodoAnterior?.saldoCierre ?? 0;
   const totalEgresosGeneralesActual = resumenPeriodoActual?.egresosGenerales ?? 0;
   const totalEgresosParticularesActual = resumenPeriodoActual?.egresosParticulares ?? 0;
