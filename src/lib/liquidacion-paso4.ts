@@ -152,72 +152,43 @@ function buildUbicacionLabel(unidad: {
   return unidadLabel;
 }
 
-function buildPeriodoBounds(periodo: string | null | undefined) {
-  if (!periodo) {
-    return null;
-  }
-
-  const normalized = normalizePeriodo(periodo);
-
-  if (!normalized) {
-    return null;
-  }
-
-  const [year, month] = normalized.split("-").map(Number);
-  const start = new Date(year, month - 1, 1, 0, 0, 0, 0);
-  const end = new Date(year, month, 1, 0, 0, 0, 0);
-
-  return { start, end };
-}
-
-function resolveFondoBucketKey(params: {
-  tipoDestino: string;
-  consorcioCuentaBancariaId: number | null;
+async function getLiquidacionGastosResumen(params: {
+  liquidacionId: number;
+  consorcioId: number;
+  estado: string;
 }) {
-  if (params.tipoDestino === "CAJA") {
-    return "CAJA";
-  }
+  const rows =
+    params.estado === "FINALIZADA" || params.estado === "CERRADA"
+      ? await prisma.liquidacionGastoHistorico.findMany({
+          where: { liquidacionId: params.liquidacionId },
+          select: {
+            monto: true,
+            rubroExpensa: true,
+          },
+        })
+      : await prisma.gasto.findMany({
+          where: {
+            consorcioId: params.consorcioId,
+            liquidacionId: params.liquidacionId,
+          },
+          select: {
+            monto: true,
+            rubroExpensa: true,
+          },
+        });
 
-  return `CUENTA:${params.consorcioCuentaBancariaId ?? "sin-id"}`;
-}
+  const particulares = rows
+    .filter((row) => row.rubroExpensa.toLowerCase().includes("particular"))
+    .reduce((acc, row) => acc + row.monto, 0);
 
-function getFondosTotalAtBoundary(
-  movimientos: Array<{
-    fechaMovimiento: Date;
-    tipoDestino: string;
-    consorcioCuentaBancariaId: number | null;
-    saldoAnterior: number;
-    saldoPosterior: number;
-  }>,
-  boundary: Date,
-) {
-  const byBucket = new Map<string, typeof movimientos>();
+  const generales = rows
+    .filter((row) => !row.rubroExpensa.toLowerCase().includes("particular"))
+    .reduce((acc, row) => acc + row.monto, 0);
 
-  for (const movimiento of movimientos) {
-    const key = resolveFondoBucketKey(movimiento);
-    const current = byBucket.get(key) ?? [];
-    current.push(movimiento);
-    byBucket.set(key, current);
-  }
-
-  let total = 0;
-
-  for (const bucketMovimientos of Array.from(byBucket.values())) {
-    const sorted = bucketMovimientos.sort((a, b) => a.fechaMovimiento.getTime() - b.fechaMovimiento.getTime());
-    const previous = [...sorted].reverse().find((movimiento) => movimiento.fechaMovimiento < boundary);
-
-    if (previous) {
-      total += previous.saldoPosterior;
-      continue;
-    }
-
-    const next = sorted.find((movimiento) => movimiento.fechaMovimiento >= boundary);
-    if (next) {
-      total += next.saldoAnterior;
-    }
-  }
-
-  return total;
+  return {
+    generales,
+    particulares,
+  };
 }
 
 export async function getLiquidacionPaso4Data(liquidacionId: number) {
@@ -311,7 +282,6 @@ export async function getLiquidacionPaso4Data(liquidacionId: number) {
 
   const periodoVariants = getPeriodoVariants(liquidacion.periodo);
   const periodoActualNormalizado = normalizePeriodo(liquidacion.periodo);
-  const periodoActualBounds = buildPeriodoBounds(liquidacion.periodo);
   const useHistoricalGastos = liquidacion.estado === "FINALIZADA" || liquidacion.estado === "CERRADA";
   // Regeneracion historica: si existe snapshot de la cuenta usada en boletas, priorizarlo sobre datos vivos.
   const boletaCuentaSnapshot = parseBoletaCuentaSnapshot(liquidacion.boletaCuentaSnapshot);
@@ -326,23 +296,22 @@ export async function getLiquidacionPaso4Data(liquidacionId: number) {
     periodo: liquidacion.periodo,
   });
 
-  const liquidacionAnterior = periodoActualNormalizado
-    ? await prisma.liquidacion.findFirst({
+  const liquidacionesHastaActual = periodoActualNormalizado
+    ? await prisma.liquidacion.findMany({
         where: {
           consorcioId: liquidacion.consorcioId,
-          periodo: { lt: periodoActualNormalizado },
+          periodo: { lte: periodoActualNormalizado },
         },
-        orderBy: [{ periodo: "desc" }, { id: "desc" }],
+        orderBy: [{ periodo: "asc" }, { id: "asc" }],
         select: {
           id: true,
           periodo: true,
+          estado: true,
         },
       })
-    : null;
+    : [];
 
-  const periodoAnteriorBounds = buildPeriodoBounds(liquidacionAnterior?.periodo);
-
-  const [gastosFromSource, cobranzas, pagosGastoPeriodo, cobranzasPeriodoAnterior, pagosGastoPeriodoAnterior, movimientosFondo] = await Promise.all([
+  const [gastosFromSource, cobranzas, resumenesHistoricos] = await Promise.all([
     useHistoricalGastos
       ? prisma.liquidacionGastoHistorico.findMany({
           where: { liquidacionId: liquidacion.id },
@@ -372,99 +341,35 @@ export async function getLiquidacionPaso4Data(liquidacionId: number) {
       },
       orderBy: [{ fechaPago: "asc" }, { id: "asc" }],
     }),
-    prisma.pagoGasto.findMany({
-      where: {
-        consorcioId: liquidacion.consorcioId,
-        gasto: {
-          liquidacionId: liquidacion.id,
-        },
-        ...(periodoActualBounds
-          ? {
-              fechaPago: {
-                gte: periodoActualBounds.start,
-                lt: periodoActualBounds.end,
+    Promise.all(
+      liquidacionesHastaActual.map(async (item) => {
+        const [cobranzasResumen, gastosResumen] = await Promise.all([
+          prisma.pago.aggregate({
+            where: {
+              expensa: {
+                liquidacionId: item.id,
               },
-            }
-          : {}),
-      },
-      select: {
-        id: true,
-        monto: true,
-        fechaPago: true,
-        gasto: {
-          select: {
-            rubroExpensa: true,
-          },
-        },
-      },
-      orderBy: [{ fechaPago: "asc" }, { id: "asc" }],
-    }),
-    liquidacionAnterior
-      ? prisma.pago.findMany({
-          where: {
-            expensa: {
-              liquidacionId: liquidacionAnterior.id,
             },
-            ...(periodoAnteriorBounds
-              ? {
-                  fechaPago: {
-                    gte: periodoAnteriorBounds.start,
-                    lt: periodoAnteriorBounds.end,
-                  },
-                }
-              : {}),
-          },
-          select: {
-            id: true,
-            monto: true,
-            fechaPago: true,
-          },
-          orderBy: [{ fechaPago: "asc" }, { id: "asc" }],
-        })
-      : Promise.resolve([]),
-    liquidacionAnterior
-      ? prisma.pagoGasto.findMany({
-          where: {
+            _sum: {
+              monto: true,
+            },
+          }),
+          getLiquidacionGastosResumen({
+            liquidacionId: item.id,
             consorcioId: liquidacion.consorcioId,
-            gasto: {
-              liquidacionId: liquidacionAnterior.id,
-            },
-            ...(periodoAnteriorBounds
-              ? {
-                  fechaPago: {
-                    gte: periodoAnteriorBounds.start,
-                    lt: periodoAnteriorBounds.end,
-                  },
-                }
-              : {}),
-          },
-          select: {
-            id: true,
-            monto: true,
-            fechaPago: true,
-            gasto: {
-              select: {
-                rubroExpensa: true,
-              },
-            },
-          },
-          orderBy: [{ fechaPago: "asc" }, { id: "asc" }],
-        })
-      : Promise.resolve([]),
-    prisma.movimientoFondo.findMany({
-      where: {
-        consorcioId: liquidacion.consorcioId,
-      },
-      select: {
-        id: true,
-        fechaMovimiento: true,
-        tipoDestino: true,
-        consorcioCuentaBancariaId: true,
-        saldoAnterior: true,
-        saldoPosterior: true,
-      },
-      orderBy: [{ fechaMovimiento: "asc" }, { id: "asc" }],
-    }),
+            estado: item.estado,
+          }),
+        ]);
+
+        return {
+          id: item.id,
+          periodo: item.periodo,
+          ingresos: cobranzasResumen._sum.monto ?? 0,
+          egresosGenerales: gastosResumen.generales,
+          egresosParticulares: gastosResumen.particulares,
+        };
+      }),
+    ),
   ]);
 
   const gastos = useHistoricalGastos
@@ -503,31 +408,29 @@ export async function getLiquidacionPaso4Data(liquidacionId: number) {
   const totalGastos = gastos.reduce((acc, g) => acc + g.monto, 0);
   const totalCobranzas = cobranzas.reduce((acc, c) => acc + c.monto, 0);
 
-  const totalEgresosParticulares = pagosGastoPeriodo
-    .filter((pago) => pago.gasto.rubroExpensa.toLowerCase().includes("particular"))
-    .reduce((acc, pago) => acc + pago.monto, 0);
+  const totalEgresosParticularesActual = gastos
+    .filter((g) => g.rubroExpensa.toLowerCase().includes("particular"))
+    .reduce((acc, g) => acc + g.monto, 0);
+  const totalEgresosGeneralesActual = gastos
+    .filter((g) => !g.rubroExpensa.toLowerCase().includes("particular"))
+    .reduce((acc, g) => acc + g.monto, 0);
 
-  const totalEgresosPagados = pagosGastoPeriodo.reduce((acc, pago) => acc + pago.monto, 0);
-  const totalEgresosGenerales = totalEgresosPagados - totalEgresosParticulares;
-  const saldoCajaCierre =
-    liquidacion.consorcio.saldoCajaActual +
-    liquidacion.consorcio.cuentasBancarias.reduce((acc, cuenta) => acc + cuenta.saldoActual, 0);
+  let cajaInicialPeriodo = 0;
+  const resumenesCaja = resumenesHistoricos.map((item) => {
+    const saldoCierre = cajaInicialPeriodo + item.ingresos - item.egresosGenerales - item.egresosParticulares;
+    const result = {
+      ...item,
+      cajaInicial: cajaInicialPeriodo,
+      saldoCierre,
+    };
+    cajaInicialPeriodo = saldoCierre;
+    return result;
+  });
 
-  const totalCobradoAnterior = cobranzasPeriodoAnterior.reduce((acc, pago) => acc + pago.monto, 0);
-  const totalEgresosParticularesAnterior = pagosGastoPeriodoAnterior
-    .filter((pago) => pago.gasto.rubroExpensa.toLowerCase().includes("particular"))
-    .reduce((acc, pago) => acc + pago.monto, 0);
-  const totalEgresosPagadosAnterior = pagosGastoPeriodoAnterior.reduce((acc, pago) => acc + pago.monto, 0);
-  const totalEgresosGeneralesAnterior = totalEgresosPagadosAnterior - totalEgresosParticularesAnterior;
-  const cajaInicialPeriodoAnterior =
-    liquidacionAnterior && periodoAnteriorBounds
-      ? getFondosTotalAtBoundary(movimientosFondo, periodoAnteriorBounds.start)
-      : 0;
-  const saldoCajaPeriodoAnterior =
-    cajaInicialPeriodoAnterior +
-    totalCobradoAnterior -
-    totalEgresosGeneralesAnterior -
-    totalEgresosParticularesAnterior;
+  const resumenPeriodoAnterior =
+    resumenesCaja.find((item) => item.periodo !== liquidacion.periodo && item.periodo < liquidacion.periodo) ?? null;
+  const saldoCajaPeriodoAnterior = resumenPeriodoAnterior?.saldoCierre ?? 0;
+  const saldoCajaActual = saldoCajaPeriodoAnterior - totalEgresosGeneralesActual - totalEgresosParticularesActual;
 
   const fondoTotal = liquidacion.montoFondoReserva ?? 0;
 
@@ -582,18 +485,17 @@ export async function getLiquidacionPaso4Data(liquidacionId: number) {
     liquidacion,
     gastos,
     cobranzas,
-    pagosGastoPeriodo,
     totalGastos,
     totalCobranzas,
     resumenCaja: {
-      cajaInicialPeriodoAnterior,
-      ingresosPeriodoAnterior: totalCobradoAnterior,
-      egresosPeriodoAnterior: totalEgresosGeneralesAnterior,
-      egresosParticularesPeriodoAnterior: totalEgresosParticularesAnterior,
+      cajaInicialPeriodoAnterior: resumenPeriodoAnterior?.cajaInicial ?? 0,
+      ingresosPeriodoAnterior: resumenPeriodoAnterior?.ingresos ?? 0,
+      egresosPeriodoAnterior: resumenPeriodoAnterior?.egresosGenerales ?? 0,
+      egresosParticularesPeriodoAnterior: resumenPeriodoAnterior?.egresosParticulares ?? 0,
       saldoCajaPeriodoAnterior,
-      egresosPeriodoActual: totalEgresosGenerales,
-      egresosParticularesPeriodoActual: totalEgresosParticulares,
-      saldoCajaActual: saldoCajaCierre,
+      egresosPeriodoActual: totalEgresosGeneralesActual,
+      egresosParticularesPeriodoActual: totalEgresosParticularesActual,
+      saldoCajaActual,
     },
     prorrateoRows,
     morosos,
