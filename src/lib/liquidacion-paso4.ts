@@ -7,6 +7,7 @@ import { generarArchivosLiquidacion, getLiquidacionesUploadsBaseDir } from "./li
 import { enviarLiquidacionCerradaEmails } from "./liquidacion-email";
 import { getAdministradorVigente } from "./consorcio-administradores";
 import { buildEstadoCuentaDisplayByUnidad } from "./liquidacion-estado-cuenta-display";
+import { buildGastoPagoSummary } from "./pagos-gastos";
 
 type OwnerRel = {
   desde: Date;
@@ -307,7 +308,7 @@ export async function getLiquidacionPaso4Data(liquidacionId: number) {
       })
     : [];
 
-  const [gastosFromSource, cobranzas, resumenesHistoricos, resumenPagosGastoActual] = await Promise.all([
+  const [gastosFromSource, cobranzas, resumenesHistoricos, resumenPagosGastoActual, gastosPeriodoConPagos] = await Promise.all([
     useHistoricalGastos
       ? prisma.liquidacionGastoHistorico.findMany({
           where: { liquidacionId: liquidacion.id },
@@ -368,6 +369,27 @@ export async function getLiquidacionPaso4Data(liquidacionId: number) {
     getLiquidacionPagosGastoResumen({
       consorcioId: liquidacion.consorcioId,
       periodo: liquidacion.periodo,
+    }),
+    prisma.gasto.findMany({
+      where: {
+        consorcioId: liquidacion.consorcioId,
+        periodo: { in: periodoVariants },
+      },
+      include: {
+        proveedor: {
+          select: {
+            nombre: true,
+          },
+        },
+        pagosGasto: {
+          orderBy: [{ fechaPago: "asc" }, { id: "asc" }],
+          select: {
+            id: true,
+            monto: true,
+          },
+        },
+      },
+      orderBy: [{ fecha: "asc" }, { id: "asc" }],
     }),
   ]);
 
@@ -475,6 +497,32 @@ export async function getLiquidacionPaso4Data(liquidacionId: number) {
       montoPagado: g.monto,
     }));
 
+  const saldosAPagar = gastosPeriodoConPagos
+    .map((gasto) => {
+      const summary = buildGastoPagoSummary({
+        montoTotal: gasto.monto,
+        pagos: gasto.pagosGasto,
+      });
+
+      return {
+        gastoId: gasto.id,
+        proveedor: gasto.proveedor?.nombre?.trim() || "Sin proveedor",
+        detalle: gasto.descripcion?.trim() || gasto.concepto,
+        gasto: gasto.monto,
+        pagosParciales: summary.totalPagado,
+        saldo: summary.saldoPendiente,
+      };
+    })
+    .filter((gasto) => gasto.saldo > 0)
+    .sort((a, b) => {
+      const proveedorCompare = a.proveedor.localeCompare(b.proveedor, "es");
+      if (proveedorCompare !== 0) {
+        return proveedorCompare;
+      }
+
+      return a.detalle.localeCompare(b.detalle, "es");
+    });
+
   const historicalGastosMissing =
     useHistoricalGastos &&
     gastos.length === 0 &&
@@ -496,6 +544,7 @@ export async function getLiquidacionPaso4Data(liquidacionId: number) {
       egresosParticularesPeriodoActual: totalEgresosParticularesActual,
       saldoCajaActual,
     },
+    saldosAPagar,
     prorrateoRows,
     morosos,
     proveedores,

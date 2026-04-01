@@ -611,6 +611,13 @@ function buildThirdPage(data: LiquidacionData) {
 
   const saldosPendientes = data.prorrateoRows.filter((row) => row.saldoDeudor > 0 || row.intereses > 0);
   const totalSaldosDeudores = saldosPendientes.reduce((acc, row) => acc + row.saldoDeudor + row.intereses, 0);
+  const totalSaldosAPagar = data.saldosAPagar.reduce((acc, item) => acc + item.saldo, 0);
+  const saldosAPagarBody = data.saldosAPagar
+    .map(
+      (item) =>
+        `<tr><td>${escapeHtml(item.proveedor)}</td><td>${escapeHtml(item.detalle)}</td><td class="text-right">${escapeHtml(formatCurrency(item.gasto))}</td><td class="text-right">${escapeHtml(formatCurrency(item.pagosParciales))}</td><td class="text-right font-bold">${escapeHtml(formatCurrency(item.saldo))}</td></tr>`,
+    )
+    .join("");
 
   const pendientesBody = saldosPendientes
     .map((row) => {
@@ -656,6 +663,18 @@ function buildThirdPage(data: LiquidacionData) {
           <tr><td>Egresos del periodo actual por gastos</td><td class="text-right">${escapeHtml(formatCurrency(egresosPeriodoActual))}</td></tr>
           <tr><td>Egresos del periodo actual por gastos particulares</td><td class="text-right">${escapeHtml(formatCurrency(egresosParticularesPeriodoActual))}</td></tr>
           <tr class="totals-row"><td>${saldoCajaLabel}</td><td class="text-right">${escapeHtml(formatCurrency(saldoCajaActual))}</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="block-space">
+      <div class="subsection-title">SALDOS A PAGAR</div>
+      <div class="small">Detalle de gastos del periodo con saldo pendiente de pago</div>
+      <table>
+        <thead><tr><th>PROVEEDOR</th><th>DETALLE</th><th class="text-right">GASTO</th><th class="text-right">PAGOS PARCIALES</th><th class="text-right">SALDO</th></tr></thead>
+        <tbody>
+          ${saldosAPagarBody || '<tr><td colspan="5" class="small">No hay gastos pendientes de pago en el periodo.</td></tr>'}
+          <tr class="totals-row"><td colspan="4">TOTAL DE SALDOS A PAGAR</td><td class="text-right">${escapeHtml(formatCurrency(totalSaldosAPagar))}</td></tr>
         </tbody>
       </table>
     </div>
