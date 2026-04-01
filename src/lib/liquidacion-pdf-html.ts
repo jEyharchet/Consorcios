@@ -577,7 +577,7 @@ function buildProrrateoTable(data: LiquidacionData) {
   `;
 }
 
-function buildThirdPage(data: LiquidacionData) {
+function buildResumenResponsablesSection(data: LiquidacionData) {
   const titularidad = buildTitularidadRows(data.prorrateoRows);
 
   const titularidadBody = titularidad
@@ -596,6 +596,19 @@ function buildThirdPage(data: LiquidacionData) {
     { coef: 0, total: 0 },
   );
 
+  return `
+    <div class="section-title" style="margin-top:32px;">RESUMEN POR RESPONSABLES</div>
+    <table class="resumen-responsables-table">
+      <thead><tr><th>RESPONSABLES</th><th>UNIDADES</th><th class="text-right">COEFICIENTE TOTAL</th><th class="text-right">TOTAL A PAGAR</th></tr></thead>
+      <tbody>
+        ${titularidadBody}
+        <tr class="totals-row"><td colspan="2">TOTALES GENERALES</td><td class="text-right">${escapeHtml(formatCoef(titularidadTotals.coef))}</td><td class="text-right">${escapeHtml(formatCurrency(titularidadTotals.total))}</td></tr>
+      </tbody>
+    </table>
+  `;
+}
+
+function buildPostResumenResponsablesPage(data: LiquidacionData) {
   const cajaInicialPeriodoAnterior = data.resumenCaja.cajaInicialPeriodoAnterior;
   const ingresosPeriodoAnterior = data.resumenCaja.ingresosPeriodoAnterior;
   const egresosPeriodoAnterior = data.resumenCaja.egresosPeriodoAnterior;
@@ -641,31 +654,20 @@ function buildThirdPage(data: LiquidacionData) {
     .join("");
 
   return `
-    <div class="section-title" style="margin-top:32px;">RESUMEN POR RESPONSABLES</div>
-    <table class="resumen-responsables-table">
-      <thead><tr><th>RESPONSABLES</th><th>UNIDADES</th><th class="text-right">COEFICIENTE TOTAL</th><th class="text-right">TOTAL A PAGAR</th></tr></thead>
+    <div class="subsection-title" style="margin-top:0;">RESUMEN DE CAJA DEL PERIODO</div>
+    <table class="resumen-caja-table">
+      <thead><tr><th>DESCRIPCION</th><th class="text-right">IMPORTE</th></tr></thead>
       <tbody>
-        ${titularidadBody}
-        <tr class="totals-row"><td colspan="2">TOTALES GENERALES</td><td class="text-right">${escapeHtml(formatCoef(titularidadTotals.coef))}</td><td class="text-right">${escapeHtml(formatCurrency(titularidadTotals.total))}</td></tr>
+        <tr><td>Caja inicial del periodo anterior</td><td class="text-right">${escapeHtml(formatCurrency(cajaInicialPeriodoAnterior))}</td></tr>
+        <tr><td>Ingresos del periodo anterior por cobranza</td><td class="text-right">${escapeHtml(formatCurrency(ingresosPeriodoAnterior))}</td></tr>
+        <tr><td>Egresos del periodo anterior por gastos</td><td class="text-right">${escapeHtml(formatCurrency(egresosPeriodoAnterior))}</td></tr>
+        <tr><td>Egresos del periodo anterior por gastos particulares</td><td class="text-right">${escapeHtml(formatCurrency(egresosParticularesPeriodoAnterior))}</td></tr>
+        <tr class="totals-row"><td>Saldo de caja del periodo anterior</td><td class="text-right">${escapeHtml(formatCurrency(saldoCajaPeriodoAnterior))}</td></tr>
+        <tr><td>Egresos del periodo actual por gastos</td><td class="text-right">${escapeHtml(formatCurrency(egresosPeriodoActual))}</td></tr>
+        <tr><td>Egresos del periodo actual por gastos particulares</td><td class="text-right">${escapeHtml(formatCurrency(egresosParticularesPeriodoActual))}</td></tr>
+        <tr class="totals-row"><td>${saldoCajaLabel}</td><td class="text-right">${escapeHtml(formatCurrency(saldoCajaActual))}</td></tr>
       </tbody>
     </table>
-
-    <div class="block-space">
-      <div class="subsection-title">RESUMEN DE CAJA DEL PERIODO</div>
-      <table class="resumen-caja-table">
-        <thead><tr><th>DESCRIPCION</th><th class="text-right">IMPORTE</th></tr></thead>
-        <tbody>
-          <tr><td>Caja inicial del periodo anterior</td><td class="text-right">${escapeHtml(formatCurrency(cajaInicialPeriodoAnterior))}</td></tr>
-          <tr><td>Ingresos del periodo anterior por cobranza</td><td class="text-right">${escapeHtml(formatCurrency(ingresosPeriodoAnterior))}</td></tr>
-          <tr><td>Egresos del periodo anterior por gastos</td><td class="text-right">${escapeHtml(formatCurrency(egresosPeriodoAnterior))}</td></tr>
-          <tr><td>Egresos del periodo anterior por gastos particulares</td><td class="text-right">${escapeHtml(formatCurrency(egresosParticularesPeriodoAnterior))}</td></tr>
-          <tr class="totals-row"><td>Saldo de caja del periodo anterior</td><td class="text-right">${escapeHtml(formatCurrency(saldoCajaPeriodoAnterior))}</td></tr>
-          <tr><td>Egresos del periodo actual por gastos</td><td class="text-right">${escapeHtml(formatCurrency(egresosPeriodoActual))}</td></tr>
-          <tr><td>Egresos del periodo actual por gastos particulares</td><td class="text-right">${escapeHtml(formatCurrency(egresosParticularesPeriodoActual))}</td></tr>
-          <tr class="totals-row"><td>${saldoCajaLabel}</td><td class="text-right">${escapeHtml(formatCurrency(saldoCajaActual))}</td></tr>
-        </tbody>
-      </table>
-    </div>
 
     <div class="block-space">
       <div class="subsection-title">SALDOS A PAGAR</div>
@@ -713,12 +715,13 @@ export function buildLiquidacionPdfHtml(data: LiquidacionData) {
 
         <div class="page page-portrait">
           ${buildProrrateoTable(data)}
+          ${buildResumenResponsablesSection(data)}
         </div>
 
         <div class="page-break"></div>
 
         <div class="page page-portrait">
-          ${buildThirdPage(data)}
+          ${buildPostResumenResponsablesPage(data)}
         </div>
       </body>
     </html>
