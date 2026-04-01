@@ -153,7 +153,11 @@ function buildUbicacionLabel(unidad: {
 }
 
 function buildPeriodoBounds(periodo: string | null | undefined) {
-  const normalized = normalizePeriodo(periodo ?? null);
+  if (!periodo) {
+    return null;
+  }
+
+  const normalized = normalizePeriodo(periodo);
 
   if (!normalized) {
     return null;
