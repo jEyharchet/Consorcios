@@ -8,6 +8,7 @@ import {
   type ProrrateoBaseUnidad,
   type ProrrateoCalculadoUnidad,
 } from "../../../../../lib/liquidacion-prorrateo";
+import { buildEstadoCuentaDisplayByUnidad } from "../../../../../lib/liquidacion-estado-cuenta-display";
 import { normalizePeriodo } from "../../../../../lib/periodo";
 import { prisma } from "../../../../../lib/prisma";
 
@@ -38,20 +39,6 @@ function buildUnidadLabel(unidad: {
   return parts.join(" / ");
 }
 
-function buildPeriodoBounds(periodo: string) {
-  const normalized = normalizePeriodo(periodo);
-
-  if (!normalized) {
-    return null;
-  }
-
-  const [year, month] = normalized.split("-").map(Number);
-  const start = new Date(year, month - 1, 1, 0, 0, 0, 0);
-  const end = new Date(year, month, 1, 0, 0, 0, 0);
-
-  return { start, end };
-}
-
 async function calcularSnapshotPaso3(liquidacionId: number) {
   const liquidacion = await prisma.liquidacion.findUnique({
     where: { id: liquidacionId },
@@ -79,28 +66,6 @@ async function calcularSnapshotPaso3(liquidacionId: number) {
     return null;
   }
 
-  const expensasPrevias = await prisma.expensa.findMany({
-    where: {
-      unidad: { consorcioId: liquidacion.consorcioId },
-      liquidacionId: { not: liquidacion.id },
-    },
-    select: {
-      saldo: true,
-      unidadId: true,
-      pagos: {
-        select: {
-          monto: true,
-          fechaPago: true,
-        },
-      },
-      liquidacion: {
-        select: {
-          periodo: true,
-        },
-      },
-    },
-  });
-
   const unidades = await prisma.unidad.findMany({
     where: { consorcioId: liquidacion.consorcioId },
     select: {
@@ -115,53 +80,12 @@ async function calcularSnapshotPaso3(liquidacionId: number) {
   });
 
   const faltanCoeficientes = unidades.some((u) => u.porcentajeExpensas === null);
-  const periodoBounds = buildPeriodoBounds(liquidacion.periodo);
-
   const deudaByUnidad = new Map<number, { saldoAnterior: number; pagosPeriodo: number; intereses: number; saldoAFavor: number }>();
-  const displayByUnidad = new Map<number, { saldoAnterior: number; pagosPeriodo: number }>();
-
-  if (periodoBounds !== null) {
-    const periodoActual = normalizePeriodo(liquidacion.periodo);
-
-    for (const expensa of expensasPrevias) {
-      const periodoExpensa = normalizePeriodo(expensa.liquidacion.periodo);
-
-      if (periodoActual && periodoExpensa && periodoExpensa >= periodoActual) {
-        continue;
-      }
-
-      if (!periodoActual && !periodoExpensa) {
-        continue;
-      }
-
-      const pagosDesdeInicioPeriodo = expensa.pagos.reduce((acc, pago) => {
-        if (pago.fechaPago >= periodoBounds.start) {
-          return acc + pago.monto;
-        }
-
-        return acc;
-      }, 0);
-
-      const pagosDurantePeriodo = expensa.pagos.reduce((acc, pago) => {
-        if (pago.fechaPago >= periodoBounds.start && pago.fechaPago < periodoBounds.end) {
-          return acc + pago.monto;
-        }
-
-        return acc;
-      }, 0);
-
-      const saldoAnteriorReconstruido = Math.max(0, expensa.saldo + pagosDesdeInicioPeriodo);
-
-      if (saldoAnteriorReconstruido <= 0 && pagosDurantePeriodo <= 0) {
-        continue;
-      }
-
-      const displayPrev = displayByUnidad.get(expensa.unidadId) ?? { saldoAnterior: 0, pagosPeriodo: 0 };
-      displayPrev.saldoAnterior += saldoAnteriorReconstruido;
-      displayPrev.pagosPeriodo += pagosDurantePeriodo;
-      displayByUnidad.set(expensa.unidadId, displayPrev);
-    }
-  }
+  const displayByUnidad = await buildEstadoCuentaDisplayByUnidad({
+    consorcioId: liquidacion.consorcioId,
+    liquidacionId: liquidacion.id,
+    periodo: liquidacion.periodo,
+  });
 
   for (const deuda of liquidacion.deudas) {
     const unitId = deuda.expensa.unidadId;

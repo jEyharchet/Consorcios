@@ -6,6 +6,7 @@ import { getPeriodoVariants } from "./periodo";
 import { generarArchivosLiquidacion, getLiquidacionesUploadsBaseDir } from "./liquidacion-cierre";
 import { enviarLiquidacionCerradaEmails } from "./liquidacion-email";
 import { getAdministradorVigente } from "./consorcio-administradores";
+import { buildEstadoCuentaDisplayByUnidad } from "./liquidacion-estado-cuenta-display";
 
 type OwnerRel = {
   desde: Date;
@@ -247,6 +248,12 @@ export async function getLiquidacionPaso4Data(liquidacionId: number) {
     liquidacion.consorcio.cuentasBancarias = [boletaCuentaSnapshot] as typeof liquidacion.consorcio.cuentasBancarias;
   }
 
+  const estadoCuentaDisplayByUnidad = await buildEstadoCuentaDisplayByUnidad({
+    consorcioId: liquidacion.consorcioId,
+    liquidacionId: liquidacion.id,
+    periodo: liquidacion.periodo,
+  });
+
   const [gastosFromSource, cobranzas] = await Promise.all([
     useHistoricalGastos
       ? prisma.liquidacionGastoHistorico.findMany({
@@ -320,6 +327,7 @@ export async function getLiquidacionPaso4Data(liquidacionId: number) {
   const prorrateoRows = liquidacion.prorrateos.map((row) => {
     const fondoReserva = fondoTotal * row.coeficiente;
     const expensasDelMes = row.gastoOrdinario - fondoReserva;
+    const display = estadoCuentaDisplayByUnidad.get(row.unidadId);
 
     return {
       unidadId: row.unidadId,
@@ -332,7 +340,9 @@ export async function getLiquidacionPaso4Data(liquidacionId: number) {
       propietariosInfo: getOwnerProfiles(row.unidad.personas),
       coeficiente: row.coeficiente,
       saldoAnterior: row.saldoAnterior,
+      saldoAnteriorDisplay: display?.saldoAnterior ?? row.saldoAnterior,
       pagosPeriodo: row.pagosPeriodo,
+      pagosPeriodoDisplay: display?.pagosPeriodo ?? row.pagosPeriodo,
       saldoDeudor: row.saldoDeudor,
       expensasDelMes,
       fondoReserva,

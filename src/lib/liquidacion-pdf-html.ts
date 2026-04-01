@@ -500,8 +500,8 @@ function buildProrrateoTable(data: LiquidacionData) {
   const totals = rows.reduce(
     (acc, row) => {
       acc.coef += row.coeficiente;
-      acc.saldoAnterior += row.saldoAnterior;
-      acc.pagos += row.pagosPeriodo;
+      acc.saldoAnterior += row.saldoAnteriorDisplay ?? row.saldoAnterior;
+      acc.pagos += row.pagosPeriodoDisplay ?? row.pagosPeriodo;
       acc.saldoRemanente += row.saldoDeudor;
       acc.expensasMes += row.expensasDelMes;
       acc.fondoReserva += row.fondoReserva;
@@ -534,8 +534,8 @@ function buildProrrateoTable(data: LiquidacionData) {
           <td class="col-ubicacion">${escapeHtml(buildCompactUbicacion(row))}</td>
           <td class="col-responsables cell-lines responsables-cell responsable-cell">${responsables}</td>
           <td class="col-coef text-right coef-cell">${escapeHtml(formatCoef(row.coeficiente))}</td>
-          <td class="col-num text-right">${escapeHtml(formatCurrencyNoDecimals(row.saldoAnterior))}</td>
-          <td class="col-num text-right">${escapeHtml(formatCurrencyNoDecimals(row.pagosPeriodo))}</td>
+          <td class="col-num text-right">${escapeHtml(formatCurrencyNoDecimals(row.saldoAnteriorDisplay ?? row.saldoAnterior))}</td>
+          <td class="col-num text-right">${escapeHtml(formatCurrencyNoDecimals(row.pagosPeriodoDisplay ?? row.pagosPeriodo))}</td>
           <td class="col-num text-right">${escapeHtml(formatCurrencyNoDecimals(row.saldoDeudor))}</td>
           <td class="col-num text-right">${escapeHtml(formatCurrencyNoDecimals(row.expensasDelMes))}</td>
           <td class="col-num text-right">${escapeHtml(formatCurrencyNoDecimals(row.fondoReserva))}</td>
