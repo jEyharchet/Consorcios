@@ -44,6 +44,10 @@ type ResponsableGroup = {
   totalPagar: number;
 };
 
+function roundMoney(value: number) {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
 function slugify(value: string) {
   return value
     .normalize("NFD")
@@ -86,6 +90,15 @@ function formatPeriodo(periodo: string | null) {
   if (!year || !month) return periodo;
   const date = new Date(Number(year), Number(month) - 1, 1);
   return new Intl.DateTimeFormat("es-AR", { month: "long", year: "numeric" }).format(date);
+}
+
+function calcularMontoLuegoVencimiento(totalPagar: number, tasaInteresMensual: number | null | undefined) {
+  const tasa = Number(tasaInteresMensual ?? 0);
+  if (!Number.isFinite(tasa) || tasa <= 0) {
+    return roundMoney(totalPagar);
+  }
+
+  return roundMoney(totalPagar * (1 + tasa / 100));
 }
 
 function buildResponsableGroups(rows: ProrrateoRow[]): ResponsableGroup[] {
@@ -204,6 +217,7 @@ function buildBoletaHtml(data: Paso4Data, group: ResponsableGroup) {
   const periodo = data.liquidacion.periodo;
   const mesLabel = formatPeriodo(data.liquidacion.mesRendicion ?? periodo);
   const vencimiento = formatDate(data.liquidacion.fechaVencimiento ?? null);
+  const montoLuegoVencimiento = calcularMontoLuegoVencimiento(group.totalPagar, data.liquidacion.tasaInteresMensual);
   const cuentaExpensas = resolveCuentaBoleta(consorcio.cuentasBancarias as CuentaExpensas[]);
 
   const responsablesHtml = group.responsables
@@ -334,6 +348,43 @@ function buildBoletaHtml(data: Paso4Data, group: ResponsableGroup) {
             color: #0f172a;
             white-space: nowrap;
             letter-spacing: -0.02em;
+          }
+
+          .total-secondary {
+            grid-column: 1 / -1;
+            margin-top: 10px;
+            padding-top: 12px;
+            border-top: 1px solid #dbe3ec;
+          }
+
+          .total-secondary-row {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 16px;
+          }
+
+          .total-secondary-label {
+            margin: 0;
+            font-size: 11pt;
+            font-weight: 700;
+            color: #334155;
+          }
+
+          .total-secondary-value {
+            margin: 0;
+            font-size: 18pt;
+            font-weight: 700;
+            line-height: 1.1;
+            color: #0f172a;
+            white-space: nowrap;
+          }
+
+          .total-secondary-note {
+            margin: 8px 0 0 0;
+            font-size: 9.5pt;
+            line-height: 1.4;
+            color: #475569;
           }
 
           .transfer-block {
@@ -473,6 +524,13 @@ function buildBoletaHtml(data: Paso4Data, group: ResponsableGroup) {
           <div class="total-block">
             <p class="total-label">Total a pagar</p>
             <p class="total-value">${escapeHtml(formatCurrency(group.totalPagar))}</p>
+            <div class="total-secondary">
+              <div class="total-secondary-row">
+                <p class="total-secondary-label">Monto a pagar luego del vencimiento</p>
+                <p class="total-secondary-value">${escapeHtml(formatCurrency(montoLuegoVencimiento))}</p>
+              </div>
+              <p class="total-secondary-note">En el caso de no pagar antes del vencimiento de siguientes períodos, se sumarán los intereses de las siguientes liquidaciones.</p>
+            </div>
           </div>
 
           ${cuentaTransferenciaHtml}
