@@ -152,37 +152,33 @@ function buildUbicacionLabel(unidad: {
   return unidadLabel;
 }
 
-async function getLiquidacionGastosResumen(params: {
+async function getLiquidacionPagosGastoResumen(params: {
   liquidacionId: number;
   consorcioId: number;
-  estado: string;
 }) {
-  const rows =
-    params.estado === "FINALIZADA" || params.estado === "CERRADA"
-      ? await prisma.liquidacionGastoHistorico.findMany({
-          where: { liquidacionId: params.liquidacionId },
-          select: {
-            monto: true,
-            rubroExpensa: true,
-          },
-        })
-      : await prisma.gasto.findMany({
-          where: {
-            consorcioId: params.consorcioId,
-            liquidacionId: params.liquidacionId,
-          },
-          select: {
-            monto: true,
-            rubroExpensa: true,
-          },
-        });
+  const rows = await prisma.pagoGasto.findMany({
+    where: {
+      consorcioId: params.consorcioId,
+      gasto: {
+        liquidacionId: params.liquidacionId,
+      },
+    },
+    select: {
+      monto: true,
+      gasto: {
+        select: {
+          rubroExpensa: true,
+        },
+      },
+    },
+  });
 
   const particulares = rows
-    .filter((row) => row.rubroExpensa.toLowerCase().includes("particular"))
+    .filter((row) => row.gasto.rubroExpensa.toLowerCase().includes("particular"))
     .reduce((acc, row) => acc + row.monto, 0);
 
   const generales = rows
-    .filter((row) => !row.rubroExpensa.toLowerCase().includes("particular"))
+    .filter((row) => !row.gasto.rubroExpensa.toLowerCase().includes("particular"))
     .reduce((acc, row) => acc + row.monto, 0);
 
   return {
@@ -343,7 +339,7 @@ export async function getLiquidacionPaso4Data(liquidacionId: number) {
     }),
     Promise.all(
       liquidacionesHastaActual.map(async (item) => {
-        const [cobranzasResumen, gastosResumen] = await Promise.all([
+        const [cobranzasResumen, pagosGastoResumen] = await Promise.all([
           prisma.pago.aggregate({
             where: {
               expensa: {
@@ -354,10 +350,9 @@ export async function getLiquidacionPaso4Data(liquidacionId: number) {
               monto: true,
             },
           }),
-          getLiquidacionGastosResumen({
+          getLiquidacionPagosGastoResumen({
             liquidacionId: item.id,
             consorcioId: liquidacion.consorcioId,
-            estado: item.estado,
           }),
         ]);
 
@@ -365,8 +360,8 @@ export async function getLiquidacionPaso4Data(liquidacionId: number) {
           id: item.id,
           periodo: item.periodo,
           ingresos: cobranzasResumen._sum.monto ?? 0,
-          egresosGenerales: gastosResumen.generales,
-          egresosParticulares: gastosResumen.particulares,
+          egresosGenerales: pagosGastoResumen.generales,
+          egresosParticulares: pagosGastoResumen.particulares,
         };
       }),
     ),
@@ -408,13 +403,6 @@ export async function getLiquidacionPaso4Data(liquidacionId: number) {
   const totalGastos = gastos.reduce((acc, g) => acc + g.monto, 0);
   const totalCobranzas = cobranzas.reduce((acc, c) => acc + c.monto, 0);
 
-  const totalEgresosParticularesActual = gastos
-    .filter((g) => g.rubroExpensa.toLowerCase().includes("particular"))
-    .reduce((acc, g) => acc + g.monto, 0);
-  const totalEgresosGeneralesActual = gastos
-    .filter((g) => !g.rubroExpensa.toLowerCase().includes("particular"))
-    .reduce((acc, g) => acc + g.monto, 0);
-
   let cajaInicialPeriodo = 0;
   const resumenesCaja = resumenesHistoricos.map((item) => {
     const saldoCierre = cajaInicialPeriodo + item.ingresos - item.egresosGenerales - item.egresosParticulares;
@@ -429,7 +417,11 @@ export async function getLiquidacionPaso4Data(liquidacionId: number) {
 
   const resumenPeriodoAnterior =
     resumenesCaja.find((item) => item.periodo !== liquidacion.periodo && item.periodo < liquidacion.periodo) ?? null;
+  const resumenPeriodoActual =
+    resumenesCaja.find((item) => item.periodo === liquidacion.periodo) ?? null;
   const saldoCajaPeriodoAnterior = resumenPeriodoAnterior?.saldoCierre ?? 0;
+  const totalEgresosGeneralesActual = resumenPeriodoActual?.egresosGenerales ?? 0;
+  const totalEgresosParticularesActual = resumenPeriodoActual?.egresosParticulares ?? 0;
   const saldoCajaActual = saldoCajaPeriodoAnterior - totalEgresosGeneralesActual - totalEgresosParticularesActual;
 
   const fondoTotal = liquidacion.montoFondoReserva ?? 0;
