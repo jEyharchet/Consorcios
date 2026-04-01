@@ -605,15 +605,16 @@ function buildThirdPage(data: LiquidacionData) {
   const saldoCajaEnContraDelConsorcio =
     saldoCajaPeriodoAnterior + ingresosPorCobranza - egresosPorGastos - egresosPorGastosParticulares;
 
-  const saldosPendientes = data.prorrateoRows.filter((row) => row.saldoDeudor > 0);
-  const totalSaldosDeudores = saldosPendientes.reduce((acc, row) => acc + row.saldoDeudor, 0);
+  const saldosPendientes = data.prorrateoRows.filter((row) => row.saldoDeudor > 0 || row.intereses > 0);
+  const totalSaldosDeudores = saldosPendientes.reduce((acc, row) => acc + row.saldoDeudor + row.intereses, 0);
 
   const pendientesBody = saldosPendientes
     .map((row) => {
       const responsables = (row.propietarios?.length ? row.propietarios : [row.propietario])
         .map((r) => `<div>${escapeHtml(r)}</div>`)
         .join("");
-      return `<tr><td>${escapeHtml(row.uf)}</td><td>${escapeHtml(row.ubicacion)}</td><td class="cell-lines">${responsables}</td><td class="text-right font-bold">${escapeHtml(formatCurrency(row.saldoDeudor))}</td></tr>`;
+      const totalDeuda = row.saldoDeudor + row.intereses;
+      return `<tr><td>${escapeHtml(row.uf)}</td><td>${escapeHtml(row.ubicacion)}</td><td class="cell-lines">${responsables}</td><td class="text-right font-bold">${escapeHtml(formatCurrency(totalDeuda))}</td></tr>`;
     })
     .join("");
 
@@ -654,7 +655,7 @@ function buildThirdPage(data: LiquidacionData) {
 
     <div class="block-space">
       <div class="subsection-title">DEUDORES</div>
-      <div class="small">Detalle de unidades con saldo pendiente de pago</div>
+      <div class="small">Detalle de unidades con saldo pendiente de pago. Incluye capital e intereses devengados.</div>
       <table class="saldos-pendientes-table">
         <thead><tr><th>COD</th><th>UBICACION</th><th>RESPONSABLES</th><th class="text-right">TOTAL</th></tr></thead>
         <tbody>
@@ -733,21 +734,22 @@ function buildPaso4AdminConsorcioBlock(data: LiquidacionData) {
 }
 
 function buildPaso4SaldosPendientesSection(data: LiquidacionData) {
-  const saldosPendientes = data.prorrateoRows.filter((row) => row.saldoDeudor > 0);
-  const totalSaldosDeudores = saldosPendientes.reduce((acc, row) => acc + row.saldoDeudor, 0);
+  const saldosPendientes = data.prorrateoRows.filter((row) => row.saldoDeudor > 0 || row.intereses > 0);
+  const totalSaldosDeudores = saldosPendientes.reduce((acc, row) => acc + row.saldoDeudor + row.intereses, 0);
 
   const pendientesBody = saldosPendientes
     .map((row) => {
       const responsables = (row.propietarios?.length ? row.propietarios : [row.propietario])
         .map((r) => `<div>${escapeHtml(r)}</div>`)
         .join("");
-      return `<tr><td>${escapeHtml(row.uf)}</td><td>${escapeHtml(row.ubicacion)}</td><td class="cell-lines">${responsables}</td><td class="text-right font-bold">${escapeHtml(formatCurrency(row.saldoDeudor))}</td></tr>`;
+      const totalDeuda = row.saldoDeudor + row.intereses;
+      return `<tr><td>${escapeHtml(row.uf)}</td><td>${escapeHtml(row.ubicacion)}</td><td class="cell-lines">${responsables}</td><td class="text-right font-bold">${escapeHtml(formatCurrency(totalDeuda))}</td></tr>`;
     })
     .join("");
 
   return `
     <div class="subsection-title" style="margin-top:0;">DEUDORES</div>
-    <div class="small">Detalle de unidades con saldo pendiente de pago</div>
+    <div class="small">Detalle de unidades con saldo pendiente de pago. Incluye capital e intereses devengados.</div>
     <table>
       <thead><tr><th>COD</th><th>UBICACION</th><th>RESPONSABLES</th><th class="text-right">TOTAL</th></tr></thead>
       <tbody>
