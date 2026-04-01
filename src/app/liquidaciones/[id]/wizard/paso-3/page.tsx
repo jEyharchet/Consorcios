@@ -107,8 +107,9 @@ async function calcularSnapshotPaso3(liquidacionId: number) {
   });
 
   const totalOrdinarias = liquidacion.montoOrdinarias ?? 0;
+  const totalExtraordinarias = liquidacion.montoExtraordinarias ?? 0;
   const totalFondoReserva = liquidacion.montoFondoReserva ?? 0;
-  const baseProrrateable = totalOrdinarias + totalFondoReserva;
+  const baseProrrateable = totalOrdinarias + totalExtraordinarias + totalFondoReserva;
 
   const calculadas = calcularBaseFinanciera(baseRows, baseProrrateable);
   const rounded = aplicarRedondeoAuditable(calculadas);
@@ -117,6 +118,7 @@ async function calcularSnapshotPaso3(liquidacionId: number) {
     liquidacion,
     faltanCoeficientes,
     totalOrdinarias,
+    totalExtraordinarias,
     totalFondoReserva,
     baseProrrateable,
     ...rounded,
@@ -143,7 +145,7 @@ async function persistirSnapshotPaso3(liquidacionId: number) {
     saldoDeudor: row.saldoDeudor,
     saldoAFavor: row.saldoAFavor,
     intereses: row.intereses,
-    gastoOrdinario: row.gastoOrdinarioExacto,
+    gastoOrdinario: row.cargoPeriodoExacto,
     redondeo: row.redondeo,
     total: row.totalRedondeado,
   }));
@@ -254,7 +256,7 @@ export default async function LiquidacionWizardPaso3Page({
     redirect(`/liquidaciones/${current.id}/wizard/paso-4`);
   }
 
-  const totalSinIntereses = snapshot.rows.reduce((acc, row) => acc + row.saldoDeudor + row.gastoOrdinarioExacto, 0);
+  const totalSinIntereses = snapshot.rows.reduce((acc, row) => acc + row.saldoDeudor + row.cargoPeriodoExacto, 0);
   const totalFinal = snapshot.rows.reduce((acc, row) => acc + row.totalRedondeado, 0);
 
   const message =
@@ -286,7 +288,7 @@ export default async function LiquidacionWizardPaso3Page({
       <section className="mb-4 rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-600">
         <p>
           El Paso 3 usa los valores consolidados en Paso 2 (deuda/intereses) y distribuye por coeficiente la base del
-          periodo (gastos ordinarios + fondo de reserva). No recalcula intereses historicos.
+          periodo (gastos ordinarios + gastos extraordinarios + fondo de reserva). No recalcula intereses historicos.
         </p>
       </section>
 
@@ -323,7 +325,7 @@ export default async function LiquidacionWizardPaso3Page({
                   <td className="px-4 py-4">{formatCurrency(row.pagosPeriodo)}</td>
                   <td className="px-4 py-4">{formatCurrency(row.saldoDeudor)}</td>
                   <td className="px-4 py-4">{formatCurrency(row.intereses)}</td>
-                  <td className="px-4 py-4">{formatCurrency(row.gastoOrdinarioExacto)}</td>
+                  <td className="px-4 py-4">{formatCurrency(row.cargoPeriodoExacto)}</td>
                   <td className="px-4 py-4">{formatCurrency(row.redondeo)}</td>
                   <td className="px-4 py-4 font-semibold">{formatCurrency(row.totalRedondeado)}</td>
                 </tr>
@@ -333,10 +335,14 @@ export default async function LiquidacionWizardPaso3Page({
         </table>
       </div>
 
-      <section className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-5">
+      <section className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-6">
         <div className="rounded-md border border-slate-200 bg-white p-3">
           <p className="text-xs uppercase tracking-wide text-slate-500">Gastos ordinarios</p>
           <p className="mt-1 text-xl font-semibold">{formatCurrency(snapshot.totalOrdinarias)}</p>
+        </div>
+        <div className="rounded-md border border-slate-200 bg-white p-3">
+          <p className="text-xs uppercase tracking-wide text-slate-500">Gastos extraordinarios</p>
+          <p className="mt-1 text-xl font-semibold">{formatCurrency(snapshot.totalExtraordinarias)}</p>
         </div>
         <div className="rounded-md border border-slate-200 bg-white p-3">
           <p className="text-xs uppercase tracking-wide text-slate-500">Fondo de reserva</p>

@@ -10,24 +10,24 @@ export type ProrrateoBaseUnidad = {
 
 export type ProrrateoCalculadoUnidad = ProrrateoBaseUnidad & {
   saldoDeudor: number;
-  gastoOrdinarioExacto: number;
+  cargoPeriodoExacto: number;
   totalExacto: number;
   totalRedondeado: number;
   redondeo: number;
   residuoDecimal: number;
 };
 
-export function calcularBaseFinanciera(unidades: ProrrateoBaseUnidad[], totalOrdinarias: number): ProrrateoCalculadoUnidad[] {
+export function calcularBaseFinanciera(unidades: ProrrateoBaseUnidad[], baseProrrateable: number): ProrrateoCalculadoUnidad[] {
   return unidades.map((unidad) => {
     const saldoDeudor = Math.max(0, unidad.saldoAnterior - unidad.pagosPeriodo);
-    const gastoOrdinarioExacto = totalOrdinarias * unidad.coeficiente;
-    const totalExacto = saldoDeudor + unidad.intereses + gastoOrdinarioExacto;
+    const cargoPeriodoExacto = baseProrrateable * unidad.coeficiente;
+    const totalExacto = saldoDeudor + unidad.intereses + cargoPeriodoExacto;
     const totalRedondeado = Math.round(totalExacto);
 
     return {
       ...unidad,
       saldoDeudor,
-      gastoOrdinarioExacto,
+      cargoPeriodoExacto,
       totalExacto,
       totalRedondeado,
       redondeo: totalRedondeado - totalExacto,
