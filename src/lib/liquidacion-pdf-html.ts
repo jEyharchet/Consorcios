@@ -653,7 +653,8 @@ function buildThirdPage(data: LiquidacionData) {
     </div>
 
     <div class="block-space">
-      <div class="subsection-title">SALDOS PENDIENTES DE PAGO</div>
+      <div class="subsection-title">DEUDORES</div>
+      <div class="small">Detalle de unidades con saldo pendiente de pago</div>
       <table class="saldos-pendientes-table">
         <thead><tr><th>COD</th><th>UBICACION</th><th>RESPONSABLES</th><th class="text-right">TOTAL</th></tr></thead>
         <tbody>
@@ -745,7 +746,8 @@ function buildPaso4SaldosPendientesSection(data: LiquidacionData) {
     .join("");
 
   return `
-    <div class="subsection-title" style="margin-top:0;">SALDOS PENDIENTES DE PAGO</div>
+    <div class="subsection-title" style="margin-top:0;">DEUDORES</div>
+    <div class="small">Detalle de unidades con saldo pendiente de pago</div>
     <table>
       <thead><tr><th>COD</th><th>UBICACION</th><th>RESPONSABLES</th><th class="text-right">TOTAL</th></tr></thead>
       <tbody>
