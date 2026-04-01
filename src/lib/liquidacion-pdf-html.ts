@@ -548,7 +548,7 @@ function buildProrrateoTable(data: LiquidacionData) {
     .join("");
 
   return `
-    <div class="section-title" style="margin-top:0;">ESTADO DE CUENTAS Y PRORRATEO DE EXPENSAS</div>
+    <div class="section-title" style="margin-top:24px;">ESTADO DE CUENTAS Y PRORRATEO DE EXPENSAS</div>
     <table class="prorrateo-table">
       <thead>
         <tr>
