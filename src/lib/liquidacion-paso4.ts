@@ -307,7 +307,7 @@ export async function getLiquidacionPaso4Data(liquidacionId: number) {
       })
     : [];
 
-  const [gastosFromSource, cobranzas, resumenesHistoricos] = await Promise.all([
+  const [gastosFromSource, cobranzas, resumenesHistoricos, resumenPagosGastoActual] = await Promise.all([
     useHistoricalGastos
       ? prisma.liquidacionGastoHistorico.findMany({
           where: { liquidacionId: liquidacion.id },
@@ -365,6 +365,10 @@ export async function getLiquidacionPaso4Data(liquidacionId: number) {
         };
       }),
     ),
+    getLiquidacionPagosGastoResumen({
+      consorcioId: liquidacion.consorcioId,
+      periodo: liquidacion.periodo,
+    }),
   ]);
 
   const gastos = useHistoricalGastos
@@ -422,8 +426,9 @@ export async function getLiquidacionPaso4Data(liquidacionId: number) {
   const resumenPeriodoActual =
     resumenesCaja.find((item) => item.id === liquidacion.id) ?? null;
   const saldoCajaPeriodoAnterior = resumenPeriodoAnterior?.saldoCierre ?? 0;
-  const totalEgresosGeneralesActual = resumenPeriodoActual?.egresosGenerales ?? 0;
-  const totalEgresosParticularesActual = resumenPeriodoActual?.egresosParticulares ?? 0;
+  const totalEgresosGeneralesActual = resumenPagosGastoActual.generales ?? resumenPeriodoActual?.egresosGenerales ?? 0;
+  const totalEgresosParticularesActual =
+    resumenPagosGastoActual.particulares ?? resumenPeriodoActual?.egresosParticulares ?? 0;
   const saldoCajaActual = saldoCajaPeriodoAnterior - totalEgresosGeneralesActual - totalEgresosParticularesActual;
 
   const fondoTotal = liquidacion.montoFondoReserva ?? 0;
