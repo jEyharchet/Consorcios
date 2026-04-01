@@ -79,6 +79,28 @@ async function calcularSnapshotPaso3(liquidacionId: number) {
     return null;
   }
 
+  const expensasPrevias = await prisma.expensa.findMany({
+    where: {
+      unidad: { consorcioId: liquidacion.consorcioId },
+      liquidacionId: { not: liquidacion.id },
+    },
+    select: {
+      saldo: true,
+      unidadId: true,
+      pagos: {
+        select: {
+          monto: true,
+          fechaPago: true,
+        },
+      },
+      liquidacion: {
+        select: {
+          periodo: true,
+        },
+      },
+    },
+  });
+
   const unidades = await prisma.unidad.findMany({
     where: { consorcioId: liquidacion.consorcioId },
     select: {
@@ -98,40 +120,65 @@ async function calcularSnapshotPaso3(liquidacionId: number) {
   const deudaByUnidad = new Map<number, { saldoAnterior: number; pagosPeriodo: number; intereses: number; saldoAFavor: number }>();
   const displayByUnidad = new Map<number, { saldoAnterior: number; pagosPeriodo: number }>();
 
+  if (periodoBounds !== null) {
+    const periodoActual = normalizePeriodo(liquidacion.periodo);
+
+    for (const expensa of expensasPrevias) {
+      const periodoExpensa = normalizePeriodo(expensa.liquidacion.periodo);
+
+      if (periodoActual && periodoExpensa && periodoExpensa >= periodoActual) {
+        continue;
+      }
+
+      if (!periodoActual && !periodoExpensa) {
+        continue;
+      }
+
+      const pagosDesdeInicioPeriodo = expensa.pagos.reduce((acc, pago) => {
+        if (pago.fechaPago >= periodoBounds.start) {
+          return acc + pago.monto;
+        }
+
+        return acc;
+      }, 0);
+
+      const pagosDurantePeriodo = expensa.pagos.reduce((acc, pago) => {
+        if (pago.fechaPago >= periodoBounds.start && pago.fechaPago < periodoBounds.end) {
+          return acc + pago.monto;
+        }
+
+        return acc;
+      }, 0);
+
+      const saldoAnteriorReconstruido = Math.max(0, expensa.saldo + pagosDesdeInicioPeriodo);
+
+      if (saldoAnteriorReconstruido <= 0 && pagosDurantePeriodo <= 0) {
+        continue;
+      }
+
+      const displayPrev = displayByUnidad.get(expensa.unidadId) ?? { saldoAnterior: 0, pagosPeriodo: 0 };
+      displayPrev.saldoAnterior += saldoAnteriorReconstruido;
+      displayPrev.pagosPeriodo += pagosDurantePeriodo;
+      displayByUnidad.set(expensa.unidadId, displayPrev);
+    }
+  }
+
   for (const deuda of liquidacion.deudas) {
     const unitId = deuda.expensa.unidadId;
     const prev = deudaByUnidad.get(unitId) ?? { saldoAnterior: 0, pagosPeriodo: 0, intereses: 0, saldoAFavor: 0 };
-    const displayPrev = displayByUnidad.get(unitId) ?? { saldoAnterior: 0, pagosPeriodo: 0 };
-    const pagosDurantePeriodo =
-      periodoBounds === null
-        ? 0
-        : deuda.expensa.pagos.reduce((acc, pago) => {
-            if (pago.fechaPago >= periodoBounds.start && pago.fechaPago < periodoBounds.end) {
-              return acc + pago.monto;
-            }
-
-            return acc;
-          }, 0);
 
     if (deuda.criterio === "TOTAL") {
       prev.saldoAnterior += deuda.capitalOriginal;
       prev.intereses += deuda.interesCalculado;
-      displayPrev.saldoAnterior += deuda.capitalOriginal + pagosDurantePeriodo;
-      displayPrev.pagosPeriodo += pagosDurantePeriodo;
     } else if (deuda.criterio === "CAPITAL") {
       prev.saldoAnterior += deuda.capitalOriginal;
-      displayPrev.saldoAnterior += deuda.capitalOriginal + pagosDurantePeriodo;
-      displayPrev.pagosPeriodo += pagosDurantePeriodo;
     } else if (deuda.criterio === "INTERES") {
       prev.intereses += deuda.interesCalculado;
     } else if (deuda.criterio === "PARCIAL") {
       prev.saldoAnterior += deuda.importeLiquidado;
-      displayPrev.saldoAnterior += deuda.importeLiquidado + pagosDurantePeriodo;
-      displayPrev.pagosPeriodo += pagosDurantePeriodo;
     }
 
     deudaByUnidad.set(unitId, prev);
-    displayByUnidad.set(unitId, displayPrev);
   }
 
   const baseRows: ProrrateoBaseUnidad[] = unidades.map((unidad) => {
@@ -345,8 +392,9 @@ export default async function LiquidacionWizardPaso3Page({
           periodo (gastos ordinarios + gastos extraordinarios + fondo de reserva). No recalcula intereses historicos.
         </p>
         <p className="mt-2">
-          En la tabla se muestra el flujo visual de deuda anterior por unidad: saldo arrastrado al inicio del periodo,
-          pagos registrados durante el periodo sobre esas expensas y remanente de deuda previo al cargo del mes.
+          En la tabla se muestra el flujo visual de deuda anterior por unidad usando todas las expensas de periodos
+          previos: saldo arrastrado al inicio del periodo, pagos registrados durante el periodo sobre esas expensas y
+          remanente de deuda previo al cargo del mes.
         </p>
       </section>
 
