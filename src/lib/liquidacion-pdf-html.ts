@@ -548,7 +548,7 @@ function buildProrrateoTable(data: LiquidacionData) {
     .join("");
 
   return `
-    <div class="section-title" style="margin-top:24px;">ESTADO DE CUENTAS Y PRORRATEO DE EXPENSAS</div>
+    <div class="section-title" style="margin-top:0;">ESTADO DE CUENTAS Y PRORRATEO DE EXPENSAS</div>
     <table class="prorrateo-table">
       <thead>
         <tr>
@@ -679,9 +679,12 @@ export function buildLiquidacionPdfHtml(data: LiquidacionData) {
         <div class="page page-portrait">
           ${buildHeader(data)}
           ${buildGastosTable(data)}
-          <div class="block-space">
-            ${buildProrrateoTable(data)}
-          </div>
+        </div>
+
+        <div class="page-break"></div>
+
+        <div class="page page-portrait">
+          ${buildProrrateoTable(data)}
         </div>
 
         <div class="page-break"></div>
