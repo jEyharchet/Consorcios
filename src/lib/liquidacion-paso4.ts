@@ -5,6 +5,7 @@ import { prisma } from "./prisma";
 import { getPeriodoVariants } from "./periodo";
 import { generarArchivosLiquidacion, getLiquidacionesUploadsBaseDir } from "./liquidacion-cierre";
 import { enviarLiquidacionCerradaEmails } from "./liquidacion-email";
+import { getAdministradorVigente } from "./consorcio-administradores";
 
 type OwnerRel = {
   desde: Date;
@@ -165,10 +166,11 @@ export async function getLiquidacionPaso4Data(liquidacionId: number) {
           codigoPostal: true,
           tituloLegal: true,
           administradores: {
-            where: { hasta: null },
             orderBy: [{ desde: "desc" }, { id: "desc" }],
-            take: 1,
             select: {
+              id: true,
+              desde: true,
+              hasta: true,
               persona: {
                 select: {
                   nombre: true,
@@ -230,6 +232,11 @@ export async function getLiquidacionPaso4Data(liquidacionId: number) {
   if (!liquidacion) {
     return null;
   }
+
+  const administradorVigente = getAdministradorVigente(liquidacion.consorcio.administradores);
+  liquidacion.consorcio.administradores = administradorVigente
+    ? [administradorVigente]
+    : [];
 
   const periodoVariants = getPeriodoVariants(liquidacion.periodo);
   const useHistoricalGastos = liquidacion.estado === "FINALIZADA" || liquidacion.estado === "CERRADA";
