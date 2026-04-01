@@ -153,14 +153,14 @@ function buildUbicacionLabel(unidad: {
 }
 
 async function getLiquidacionPagosGastoResumen(params: {
-  liquidacionId: number;
   consorcioId: number;
+  periodo: string;
 }) {
   const rows = await prisma.pagoGasto.findMany({
     where: {
       consorcioId: params.consorcioId,
       gasto: {
-        liquidacionId: params.liquidacionId,
+        periodo: { in: getPeriodoVariants(params.periodo) },
       },
     },
     select: {
@@ -351,8 +351,8 @@ export async function getLiquidacionPaso4Data(liquidacionId: number) {
             },
           }),
           getLiquidacionPagosGastoResumen({
-            liquidacionId: item.id,
             consorcioId: liquidacion.consorcioId,
+            periodo: item.periodo,
           }),
         ]);
 
