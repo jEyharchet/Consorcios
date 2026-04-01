@@ -6,7 +6,9 @@ import {
   aplicarRedondeoAuditable,
   calcularBaseFinanciera,
   type ProrrateoBaseUnidad,
+  type ProrrateoCalculadoUnidad,
 } from "../../../../../lib/liquidacion-prorrateo";
+import { normalizePeriodo } from "../../../../../lib/periodo";
 import { prisma } from "../../../../../lib/prisma";
 
 function formatCurrency(value: number) {
@@ -36,6 +38,20 @@ function buildUnidadLabel(unidad: {
   return parts.join(" / ");
 }
 
+function buildPeriodoBounds(periodo: string) {
+  const normalized = normalizePeriodo(periodo);
+
+  if (!normalized) {
+    return null;
+  }
+
+  const [year, month] = normalized.split("-").map(Number);
+  const start = new Date(year, month - 1, 1, 0, 0, 0, 0);
+  const end = new Date(year, month, 1, 0, 0, 0, 0);
+
+  return { start, end };
+}
+
 async function calcularSnapshotPaso3(liquidacionId: number) {
   const liquidacion = await prisma.liquidacion.findUnique({
     where: { id: liquidacionId },
@@ -46,6 +62,12 @@ async function calcularSnapshotPaso3(liquidacionId: number) {
           expensa: {
             select: {
               unidadId: true,
+              pagos: {
+                select: {
+                  monto: true,
+                  fechaPago: true,
+                },
+              },
             },
           },
         },
@@ -71,25 +93,45 @@ async function calcularSnapshotPaso3(liquidacionId: number) {
   });
 
   const faltanCoeficientes = unidades.some((u) => u.porcentajeExpensas === null);
+  const periodoBounds = buildPeriodoBounds(liquidacion.periodo);
 
   const deudaByUnidad = new Map<number, { saldoAnterior: number; pagosPeriodo: number; intereses: number; saldoAFavor: number }>();
+  const displayByUnidad = new Map<number, { saldoAnterior: number; pagosPeriodo: number }>();
 
   for (const deuda of liquidacion.deudas) {
     const unitId = deuda.expensa.unidadId;
     const prev = deudaByUnidad.get(unitId) ?? { saldoAnterior: 0, pagosPeriodo: 0, intereses: 0, saldoAFavor: 0 };
+    const displayPrev = displayByUnidad.get(unitId) ?? { saldoAnterior: 0, pagosPeriodo: 0 };
+    const pagosDurantePeriodo =
+      periodoBounds === null
+        ? 0
+        : deuda.expensa.pagos.reduce((acc, pago) => {
+            if (pago.fechaPago >= periodoBounds.start && pago.fechaPago < periodoBounds.end) {
+              return acc + pago.monto;
+            }
+
+            return acc;
+          }, 0);
 
     if (deuda.criterio === "TOTAL") {
       prev.saldoAnterior += deuda.capitalOriginal;
       prev.intereses += deuda.interesCalculado;
+      displayPrev.saldoAnterior += deuda.capitalOriginal + pagosDurantePeriodo;
+      displayPrev.pagosPeriodo += pagosDurantePeriodo;
     } else if (deuda.criterio === "CAPITAL") {
       prev.saldoAnterior += deuda.capitalOriginal;
+      displayPrev.saldoAnterior += deuda.capitalOriginal + pagosDurantePeriodo;
+      displayPrev.pagosPeriodo += pagosDurantePeriodo;
     } else if (deuda.criterio === "INTERES") {
       prev.intereses += deuda.interesCalculado;
     } else if (deuda.criterio === "PARCIAL") {
       prev.saldoAnterior += deuda.importeLiquidado;
+      displayPrev.saldoAnterior += deuda.importeLiquidado + pagosDurantePeriodo;
+      displayPrev.pagosPeriodo += pagosDurantePeriodo;
     }
 
     deudaByUnidad.set(unitId, prev);
+    displayByUnidad.set(unitId, displayPrev);
   }
 
   const baseRows: ProrrateoBaseUnidad[] = unidades.map((unidad) => {
@@ -113,6 +155,16 @@ async function calcularSnapshotPaso3(liquidacionId: number) {
 
   const calculadas = calcularBaseFinanciera(baseRows, baseProrrateable);
   const rounded = aplicarRedondeoAuditable(calculadas);
+  const persistedRows = rounded.rows;
+  const rows = persistedRows.map((row) => {
+    const display = displayByUnidad.get(row.unidadId);
+
+    return {
+      ...row,
+      saldoAnteriorDisplay: display?.saldoAnterior ?? row.saldoAnterior,
+      pagosPeriodoDisplay: display?.pagosPeriodo ?? row.pagosPeriodo,
+    };
+  });
 
   return {
     liquidacion,
@@ -122,6 +174,8 @@ async function calcularSnapshotPaso3(liquidacionId: number) {
     totalFondoReserva,
     baseProrrateable,
     ...rounded,
+    rows,
+    persistedRows,
   };
 }
 
@@ -136,7 +190,7 @@ async function persistirSnapshotPaso3(liquidacionId: number) {
     return { ok: false as const, reason: "coeficientes_faltantes" };
   }
 
-  const data = snapshot.rows.map((row) => ({
+  const data = snapshot.persistedRows.map((row: ProrrateoCalculadoUnidad) => ({
     liquidacionId: snapshot.liquidacion.id,
     unidadId: row.unidadId,
     coeficiente: row.coeficiente,
@@ -290,6 +344,10 @@ export default async function LiquidacionWizardPaso3Page({
           El Paso 3 usa los valores consolidados en Paso 2 (deuda/intereses) y distribuye por coeficiente la base del
           periodo (gastos ordinarios + gastos extraordinarios + fondo de reserva). No recalcula intereses historicos.
         </p>
+        <p className="mt-2">
+          En la tabla se muestra el flujo visual de deuda anterior por unidad: saldo arrastrado al inicio del periodo,
+          pagos registrados durante el periodo sobre esas expensas y remanente de deuda previo al cargo del mes.
+        </p>
       </section>
 
       {message ? (
@@ -321,8 +379,8 @@ export default async function LiquidacionWizardPaso3Page({
               snapshot.rows.map((row) => (
                 <tr key={row.unidadId} className="border-t border-slate-100">
                   <td className="px-4 py-4">{row.unidadLabel}</td>
-                  <td className="px-4 py-4">{formatCurrency(row.saldoAnterior)}</td>
-                  <td className="px-4 py-4">{formatCurrency(row.pagosPeriodo)}</td>
+                  <td className="px-4 py-4">{formatCurrency(row.saldoAnteriorDisplay)}</td>
+                  <td className="px-4 py-4">{formatCurrency(row.pagosPeriodoDisplay)}</td>
                   <td className="px-4 py-4">{formatCurrency(row.saldoDeudor)}</td>
                   <td className="px-4 py-4">{formatCurrency(row.intereses)}</td>
                   <td className="px-4 py-4">{formatCurrency(row.cargoPeriodoExacto)}</td>
