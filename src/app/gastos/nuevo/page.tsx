@@ -9,6 +9,7 @@ import { getActiveConsorcioContext } from "../../../lib/consorcio-activo";
 import { getPeriodoVariants, normalizePeriodo } from "../../../lib/periodo";
 import { prisma } from "../../../lib/prisma";
 import { normalizeDate } from "../../../lib/relaciones";
+import SubmitButton from "./SubmitButton";
 
 const TIPOS_EXPENSA = ["ORDINARIA", "EXTRAORDINARIA"] as const;
 const RUBROS = [
@@ -68,6 +69,39 @@ async function createGastoWithSequenceRecovery(data: {
 
     return prisma.gasto.create({ data });
   }
+}
+
+async function findRecentMatchingGasto(params: {
+  consorcioId: number;
+  proveedorId: number | null;
+  fecha: Date;
+  periodo: string;
+  concepto: string;
+  descripcion: string | null;
+  tipoExpensa: string;
+  rubroExpensa: string;
+  monto: number;
+}) {
+  const duplicateWindowStart = new Date(Date.now() - 2 * 60 * 1000);
+
+  return prisma.gasto.findFirst({
+    where: {
+      consorcioId: params.consorcioId,
+      proveedorId: params.proveedorId,
+      fecha: params.fecha,
+      periodo: params.periodo,
+      concepto: params.concepto,
+      descripcion: params.descripcion,
+      tipoExpensa: params.tipoExpensa,
+      rubroExpensa: params.rubroExpensa,
+      monto: params.monto,
+      createdAt: {
+        gte: duplicateWindowStart,
+      },
+    },
+    select: { id: true },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+  });
 }
 
 export default async function NuevoGastoPage({
@@ -211,7 +245,7 @@ export default async function NuevoGastoPage({
       }
     }
 
-    await createGastoWithSequenceRecovery({
+    const gastoData = {
       consorcioId,
       proveedorId,
       fecha,
@@ -225,7 +259,14 @@ export default async function NuevoGastoPage({
       comprobanteMimeType,
       comprobanteNombreOriginal,
       comprobanteSubidoAt,
-    });
+    };
+
+    const recentDuplicate = await findRecentMatchingGasto(gastoData);
+    if (recentDuplicate) {
+      redirect("/gastos?error=gasto_duplicado_reciente");
+    }
+
+    await createGastoWithSequenceRecovery(gastoData);
 
     redirect("/gastos");
   }
@@ -251,11 +292,13 @@ export default async function NuevoGastoPage({
                       ? "El proveedor debe estar asociado al mismo consorcio y vigente para la fecha del gasto."
                       : searchParams?.error === "comprobante_muy_pesado"
                         ? "El comprobante no puede superar los 5 MB."
-                        : searchParams?.error === "comprobante_tipo_invalido"
+                      : searchParams?.error === "comprobante_tipo_invalido"
                           ? "El comprobante debe ser PDF, JPG, PNG o WEBP."
-                      : searchParams?.error === "periodo_bloqueado"
-                        ? "No se puede registrar el gasto porque el periodo ya esta emitido o cerrado."
-                        : null;
+                        : searchParams?.error === "periodo_bloqueado"
+                          ? "No se puede registrar el gasto porque el periodo ya esta emitido o cerrado."
+                          : searchParams?.error === "gasto_duplicado_reciente"
+                            ? "Ya existe un gasto identico cargado hace instantes. Revisalo en el listado antes de reintentar."
+                            : null;
 
   return (
     <main className="mx-auto w-full max-w-3xl px-6 py-10">
@@ -363,7 +406,7 @@ export default async function NuevoGastoPage({
           <p className="text-xs text-slate-500">Formatos permitidos: PDF, JPG, PNG o WEBP. Maximo 5 MB.</p>
         </div>
 
-        <button type="submit" className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800">Guardar</button>
+        <SubmitButton />
       </form>
     </main>
   );

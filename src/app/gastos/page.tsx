@@ -195,6 +195,8 @@ export default async function GastosPage({
         ? "El gasto indicado no existe."
         : searchParams?.error === "gasto_con_pagos"
           ? "No se puede eliminar el gasto porque ya tiene pagos registrados."
+          : searchParams?.error === "gasto_duplicado_reciente"
+            ? "Ya existia un gasto identico creado hace instantes. Se evito generar un duplicado."
           : null;
 
   return (
