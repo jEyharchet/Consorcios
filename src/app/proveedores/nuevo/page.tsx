@@ -1,5 +1,6 @@
 ﻿import Link from "next/link";
 import { redirect } from "next/navigation";
+import { Prisma } from "@prisma/client";
 
 import { canManageAnyConsorcio, getAccessContext } from "../../../lib/auth";
 import { prisma } from "../../../lib/prisma";
@@ -15,6 +16,25 @@ const tiposProveedor = [
   "Seguros",
   "Otros",
 ] as const;
+
+function isProveedorIdCollision(error: unknown) {
+  return (
+    error instanceof Prisma.PrismaClientKnownRequestError &&
+    error.code === "P2002" &&
+    Array.isArray(error.meta?.target) &&
+    error.meta.target.includes("id")
+  );
+}
+
+async function realignProveedorIdSequence() {
+  await prisma.$executeRawUnsafe(`
+    SELECT setval(
+      pg_get_serial_sequence('"Proveedor"', 'id'),
+      COALESCE((SELECT MAX(id) + 1 FROM "Proveedor"), 1),
+      false
+    )
+  `);
+}
 
 export default async function NuevoProveedorPage({
   searchParams,
@@ -104,25 +124,39 @@ export default async function NuevoProveedorPage({
       asociaciones.push({ consorcioId, desde, hasta });
     }
 
-    await prisma.proveedor.create({
-      data: {
-        nombre,
-        tipo,
-        subtipo: subtipoRaw || null,
-        telefono: telefonoRaw || null,
-        email: emailRaw || null,
-        fechaInicio,
-        fechaBaja,
-        activo: !fechaBaja,
-        ...(asociaciones.length > 0
-          ? {
-              consorcios: {
-                create: asociaciones,
-              },
-            }
-          : {}),
-      },
-    });
+    const proveedorData = {
+      nombre,
+      tipo,
+      subtipo: subtipoRaw || null,
+      telefono: telefonoRaw || null,
+      email: emailRaw || null,
+      fechaInicio,
+      fechaBaja,
+      activo: !fechaBaja,
+      ...(asociaciones.length > 0
+        ? {
+            consorcios: {
+              create: asociaciones,
+            },
+          }
+        : {}),
+    };
+
+    try {
+      await prisma.proveedor.create({
+        data: proveedorData,
+      });
+    } catch (error) {
+      if (!isProveedorIdCollision(error)) {
+        throw error;
+      }
+
+      await realignProveedorIdSequence();
+
+      await prisma.proveedor.create({
+        data: proveedorData,
+      });
+    }
 
     redirect("/proveedores");
   }
