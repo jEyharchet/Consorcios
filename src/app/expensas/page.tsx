@@ -6,6 +6,11 @@ import { redirectToOnboardingIfNoConsorcios } from "../../lib/onboarding";
 import { normalizePeriodo } from "../../lib/periodo";
 import { prisma } from "../../lib/prisma";
 import { isVigente, normalizeDate } from "../../lib/relaciones";
+import {
+  filterRelacionesUnidadPorTipos,
+  filterRelacionesUnidadVigentesPorTipos,
+  getTiposRelacionParaNotificacionGeneral,
+} from "../../lib/unidad-relacion";
 import ExpensaKpis from "./_components/ExpensaKpis";
 import ExpensasTable, { type ExpensaTableRow } from "./_components/ExpensasTable";
 import type { ExpensaEstadoVisual } from "./_components/ExpensaEstadoBadge";
@@ -19,16 +24,25 @@ function formatCurrency(value: number) {
 }
 
 function formatResponsables(
-  relaciones: Array<{ desde: Date; hasta: Date | null; persona: { apellido: string; nombre: string } }>,
+  relaciones: Array<{
+    desde: Date;
+    hasta: Date | null;
+    tipoRelacion?: string | null;
+    persona: { apellido: string; nombre: string };
+  }>,
   today: Date,
 ) {
-  const vigentes = relaciones.filter((relacion) => isVigente(relacion.desde, relacion.hasta, today));
+  const vigentes = filterRelacionesUnidadVigentesPorTipos(relaciones, getTiposRelacionParaNotificacionGeneral()).filter(
+    (relacion) => isVigente(relacion.desde, relacion.hasta, today),
+  );
+  const filtradas = filterRelacionesUnidadPorTipos(relaciones, getTiposRelacionParaNotificacionGeneral());
+  const base = vigentes.length > 0 ? vigentes : filtradas;
 
-  if (vigentes.length === 0) {
+  if (base.length === 0) {
     return "Sin responsable";
   }
 
-  return vigentes.map((relacion) => `${relacion.persona.apellido}, ${relacion.persona.nombre}`).join(" / ");
+  return base.map((relacion) => `${relacion.persona.apellido}, ${relacion.persona.nombre}`).join(" / ");
 }
 
 function resolveVisualStatus(params: {
@@ -166,6 +180,7 @@ export default async function ExpensasPage({
             select: {
               desde: true,
               hasta: true,
+              tipoRelacion: true,
               persona: {
                 select: {
                   apellido: true,

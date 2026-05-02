@@ -5,6 +5,7 @@ import { Fragment } from "react";
 import { prisma } from "../../../../lib/prisma";
 import { getAccessContext, requireConsorcioRole, requireSuperAdmin } from "../../../lib/auth";
 import { formatDateAR, isVigente, normalizeDate } from "../../../lib/relaciones";
+import { formatTipoRelacionUnidadLabel } from "../../../lib/unidad-relacion";
 
 export default async function PersonaDetallePage({
   params,
@@ -32,6 +33,7 @@ export default async function PersonaDetallePage({
           id: true,
           unidadId: true,
           personaId: true,
+          tipoRelacion: true,
           desde: true,
           hasta: true,
           unidad: {
@@ -285,6 +287,7 @@ export default async function PersonaDetallePage({
             <tr className="text-left text-sm text-slate-600">
               <th className="px-4 py-3 font-medium">Consorcio</th>
               <th className="px-4 py-3 font-medium">Unidad</th>
+              <th className="px-4 py-3 font-medium">Relacion</th>
               <th className="px-4 py-3 font-medium">Desde</th>
               <th className="px-4 py-3 font-medium">Hasta</th>
               <th className="px-4 py-3 font-medium">Acciones</th>
@@ -293,7 +296,7 @@ export default async function PersonaDetallePage({
           <tbody className="text-sm text-slate-800">
             {relacionesOrdenadas.length === 0 ? (
               <tr className="border-t border-slate-100">
-                <td colSpan={5} className="px-4 py-4 text-slate-500">
+                <td colSpan={6} className="px-4 py-4 text-slate-500">
                   Sin relaciones cargadas.
                 </td>
               </tr>
@@ -309,6 +312,7 @@ export default async function PersonaDetallePage({
                       <td className="px-4 py-3">
                         {relacion.unidad.identificador} ({relacion.unidad.tipo})
                       </td>
+                      <td className="px-4 py-3">{formatTipoRelacionUnidadLabel(relacion.tipoRelacion)}</td>
                       <td className="px-4 py-3">{formatDateAR(relacion.desde)}</td>
                       <td className="px-4 py-3">{formatDateAR(relacion.hasta)}</td>
                       <td className="px-4 py-3">
@@ -332,7 +336,7 @@ export default async function PersonaDetallePage({
 
                     {vigente && finalizarId === relacion.id ? (
                       <tr className="border-t border-slate-100 bg-slate-50/40">
-                        <td className="px-4 py-3" colSpan={5}>
+                        <td className="px-4 py-3" colSpan={6}>
                           <form action={finalizarRelacion} className="flex items-center gap-3">
                             <input type="hidden" name="personaId" value={persona.id} />
                             <input type="hidden" name="unidadPersonaId" value={relacion.id} />

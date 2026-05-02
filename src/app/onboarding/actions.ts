@@ -10,6 +10,7 @@ import { ONBOARDING_PATH } from "../../lib/onboarding";
 import { ensureUserPersona, findPersonaByEmail, normalizeEmailIdentity } from "../../lib/persona-identity";
 import { prisma } from "../../lib/prisma";
 import { createUnidadPersonaWithSequenceRecovery } from "../../lib/relaciones";
+import { TIPO_RELACION_UNIDAD } from "../../lib/unidad-relacion";
 
 const ESTADO_PENDIENTE = "PENDIENTE";
 const ESTADO_APROBADA = "APROBADA";
@@ -364,6 +365,7 @@ async function resolveSolicitud(params: {
           await createUnidadPersonaWithSequenceRecovery(tx, {
             unidadId: unidad.id,
             personaId,
+            tipoRelacion: TIPO_RELACION_UNIDAD.RESPONSABLE,
             desde: now,
             hasta: null,
           });

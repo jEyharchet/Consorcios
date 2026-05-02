@@ -8,10 +8,17 @@ import { enviarLiquidacionCerradaEmails } from "./liquidacion-email";
 import { getAdministradorVigente } from "./consorcio-administradores";
 import { buildEstadoCuentaDisplayByUnidad } from "./liquidacion-estado-cuenta-display";
 import { buildGastoPagoSummary } from "./pagos-gastos";
+import {
+  filterRelacionesUnidadPorTipos,
+  filterRelacionesUnidadVigentesPorTipos,
+  getTiposRelacionParaBoletaPago,
+  getTiposRelacionParaNotificacionGeneral,
+} from "./unidad-relacion";
 
 type OwnerRel = {
   desde: Date;
   hasta: Date | null;
+  tipoRelacion?: string | null;
   persona: { id: number; nombre: string; apellido: string };
 };
 
@@ -101,16 +108,18 @@ function parseBoletaCuentaSnapshot(snapshot: string | null | undefined): BoletaC
   }
 }
 
-function getOwnerProfiles(relaciones: OwnerRel[]): OwnerProfile[] {
+function getOwnerProfiles(relaciones: OwnerRel[], allowedTipos = getTiposRelacionParaNotificacionGeneral()): OwnerProfile[] {
   if (relaciones.length === 0) {
     return [{ id: 0, label: "-" }];
   }
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const vigentes = filterRelacionesUnidadVigentesPorTipos(relaciones, allowedTipos);
+  const filtradas = filterRelacionesUnidadPorTipos(relaciones, allowedTipos);
+  const base = vigentes.length > 0 ? vigentes : filtradas.length > 0 ? [filtradas[0]] : [];
 
-  const vigentes = relaciones.filter((r) => r.desde <= today && (!r.hasta || r.hasta >= today));
-  const base = vigentes.length > 0 ? vigentes : [relaciones[0]];
+  if (base.length === 0) {
+    return [{ id: 0, label: "-" }];
+  }
 
   const uniqueById = new Map<number, OwnerProfile>();
   for (const rel of base) {
@@ -123,12 +132,12 @@ function getOwnerProfiles(relaciones: OwnerRel[]): OwnerProfile[] {
   return Array.from(uniqueById.values()).sort((a, b) => a.label.localeCompare(b.label, "es"));
 }
 
-function getOwnerLabels(relaciones: OwnerRel[]) {
-  return getOwnerProfiles(relaciones).map((p) => p.label);
+function getOwnerLabels(relaciones: OwnerRel[], allowedTipos = getTiposRelacionParaNotificacionGeneral()) {
+  return getOwnerProfiles(relaciones, allowedTipos).map((p) => p.label);
 }
 
-function getOwnerLabel(relaciones: OwnerRel[]) {
-  return getOwnerLabels(relaciones)[0] ?? "-";
+function getOwnerLabel(relaciones: OwnerRel[], allowedTipos = getTiposRelacionParaNotificacionGeneral()) {
+  return getOwnerLabels(relaciones, allowedTipos)[0] ?? "-";
 }
 
 function formatUnidadTipo(tipo: string) {
@@ -469,6 +478,9 @@ export async function getLiquidacionPaso4Data(liquidacionId: number) {
       propietario: getOwnerLabel(row.unidad.personas),
       propietarios: getOwnerLabels(row.unidad.personas),
       propietariosInfo: getOwnerProfiles(row.unidad.personas),
+      boletaPropietario: getOwnerLabel(row.unidad.personas, getTiposRelacionParaBoletaPago()),
+      boletaPropietarios: getOwnerLabels(row.unidad.personas, getTiposRelacionParaBoletaPago()),
+      boletaPropietariosInfo: getOwnerProfiles(row.unidad.personas, getTiposRelacionParaBoletaPago()),
       coeficiente: row.coeficiente,
       saldoAnterior: row.saldoAnterior,
       saldoAnteriorDisplay: display?.saldoAnterior ?? row.saldoAnterior,

@@ -5,6 +5,7 @@ import { Fragment } from "react";
 import { prisma } from "../../../../lib/prisma";
 import { requireConsorcioAccess, requireConsorcioRole } from "../../../lib/auth";
 import { formatDateAR, isVigente, normalizeDate } from "../../../lib/relaciones";
+import { formatTipoRelacionUnidadLabel } from "../../../lib/unidad-relacion";
 
 export default async function UnidadDetallePage({
   params,
@@ -213,6 +214,7 @@ export default async function UnidadDetallePage({
                   <th className="px-4 py-3 font-medium">Apellido</th>
                   <th className="px-4 py-3 font-medium">Email</th>
                   <th className="px-4 py-3 font-medium">Telefono</th>
+                  <th className="px-4 py-3 font-medium">Relacion</th>
                   <th className="px-4 py-3 font-medium">Desde</th>
                   <th className="px-4 py-3 font-medium">Hasta</th>
                   <th className="px-4 py-3 font-medium">Acciones</th>
@@ -230,6 +232,7 @@ export default async function UnidadDetallePage({
                         <td className="px-4 py-3">{rel.persona.apellido}</td>
                         <td className="px-4 py-3">{rel.persona.email ?? "-"}</td>
                         <td className="px-4 py-3">{rel.persona.telefono ?? "-"}</td>
+                        <td className="px-4 py-3">{formatTipoRelacionUnidadLabel(rel.tipoRelacion)}</td>
                         <td className="px-4 py-3">{formatDateAR(rel.desde)}</td>
                         <td className="px-4 py-3">{formatDateAR(rel.hasta)}</td>
                         <td className="px-4 py-3">
@@ -253,7 +256,7 @@ export default async function UnidadDetallePage({
 
                       {vigente && finalizarId === rel.id ? (
                         <tr className="border-t border-slate-100 bg-slate-50/40">
-                          <td className="px-4 py-3" colSpan={7}>
+                          <td className="px-4 py-3" colSpan={8}>
                             <form action={finalizarRelacion} className="flex items-center gap-3">
                               <input type="hidden" name="unidadId" value={unidad.id} />
                               <input type="hidden" name="relacionId" value={rel.id} />

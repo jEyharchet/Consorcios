@@ -5,6 +5,11 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "../../../../../../lib/prisma";
 import { requireConsorcioRole } from "../../../../../lib/auth";
 import { createUnidadPersonaWithSequenceRecovery, validateNoOverlap } from "../../../../../lib/relaciones";
+import {
+  isTipoRelacionUnidadValue,
+  TIPO_RELACION_UNIDAD,
+  TIPO_RELACION_UNIDAD_OPTIONS,
+} from "../../../../../lib/unidad-relacion";
 
 async function createPersonaWithSequenceRecovery(data: {
   nombre: string;
@@ -94,6 +99,8 @@ export default async function NuevaPersonaPage({
     const personaId = Number(formData.get("personaId"));
     const desdeRaw = (formData.get("desde")?.toString() ?? "").trim();
     const hastaRaw = (formData.get("hasta")?.toString() ?? "").trim();
+    const tipoRelacionRaw = (formData.get("tipoRelacion")?.toString() ?? "").trim();
+    const tipoRelacion = isTipoRelacionUnidadValue(tipoRelacionRaw) ? tipoRelacionRaw : TIPO_RELACION_UNIDAD.RESPONSABLE;
     const q = (formData.get("q")?.toString() ?? "").trim();
 
     if (!unidadBase) {
@@ -133,6 +140,7 @@ export default async function NuevaPersonaPage({
     await createUnidadPersonaWithSequenceRecovery(prisma, {
       unidadId,
       personaId,
+      tipoRelacion,
       desde,
       hasta,
     });
@@ -155,6 +163,8 @@ export default async function NuevaPersonaPage({
     const telefonoRaw = (formData.get("telefono")?.toString() ?? "").trim();
     const desdeRaw = (formData.get("desde")?.toString() ?? "").trim();
     const hastaRaw = (formData.get("hasta")?.toString() ?? "").trim();
+    const tipoRelacionRaw = (formData.get("tipoRelacion")?.toString() ?? "").trim();
+    const tipoRelacion = isTipoRelacionUnidadValue(tipoRelacionRaw) ? tipoRelacionRaw : TIPO_RELACION_UNIDAD.RESPONSABLE;
     const q = (formData.get("q")?.toString() ?? "").trim();
 
     const qs = new URLSearchParams();
@@ -195,6 +205,7 @@ export default async function NuevaPersonaPage({
     await createUnidadPersonaWithSequenceRecovery(prisma, {
       unidadId,
       personaId: persona.id,
+      tipoRelacion,
       desde,
       hasta,
     });
@@ -291,6 +302,24 @@ export default async function NuevaPersonaPage({
                   </div>
                 </div>
 
+                <div className="mt-3 space-y-1">
+                  <label htmlFor={`tipoRelacion-${persona.id}`} className="text-sm font-medium text-slate-700">
+                    Relacion
+                  </label>
+                  <select
+                    id={`tipoRelacion-${persona.id}`}
+                    name="tipoRelacion"
+                    defaultValue={TIPO_RELACION_UNIDAD.RESPONSABLE}
+                    className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none ring-blue-500 focus:ring-2"
+                  >
+                    {TIPO_RELACION_UNIDAD_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
                 <button
                   type="submit"
                   className="mt-3 rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
@@ -378,6 +407,24 @@ export default async function NuevaPersonaPage({
               className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none ring-blue-500 focus:ring-2"
             />
           </div>
+        </div>
+
+        <div className="space-y-1">
+          <label htmlFor="tipoRelacionNueva" className="text-sm font-medium text-slate-700">
+            Relacion
+          </label>
+          <select
+            id="tipoRelacionNueva"
+            name="tipoRelacion"
+            defaultValue={TIPO_RELACION_UNIDAD.RESPONSABLE}
+            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none ring-blue-500 focus:ring-2"
+          >
+            {TIPO_RELACION_UNIDAD_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
         </div>
 
         <button

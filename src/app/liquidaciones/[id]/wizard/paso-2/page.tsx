@@ -11,6 +11,11 @@ import {
 } from "../../../../../lib/liquidacion-deudas";
 import { normalizePeriodo } from "../../../../../lib/periodo";
 import { prisma } from "../../../../../lib/prisma";
+import {
+  filterRelacionesUnidadPorTipos,
+  filterRelacionesUnidadVigentesPorTipos,
+  getTiposRelacionParaNotificacionGeneral,
+} from "../../../../../lib/unidad-relacion";
 
 type DeudaElegible = {
   expensaId: number;
@@ -51,16 +56,25 @@ function parseDateInput(raw: string | null | undefined): Date | null {
   return date;
 }
 
-function getOwnerLabel(relaciones: Array<{ desde: Date; hasta: Date | null; persona: { nombre: string; apellido: string } }>) {
+function getOwnerLabel(
+  relaciones: Array<{
+    desde: Date;
+    hasta: Date | null;
+    tipoRelacion?: string | null;
+    persona: { nombre: string; apellido: string };
+  }>,
+) {
   if (relaciones.length === 0) {
     return "-";
   }
 
-  const hoy = new Date();
-  hoy.setHours(0, 0, 0, 0);
+  const vigentes = filterRelacionesUnidadVigentesPorTipos(relaciones, getTiposRelacionParaNotificacionGeneral());
+  const filtradas = filterRelacionesUnidadPorTipos(relaciones, getTiposRelacionParaNotificacionGeneral());
+  const chosen = vigentes[0] ?? filtradas[0];
 
-  const vigente = relaciones.find((rel) => rel.desde <= hoy && (!rel.hasta || rel.hasta >= hoy));
-  const chosen = vigente ?? relaciones[0];
+  if (!chosen) {
+    return "-";
+  }
 
   return `${chosen.persona.apellido}, ${chosen.persona.nombre}`;
 }

@@ -5,6 +5,12 @@ import { sendEmail } from "./email";
 import { buildEmailSummary, EMAIL_ESTADO, formatEmailSummary, type EmailSummary } from "./email-tracking";
 import { buildReplyToAddress, createEmailReplyKey } from "./email-replies";
 import { prisma } from "./prisma";
+import {
+  filterRelacionesUnidadPorTipos,
+  filterRelacionesUnidadVigentesPorTipos,
+  getTiposRelacionParaBoletaPago,
+  getTiposRelacionParaNotificacionGeneral,
+} from "./unidad-relacion";
 
 export { formatEmailSummary } from "./email-tracking";
 
@@ -21,6 +27,7 @@ type TipoEnvioEmail = (typeof EMAIL_TIPO_ENVIO)[keyof typeof EMAIL_TIPO_ENVIO];
 type ResponsableRelacion = {
   desde: Date;
   hasta: Date | null;
+  tipoRelacion?: string | null;
   persona: {
     id: number;
     nombre: string;
@@ -120,18 +127,22 @@ function formatPeriodoLabel(periodo: string) {
   }).format(new Date(Number(year), Number(month) - 1, 1));
 }
 
-function resolveBaseResponsables(relaciones: ResponsableRelacion[]) {
+function resolveBaseResponsables(relaciones: ResponsableRelacion[], tipos: string[]) {
   if (relaciones.length === 0) {
     return [] as ResponsableRelacion[];
   }
 
-  const now = new Date();
-  const vigentes = relaciones.filter((rel) => rel.desde <= now && (!rel.hasta || rel.hasta >= now));
-  return vigentes.length > 0 ? vigentes : [relaciones[0]];
+  const vigentes = filterRelacionesUnidadVigentesPorTipos(relaciones, tipos);
+  if (vigentes.length > 0) {
+    return vigentes;
+  }
+
+  const filtradas = filterRelacionesUnidadPorTipos(relaciones, tipos);
+  return filtradas.length > 0 ? [filtradas[0]] : [];
 }
 
 function buildResponsableGroupKey(relaciones: ResponsableRelacion[]) {
-  const base = resolveBaseResponsables(relaciones);
+  const base = resolveBaseResponsables(relaciones, getTiposRelacionParaBoletaPago());
 
   if (base.length === 0) {
     return "fallback-sin-responsable";
@@ -153,8 +164,8 @@ function buildResponsableGroupKey(relaciones: ResponsableRelacion[]) {
   return `fallback-${slugify(responsables.map((responsable) => responsable.label).join("-"))}`;
 }
 
-function resolveDestinatarios(relaciones: ResponsableRelacion[]) {
-  const base = resolveBaseResponsables(relaciones);
+function resolveDestinatarios(relaciones: ResponsableRelacion[], tipos: string[]) {
+  const base = resolveBaseResponsables(relaciones, tipos);
   const emails = Array.from(
     new Set(
       base
@@ -170,6 +181,14 @@ function resolveDestinatarios(relaciones: ResponsableRelacion[]) {
         ? base.map((rel) => `${rel.persona.apellido}, ${rel.persona.nombre}`).join(" / ")
         : "Sin responsable",
   };
+}
+
+function resolveDestinatariosGenerales(relaciones: ResponsableRelacion[]) {
+  return resolveDestinatarios(relaciones, getTiposRelacionParaNotificacionGeneral());
+}
+
+function resolveDestinatariosBoleta(relaciones: ResponsableRelacion[]) {
+  return resolveDestinatarios(relaciones, getTiposRelacionParaBoletaPago());
 }
 
 function parseCuentaSnapshot(snapshot: string | null | undefined): CuentaPago | null {
@@ -571,14 +590,15 @@ async function getLiquidacionEmailContext(liquidacionId: number, onlyPendientes:
             select: {
               identificador: true,
               tipo: true,
-              personas: {
-                orderBy: [{ desde: "desc" }, { persona: { apellido: "asc" } }, { persona: { nombre: "asc" } }],
-                select: {
-                  desde: true,
-                  hasta: true,
-                  persona: {
-                    select: {
-                      id: true,
+                personas: {
+                  orderBy: [{ desde: "desc" }, { persona: { apellido: "asc" } }, { persona: { nombre: "asc" } }],
+                  select: {
+                    desde: true,
+                    hasta: true,
+                    tipoRelacion: true,
+                    persona: {
+                      select: {
+                        id: true,
                       nombre: true,
                       apellido: true,
                       email: true,
@@ -617,7 +637,10 @@ async function procesarEnviosLiquidacion(params: {
   const results: Array<{ estado: string }> = [];
 
   for (const expensa of liquidacion.expensas) {
-    const destinatarios = resolveDestinatarios(expensa.unidad.personas);
+    const destinatarios =
+      params.tipoEnvio === EMAIL_TIPO_ENVIO.RECORDATORIO_VENCIMIENTO
+        ? resolveDestinatariosBoleta(expensa.unidad.personas)
+        : resolveDestinatariosGenerales(expensa.unidad.personas);
     const boletaArchivo =
       liquidacion.archivos.find(
         (archivo) =>
@@ -729,7 +752,7 @@ export async function buildReminderDrafts(liquidacionId: number): Promise<Remind
     null;
 
   return liquidacion.expensas.map((expensa) => {
-    const destinatarios = resolveDestinatarios(expensa.unidad.personas);
+    const destinatarios = resolveDestinatariosBoleta(expensa.unidad.personas);
     const boletaArchivo =
       liquidacion.archivos.find(
         (archivo) =>
@@ -837,6 +860,7 @@ export async function sendReminderDrafts(params: {
             select: {
               desde: true,
               hasta: true,
+              tipoRelacion: true,
               persona: {
                 select: {
                   id: true,
@@ -885,7 +909,7 @@ export async function sendReminderDrafts(params: {
         : null;
     const expensa = expensaByUnidadId.get(draft.unidadId);
     const unidadLabel = expensa ? `${expensa.unidad.identificador} (${expensa.unidad.tipo})` : `Unidad #${draft.unidadId}`;
-    const responsablesLabel = expensa ? resolveDestinatarios(expensa.unidad.personas).responsablesLabel : "Sin responsable";
+    const responsablesLabel = expensa ? resolveDestinatariosBoleta(expensa.unidad.personas).responsablesLabel : "Sin responsable";
     const rendered = renderReminderEmail({
       subject: draft.asunto,
       consorcioNombre: liquidacion.consorcio.nombre,

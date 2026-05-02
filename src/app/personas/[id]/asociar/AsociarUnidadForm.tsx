@@ -1,6 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import {
+  TIPO_RELACION_UNIDAD,
+  TIPO_RELACION_UNIDAD_OPTIONS,
+} from "../../../../lib/unidad-relacion";
 
 type ConsorcioOption = { id: number; nombre: string };
 type UnidadOption = { id: number; identificador: string; tipo: string };
@@ -9,7 +13,7 @@ type Props = {
   personaLabel: string;
   consorcios: ConsorcioOption[];
   unidades: UnidadOption[];
-  initial: { consorcioId: string; desde: string; hasta: string; confirmado: boolean };
+  initial: { consorcioId: string; desde: string; hasta: string; tipoRelacion: string; confirmado: boolean };
   errorMessage?: string | null;
   onGuardar: (formData: FormData) => void | Promise<void>;
 };
@@ -25,11 +29,13 @@ export default function AsociarUnidadForm({
   const [consorcioId, setConsorcioId] = useState(initial.consorcioId);
   const [desde, setDesde] = useState(initial.desde);
   const [hasta, setHasta] = useState(initial.hasta);
+  const [tipoRelacion, setTipoRelacion] = useState(initial.tipoRelacion || TIPO_RELACION_UNIDAD.RESPONSABLE);
 
   const dirty =
     consorcioId !== initial.consorcioId ||
     desde !== initial.desde ||
-    hasta !== initial.hasta;
+    hasta !== initial.hasta ||
+    tipoRelacion !== initial.tipoRelacion;
 
   const mostrarUnidad = !dirty && initial.confirmado && !!consorcioId && !!desde;
 
@@ -96,6 +102,25 @@ export default function AsociarUnidadForm({
           </div>
         </div>
 
+        <div className="space-y-1">
+          <label htmlFor="tipoRelacion" className="text-sm font-medium text-slate-700">
+            Relacion
+          </label>
+          <select
+            id="tipoRelacion"
+            name="tipoRelacion"
+            value={tipoRelacion}
+            onChange={(e) => setTipoRelacion(e.target.value)}
+            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none ring-blue-500 focus:ring-2"
+          >
+            {TIPO_RELACION_UNIDAD_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
         <button
           type="submit"
           className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
@@ -114,6 +139,7 @@ export default function AsociarUnidadForm({
             <input type="hidden" name="consorcioId" value={consorcioId} />
             <input type="hidden" name="desde" value={desde} />
             <input type="hidden" name="hasta" value={hasta} />
+            <input type="hidden" name="tipoRelacion" value={tipoRelacion} />
             <input type="hidden" name="confirmado" value="1" />
 
             <div className="space-y-1">

@@ -10,6 +10,11 @@ import { buildAsambleaConvocatoriaPreviewHtml } from "./asamblea-convocatoria-pr
 import { prisma } from "./prisma";
 import { launchPdfBrowser } from "./pdf-browser";
 import { ADMIN_EMAIL_TIPO_ENVIO, ASAMBLEA_ESTADO, ASAMBLEA_TIPO } from "./administracion-shared";
+import {
+  filterRelacionesUnidadPorTipos,
+  filterRelacionesUnidadVigentesPorTipos,
+  getTiposRelacionParaNotificacionGeneral,
+} from "./unidad-relacion";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
 const DEFAULT_PUBLIC_APP_URL = "https://app.amiconsorcio.com.ar";
@@ -17,6 +22,7 @@ const DEFAULT_PUBLIC_APP_URL = "https://app.amiconsorcio.com.ar";
 type ResponsableRelacion = {
   desde: Date;
   hasta: Date | null;
+  tipoRelacion?: string | null;
   persona: {
     id: number;
     nombre: string;
@@ -119,9 +125,13 @@ function resolveBaseResponsables(relaciones: ResponsableRelacion[]) {
     return [] as ResponsableRelacion[];
   }
 
-  const now = new Date();
-  const vigentes = relaciones.filter((rel) => rel.desde <= now && (!rel.hasta || rel.hasta >= now));
-  return vigentes.length > 0 ? vigentes : [relaciones[0]];
+  const vigentes = filterRelacionesUnidadVigentesPorTipos(relaciones, getTiposRelacionParaNotificacionGeneral());
+  if (vigentes.length > 0) {
+    return vigentes;
+  }
+
+  const filtradas = filterRelacionesUnidadPorTipos(relaciones, getTiposRelacionParaNotificacionGeneral());
+  return filtradas.length > 0 ? [filtradas[0]] : [];
 }
 
 function resolveDestinatarios(relaciones: ResponsableRelacion[]) {
@@ -182,14 +192,15 @@ async function getDestinatariosConsorcio(consorcioId: number, unidadIds?: number
       id: true,
       identificador: true,
       tipo: true,
-      personas: {
-        orderBy: [{ desde: "desc" }, { persona: { apellido: "asc" } }, { persona: { nombre: "asc" } }],
-        select: {
-          desde: true,
-          hasta: true,
-          persona: {
-            select: {
-              id: true,
+        personas: {
+          orderBy: [{ desde: "desc" }, { persona: { apellido: "asc" } }, { persona: { nombre: "asc" } }],
+          select: {
+            desde: true,
+            hasta: true,
+            tipoRelacion: true,
+            persona: {
+              select: {
+                id: true,
               nombre: true,
               apellido: true,
               email: true,
@@ -220,14 +231,15 @@ export async function getResponsablesConvocatoriaElegibles(consorcioId: number):
       id: true,
       identificador: true,
       tipo: true,
-      personas: {
-        orderBy: [{ desde: "desc" }, { persona: { apellido: "asc" } }, { persona: { nombre: "asc" } }],
-        select: {
-          desde: true,
-          hasta: true,
-          persona: {
-            select: {
-              id: true,
+        personas: {
+          orderBy: [{ desde: "desc" }, { persona: { apellido: "asc" } }, { persona: { nombre: "asc" } }],
+          select: {
+            desde: true,
+            hasta: true,
+            tipoRelacion: true,
+            persona: {
+              select: {
+                id: true,
               nombre: true,
               apellido: true,
               email: true,

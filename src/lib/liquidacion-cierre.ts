@@ -105,12 +105,15 @@ function buildResponsableGroups(rows: ProrrateoRow[]): ResponsableGroup[] {
   const map = new Map<string, ResponsableGroup>();
 
   for (const row of rows) {
-    const hasOwnerIds = (row.propietariosInfo?.length ?? 0) > 0;
+    const ownerProfiles = (row.boletaPropietariosInfo?.length ?? 0) > 0 ? row.boletaPropietariosInfo : row.propietariosInfo;
+    const ownerLabels = row.boletaPropietarios?.length ? row.boletaPropietarios : row.propietarios;
+    const ownerLabelFallback = row.boletaPropietario ?? row.propietario;
+    const hasOwnerIds = (ownerProfiles?.length ?? 0) > 0;
     const ownersFromInfo = hasOwnerIds
-      ? row.propietariosInfo.map((p) => ({ id: p.id, label: p.label }))
-      : row.propietarios?.length
-        ? row.propietarios.map((label, idx) => ({ id: idx + 1, label }))
-        : [{ id: 0, label: row.propietario ?? "Sin responsable" }];
+      ? ownerProfiles.map((p) => ({ id: p.id, label: p.label }))
+      : ownerLabels?.length
+        ? ownerLabels.map((label, idx) => ({ id: idx + 1, label }))
+        : [{ id: 0, label: ownerLabelFallback ?? "Sin responsable" }];
 
     const owners = ownersFromInfo
       .slice()

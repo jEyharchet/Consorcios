@@ -2,6 +2,7 @@ import "server-only";
 
 import { ASAMBLEA_ESTADO, ASAMBLEA_VOTACION_ESTADO, ASAMBLEA_VOTO_VALOR } from "./administracion-shared";
 import { prisma } from "./prisma";
+import { getTiposRelacionParaVotacion } from "./unidad-relacion";
 
 export function formatPersonaNombre(persona: { nombre: string; apellido: string }) {
   return `${persona.apellido}, ${persona.nombre}`;
@@ -28,6 +29,7 @@ export async function getPersonasConsorcioParaVotacion(consorcioId: number) {
   const relaciones = await prisma.unidadPersona.findMany({
     where: {
       unidad: { consorcioId },
+      tipoRelacion: { in: getTiposRelacionParaVotacion() },
       desde: { lte: today },
       OR: [{ hasta: null }, { hasta: { gte: today } }],
     },

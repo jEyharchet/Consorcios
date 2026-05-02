@@ -7,6 +7,11 @@ import { getActiveConsorcioContext } from "../../../lib/consorcio-activo";
 import { formatEmailSummary } from "../../../lib/email-tracking";
 import { redirectToOnboardingIfNoConsorcios } from "../../../lib/onboarding";
 import { prisma } from "../../../lib/prisma";
+import {
+  filterRelacionesUnidadPorTipos,
+  filterRelacionesUnidadVigentesPorTipos,
+  getTiposRelacionParaNotificacionGeneral,
+} from "../../../lib/unidad-relacion";
 import { buildReturnQuery, formatDateTime } from "../shared";
 
 function getFeedback(searchParams: {
@@ -139,6 +144,7 @@ export default async function ComunicacionesPage({
           select: {
             desde: true,
             hasta: true,
+            tipoRelacion: true,
             persona: {
               select: {
                 nombre: true,
@@ -180,8 +186,12 @@ export default async function ComunicacionesPage({
   }
 
   const feedback = getFeedback(searchParams ?? {});
+  const allowedTipos = getTiposRelacionParaNotificacionGeneral();
   const totalResponsables = unidades.reduce((acc, unidad) => {
-    const emails = unidad.personas
+    const vigentes = filterRelacionesUnidadVigentesPorTipos(unidad.personas, allowedTipos);
+    const filtradas = filterRelacionesUnidadPorTipos(unidad.personas, allowedTipos);
+    const base = vigentes.length > 0 ? vigentes : filtradas;
+    const emails = base
       .map((relacion) => relacion.persona.email?.trim().toLowerCase() ?? "")
       .filter(Boolean);
 
@@ -224,7 +234,7 @@ export default async function ComunicacionesPage({
           <p className="mt-2 text-3xl font-semibold text-slate-950">{unidades.length}</p>
         </article>
         <article className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-          <p className="text-sm font-medium text-slate-500">Responsables potenciales</p>
+          <p className="text-sm font-medium text-slate-500">Destinatarios potenciales</p>
           <p className="mt-2 text-3xl font-semibold text-slate-950">{totalResponsables}</p>
         </article>
         <article className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">

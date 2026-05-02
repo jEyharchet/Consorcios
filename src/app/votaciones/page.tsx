@@ -5,6 +5,7 @@ import { ASAMBLEA_ESTADO, ASAMBLEA_VOTACION_ESTADO } from "@/lib/administracion-
 import { getAccessContext } from "@/lib/auth";
 import { redirectToOnboardingIfNoConsorcios } from "@/lib/onboarding";
 import { prisma } from "@/lib/prisma";
+import { getTiposRelacionParaVotacion } from "@/lib/unidad-relacion";
 
 import { formatDate, formatDateTime } from "../administracion/shared";
 
@@ -70,6 +71,7 @@ export default async function VotacionesPage({
   const personaRelations = await prisma.unidadPersona.findMany({
     where: {
       personaId: access.user.personaId,
+      tipoRelacion: { in: getTiposRelacionParaVotacion() },
       unidad: {
         consorcioId: { in: access.allowedConsorcioIds },
       },

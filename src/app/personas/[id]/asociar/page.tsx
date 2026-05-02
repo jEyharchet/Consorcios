@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 
 import { prisma } from "../../../../../lib/prisma";
 import { createUnidadPersonaWithSequenceRecovery, overlaps, validateNoOverlap } from "../../../../lib/relaciones";
+import { isTipoRelacionUnidadValue, TIPO_RELACION_UNIDAD } from "../../../../lib/unidad-relacion";
 import AsociarUnidadForm from "./AsociarUnidadForm";
 
 export default async function AsociarPersonaUnidadPage({
@@ -16,12 +17,14 @@ export default async function AsociarPersonaUnidadPage({
     hasta?: string;
     confirmado?: string;
     error?: string;
+    tipoRelacion?: string;
   };
 }) {
   const personaId = Number(params.id);
   const consorcioIdParam = searchParams?.consorcioId?.trim() ?? "";
   const desdeParam = searchParams?.desde?.trim() ?? "";
   const hastaParam = searchParams?.hasta?.trim() ?? "";
+  const tipoRelacionParam = searchParams?.tipoRelacion?.trim() || TIPO_RELACION_UNIDAD.RESPONSABLE;
   const confirmado = searchParams?.confirmado === "1";
 
   const consorcioId = consorcioIdParam ? Number(consorcioIdParam) : null;
@@ -79,11 +82,14 @@ export default async function AsociarPersonaUnidadPage({
     const consorcioId = (formData.get("consorcioId")?.toString() ?? "").trim();
     const desde = (formData.get("desde")?.toString() ?? "").trim();
     const hasta = (formData.get("hasta")?.toString() ?? "").trim();
+    const tipoRelacionRaw = (formData.get("tipoRelacion")?.toString() ?? "").trim();
+    const tipoRelacion = isTipoRelacionUnidadValue(tipoRelacionRaw) ? tipoRelacionRaw : TIPO_RELACION_UNIDAD.RESPONSABLE;
 
     const qs = new URLSearchParams();
     if (consorcioId) qs.set("consorcioId", consorcioId);
     if (desde) qs.set("desde", desde);
     if (hasta) qs.set("hasta", hasta);
+    if (tipoRelacion) qs.set("tipoRelacion", tipoRelacion);
     qs.set("confirmado", "1");
 
     if (!desde || !unidadId) {
@@ -120,6 +126,7 @@ export default async function AsociarPersonaUnidadPage({
       await createUnidadPersonaWithSequenceRecovery(prisma, {
         unidadId,
         personaId,
+        tipoRelacion,
         desde: nuevoDesde,
         hasta: nuevoHasta,
       });
@@ -149,6 +156,7 @@ export default async function AsociarPersonaUnidadPage({
           consorcioId: consorcioIdParam,
           desde: desdeParam,
           hasta: hastaParam,
+          tipoRelacion: tipoRelacionParam,
           confirmado,
         }}
         errorMessage={errorMessage}

@@ -1,4 +1,5 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
+import type { TipoRelacionUnidadValue } from "./unidad-relacion";
 
 export type DateRange = {
   desde: Date;
@@ -94,6 +95,7 @@ type UnidadPersonaCreateClient = PrismaClient | Prisma.TransactionClient;
 type UnidadPersonaCreateData = {
   unidadId: number;
   personaId: number;
+  tipoRelacion: TipoRelacionUnidadValue;
   desde: Date;
   hasta: Date | null;
 };
