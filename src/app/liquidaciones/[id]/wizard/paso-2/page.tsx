@@ -112,6 +112,13 @@ async function buildDeudasElegibles(params: {
       estado: { in: ["PENDIENTE", "PARCIAL"] },
       unidad: { consorcioId },
       liquidacionId: { not: liquidacionId },
+      deudasIncluidas: {
+        none: {
+          liquidacion: {
+            estado: { in: ["FINALIZADA", "CERRADA"] },
+          },
+        },
+      },
     },
     include: {
       liquidacion: {
