@@ -98,6 +98,18 @@ export default async function LiquidacionEmailsPage({
 
   const drafts = await buildLiquidacionClosureDrafts(liquidacion.id);
   const feedback = getFeedback(searchParams);
+  const defaultSubject = "{{consorcio}} - Liquidación {{periodo}} - {{responsables}}";
+  const defaultMessage = [
+    "La liquidación del período {{periodo}} ya fue cerrada y la boleta correspondiente se encuentra disponible.",
+    "",
+    "Responsables: {{responsables}}",
+    "Unidades: {{unidades}}",
+    "Vencimiento: {{vencimiento}}",
+    "Importe liquidado: {{importe}}",
+    "",
+    "Boleta: {{linkBoleta}}",
+    "Rendición: {{linkRendicion}}",
+  ].join("\n");
 
   async function reenviarSeleccionados(formData: FormData) {
     "use server";
@@ -122,8 +134,6 @@ export default async function LiquidacionEmailsPage({
           responsablesLabel: (formData.get(`responsablesLabel_${unidadId}`)?.toString() ?? "").trim(),
           responsableIdsCsv: (formData.get(`responsableIdsCsv_${unidadId}`)?.toString() ?? "").trim(),
           destinatario: (formData.get(`destinatario_${unidadId}`)?.toString() ?? "").trim(),
-          asunto: (formData.get(`asunto_${unidadId}`)?.toString() ?? "").trim(),
-          cuerpo: (formData.get(`cuerpo_${unidadId}`)?.toString() ?? "").trim(),
           importeLiquidado: Number(formData.get(`importeLiquidado_${unidadId}`) ?? 0),
           boletaArchivoId: /^\d+$/.test(boletaArchivoIdRaw) ? Number(boletaArchivoIdRaw) : null,
         };
@@ -136,6 +146,10 @@ export default async function LiquidacionEmailsPage({
     const summary = await sendLiquidacionClosureDrafts({
       liquidacionId: currentLiquidacionId,
       drafts: selectedDrafts,
+      template: {
+        asuntoBase: (formData.get("asuntoBase")?.toString() ?? "").trim(),
+        mensajeBase: (formData.get("mensajeBase")?.toString() ?? "").trim(),
+      },
     });
 
     redirect(
@@ -191,6 +205,8 @@ export default async function LiquidacionEmailsPage({
           action={reenviarSeleccionados}
           consorcioId={liquidacion.consorcioId}
           liquidacionId={liquidacion.id}
+          defaultSubject={defaultSubject}
+          defaultMessage={defaultMessage}
         />
       )}
     </main>

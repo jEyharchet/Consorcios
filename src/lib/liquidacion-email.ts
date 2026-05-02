@@ -119,10 +119,13 @@ type LiquidacionClosureDraftInput = {
   responsablesLabel: string;
   responsableIdsCsv: string;
   destinatario: string;
-  asunto: string;
-  cuerpo: string;
   importeLiquidado: number;
   boletaArchivoId: number | null;
+};
+
+type LiquidacionClosureTemplateInput = {
+  asuntoBase: string;
+  mensajeBase: string;
 };
 
 type ReminderEmailRenderParams = {
@@ -188,6 +191,13 @@ function formatDate(value: Date | null | undefined) {
     month: "2-digit",
     year: "numeric",
   }).format(value);
+}
+
+function renderLiquidacionTemplate(
+  template: string,
+  values: Record<string, string>,
+) {
+  return template.replaceAll(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, key: string) => values[key] ?? "");
 }
 
 function normalizeEmail(email: string | null | undefined) {
@@ -1351,6 +1361,7 @@ export async function buildLiquidacionClosureDrafts(liquidacionId: number): Prom
 export async function sendLiquidacionClosureDrafts(params: {
   liquidacionId: number;
   drafts: LiquidacionClosureDraftInput[];
+  template: LiquidacionClosureTemplateInput;
 }) {
   const liquidacion = await getLiquidacionEmailContext(params.liquidacionId, false);
 
@@ -1392,6 +1403,18 @@ export async function sendLiquidacionClosureDrafts(params: {
       boletaUrl,
       rendicionUrl,
     };
+    const templateValues = {
+      consorcio: liquidacion.consorcio.nombre,
+      periodo: liquidacion.periodo,
+      vencimiento: formatDate(liquidacion.fechaVencimiento),
+      responsables: draft.responsablesLabel,
+      unidades: draft.unidadLabel,
+      importe: formatCurrency(draft.importeLiquidado),
+      linkBoleta: boletaUrl ?? "",
+      linkRendicion: rendicionUrl ?? "",
+    };
+    const renderedSubject = renderLiquidacionTemplate(params.template.asuntoBase, templateValues).trim();
+    const renderedMessage = renderLiquidacionTemplate(params.template.mensajeBase, templateValues).trim();
     const rendered = buildTemplate({
       tipoEnvio: EMAIL_TIPO_ENVIO.LIQUIDACION_CIERRE,
       consorcioNombre: liquidacion.consorcio.nombre,
@@ -1401,7 +1424,7 @@ export async function sendLiquidacionClosureDrafts(params: {
       responsablesLabel: draft.responsablesLabel,
       fechaVencimiento: liquidacion.fechaVencimiento,
       monto: draft.importeLiquidado,
-      mensajeEditable: draft.cuerpo,
+      mensajeEditable: renderedMessage,
       boletaUrl,
       rendicionUrl,
       cuentaPago,
@@ -1418,8 +1441,8 @@ export async function sendLiquidacionClosureDrafts(params: {
           unidadId: draft.unidadId,
           ...envioMetadata,
           destinatario: null,
-          asunto: draft.asunto,
-          cuerpo: draft.cuerpo,
+          asunto: renderedSubject,
+          cuerpo: renderedMessage,
           estado: EMAIL_ESTADO.SIN_DESTINATARIO,
           errorMensaje: "No se encontro un email valido para el destinatario seleccionado.",
           replyKey,
@@ -1438,8 +1461,8 @@ export async function sendLiquidacionClosureDrafts(params: {
         unidadId: draft.unidadId,
         ...envioMetadata,
         destinatario: destinatarios.join(", "),
-        asunto: draft.asunto,
-        cuerpo: draft.cuerpo,
+        asunto: renderedSubject,
+        cuerpo: renderedMessage,
         estado: EMAIL_ESTADO.PENDIENTE,
         replyKey,
       },
@@ -1449,7 +1472,7 @@ export async function sendLiquidacionClosureDrafts(params: {
     try {
       const response = await sendEmail({
         to: destinatarios,
-        subject: draft.asunto,
+        subject: renderedSubject,
         html: rendered.html,
         text: rendered.text,
         replyTo: buildReplyToAddress(envio.replyKey) ?? undefined,
