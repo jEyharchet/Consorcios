@@ -607,21 +607,29 @@ model LiquidacionRegeneracionJob {
 }
 
 model EnvioEmail {
-  id                Int       @id @default(autoincrement())
-  consorcioId       Int
-  tipoEnvio         String
-  liquidacionId     Int?
-  asambleaId        Int?
-  unidadId          Int?
-  destinatario      String?
-  asunto            String
-  cuerpo            String?
-  estado            String
-  errorMensaje      String?
-  providerMessageId String?
-  replyKey          String?   @unique
-  enviadoAt         DateTime?
-  createdAt         DateTime  @default(now())
+  id                 Int       @id @default(autoincrement())
+  consorcioId        Int
+  tipoEnvio          String
+  liquidacionId      Int?
+  asambleaId         Int?
+  unidadId           Int?
+  grupoEnvioKey      String?
+  intento            Int       @default(1)
+  destinatarioNombre String?
+  destinatario       String?
+  unidadIdsCsv       String?
+  unidadesIncluidas  String?
+  responsableIdsCsv  String?
+  asunto             String
+  cuerpo             String?
+  boletaUrl          String?
+  rendicionUrl       String?
+  estado             String
+  errorMensaje       String?
+  providerMessageId  String?
+  replyKey           String?   @unique
+  enviadoAt          DateTime?
+  createdAt          DateTime  @default(now())
 
   consorcio                Consorcio                @relation(fields: [consorcioId], references: [id], onDelete: Cascade)
   liquidacion              Liquidacion?             @relation(fields: [liquidacionId], references: [id], onDelete: Cascade)
@@ -638,6 +646,7 @@ model EnvioEmail {
   @@index([consorcioId, tipoEnvio, createdAt])
   @@index([tipoEnvio, createdAt])
   @@index([estado, createdAt])
+  @@index([liquidacionId, tipoEnvio, grupoEnvioKey, createdAt])
 }
 
 model RespuestaEmail {

@@ -311,6 +311,24 @@ export default async function LiquidacionDetallePage({
     },
     orderBy: [{ fecha: "desc" }, { id: "desc" }],
   });
+  const enviosLiquidacion = await prisma.envioEmail.findMany({
+    where: {
+      liquidacionId: liquidacion.id,
+      tipoEnvio: {
+        in: ["LIQUIDACION_CIERRE", "RECORDATORIO_VENCIMIENTO"],
+      },
+    },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    take: 50,
+    include: {
+      unidad: {
+        select: {
+          identificador: true,
+          tipo: true,
+        },
+      },
+    },
+  });
 
   const summaryMessage =
     searchParams?.ok === "emails_liquidacion"
@@ -526,6 +544,87 @@ export default async function LiquidacionDetallePage({
         archivos={liquidacion.archivos}
         canRegenerate={canOperate && (liquidacion.estado === "FINALIZADA" || liquidacion.estado === "CERRADA")}
       />
+
+      <section className="mt-8 rounded-xl border border-slate-200 bg-white p-6">
+        <h2 className="text-xl font-semibold">Trazabilidad de emails</h2>
+        <p className="mt-1 text-sm text-slate-500">
+          Registra los envios de boletas, rendicion y recordatorios asociados a esta liquidacion.
+        </p>
+
+        <div className="mt-4 overflow-x-auto">
+          <table className="min-w-full divide-y divide-slate-200 text-sm">
+            <thead className="bg-slate-50 text-left text-slate-600">
+              <tr>
+                <th className="px-3 py-2 font-medium">Fecha</th>
+                <th className="px-3 py-2 font-medium">Tipo</th>
+                <th className="px-3 py-2 font-medium">Responsables</th>
+                <th className="px-3 py-2 font-medium">Unidades</th>
+                <th className="px-3 py-2 font-medium">Destinatario</th>
+                <th className="px-3 py-2 font-medium">Documentos</th>
+                <th className="px-3 py-2 font-medium">Estado</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {enviosLiquidacion.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="px-3 py-4 text-slate-500">
+                    Todavia no hay envios trazados para esta liquidacion.
+                  </td>
+                </tr>
+              ) : (
+                enviosLiquidacion.map((envio) => (
+                  <tr key={envio.id}>
+                    <td className="px-3 py-3 text-slate-700">
+                      {(envio.enviadoAt ?? envio.createdAt).toLocaleString("es-AR")}
+                      {envio.intento > 1 ? <span className="ml-2 text-xs text-slate-500">Intento {envio.intento}</span> : null}
+                    </td>
+                    <td className="px-3 py-3 text-slate-700">{envio.tipoEnvio}</td>
+                    <td className="px-3 py-3 text-slate-700">{envio.destinatarioNombre ?? "-"}</td>
+                    <td className="px-3 py-3 text-slate-700">
+                      {envio.unidadesIncluidas ??
+                        (envio.unidad ? `${envio.unidad.identificador} (${envio.unidad.tipo})` : "-")}
+                    </td>
+                    <td className="px-3 py-3 text-slate-700">{envio.destinatario ?? "Sin destinatario"}</td>
+                    <td className="px-3 py-3 text-slate-700">
+                      <div className="flex flex-col gap-1">
+                        {envio.boletaUrl ? (
+                          <Link href={envio.boletaUrl} className="text-blue-600 hover:underline">
+                            Ver boleta
+                          </Link>
+                        ) : null}
+                        {envio.rendicionUrl ? (
+                          <Link href={envio.rendicionUrl} className="text-blue-600 hover:underline">
+                            Ver rendicion
+                          </Link>
+                        ) : null}
+                        {!envio.boletaUrl && !envio.rendicionUrl ? <span>-</span> : null}
+                      </div>
+                    </td>
+                    <td className="px-3 py-3">
+                      <div className="flex flex-col gap-1">
+                        <span
+                          className={`inline-flex w-fit rounded-full px-2 py-1 text-xs font-medium ${
+                            envio.estado === "ENVIADO"
+                              ? "bg-emerald-100 text-emerald-800"
+                              : envio.estado === "ERROR"
+                                ? "bg-red-100 text-red-700"
+                                : envio.estado === "SIN_DESTINATARIO"
+                                  ? "bg-amber-100 text-amber-800"
+                                  : "bg-slate-100 text-slate-700"
+                          }`}
+                        >
+                          {envio.estado}
+                        </span>
+                        {envio.errorMensaje ? <span className="max-w-xs text-xs text-red-600">{envio.errorMensaje}</span> : null}
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
     </main>
   );
 }

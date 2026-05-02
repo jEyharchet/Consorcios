@@ -46,9 +46,11 @@ type CuentaPago = {
 
 export type ReminderDraft = {
   unidadId: number;
+  unidadIdsCsv: string;
   unidadLabel: string;
   unidadCount: number;
   responsablesLabel: string;
+  responsableIdsCsv: string;
   destinatario: string;
   asunto: string;
   cuerpo: string;
@@ -60,9 +62,11 @@ export type ReminderDraft = {
 
 type ReminderDraftInput = {
   unidadId: number;
+  unidadIdsCsv: string;
   unidadCount: number;
   unidadLabel: string;
   responsablesLabel: string;
+  responsableIdsCsv: string;
   destinatario: string;
   asunto: string;
   cuerpo: string;
@@ -107,8 +111,10 @@ type LiquidacionEmailArchivo = {
 type LiquidacionEmailGroup = {
   key: string;
   primaryUnidadId: number;
+  unidadIds: number[];
   unidadCount: number;
   unidadesLabel: string;
+  responsableIds: number[];
   responsablesLabel: string;
   destinatarios: string[];
   montoTotal: number;
@@ -244,7 +250,9 @@ function buildLiquidacionEmailGroups(params: {
     {
       key: string;
       primaryUnidadId: number;
+      unidadIds: number[];
       unidades: string[];
+      responsableIds: number[];
       responsablesLabel: string;
       destinatarios: string[];
       montoTotal: number;
@@ -262,10 +270,19 @@ function buildLiquidacionEmailGroups(params: {
     const current = groups.get(key);
 
     if (current) {
+      if (!current.unidadIds.includes(expensa.unidadId)) {
+        current.unidadIds.push(expensa.unidadId);
+      }
       if (!current.unidades.includes(unidadLabel)) {
         current.unidades.push(unidadLabel);
       }
 
+      current.responsableIds = Array.from(
+        new Set([
+          ...current.responsableIds,
+          ...expensa.unidad.personas.map((relacion) => relacion.persona.id).filter((value) => value > 0),
+        ]),
+      ).sort((a, b) => a - b);
       current.destinatarios = Array.from(new Set([...current.destinatarios, ...destinatarios.emails]));
       current.montoTotal += expensa.monto;
       current.saldoTotal += expensa.saldo;
@@ -275,7 +292,9 @@ function buildLiquidacionEmailGroups(params: {
     groups.set(key, {
       key,
       primaryUnidadId: expensa.unidadId,
+      unidadIds: [expensa.unidadId],
       unidades: [unidadLabel],
+      responsableIds: expensa.unidad.personas.map((relacion) => relacion.persona.id).filter((value) => value > 0),
       responsablesLabel: destinatarios.responsablesLabel,
       destinatarios: destinatarios.emails,
       montoTotal: expensa.monto,
@@ -287,8 +306,10 @@ function buildLiquidacionEmailGroups(params: {
     .map((group) => ({
       key: group.key,
       primaryUnidadId: group.primaryUnidadId,
+      unidadIds: group.unidadIds,
       unidadCount: group.unidades.length,
       unidadesLabel: group.unidades.join(" · "),
+      responsableIds: group.responsableIds,
       responsablesLabel: group.responsablesLabel,
       destinatarios: group.destinatarios,
       montoTotal: group.montoTotal,
@@ -299,6 +320,33 @@ function buildLiquidacionEmailGroups(params: {
         ) ?? null,
     }))
     .sort((a, b) => a.responsablesLabel.localeCompare(b.responsablesLabel, "es"));
+}
+
+async function buildLiquidacionEnvioMetadata(params: {
+  liquidacionId: number;
+  tipoEnvio: TipoEnvioEmail;
+  group: LiquidacionEmailGroup;
+  boletaUrl: string | null;
+  rendicionUrl: string | null;
+}) {
+  const previousAttempts = await prisma.envioEmail.count({
+    where: {
+      liquidacionId: params.liquidacionId,
+      tipoEnvio: params.tipoEnvio,
+      grupoEnvioKey: params.group.key,
+    },
+  });
+
+  return {
+    grupoEnvioKey: params.group.key,
+    intento: previousAttempts + 1,
+    destinatarioNombre: params.group.responsablesLabel,
+    unidadIdsCsv: params.group.unidadIds.join(","),
+    unidadesIncluidas: params.group.unidadesLabel,
+    responsableIdsCsv: params.group.responsableIds.join(","),
+    boletaUrl: params.boletaUrl,
+    rendicionUrl: params.rendicionUrl,
+  };
 }
 
 function parseCuentaSnapshot(snapshot: string | null | undefined): CuentaPago | null {
@@ -760,6 +808,7 @@ async function procesarEnviosLiquidacion(params: {
 
   for (const group of groups) {
     const monto = params.tipoEnvio === EMAIL_TIPO_ENVIO.RECORDATORIO_VENCIMIENTO ? group.saldoTotal : group.montoTotal;
+    const boletaUrl = getArchivoUrl(group.boletaArchivo?.rutaArchivo);
     const template = buildTemplate({
       tipoEnvio: params.tipoEnvio,
       consorcioNombre: liquidacion.consorcio.nombre,
@@ -769,9 +818,16 @@ async function procesarEnviosLiquidacion(params: {
       responsablesLabel: group.responsablesLabel,
       fechaVencimiento: liquidacion.fechaVencimiento,
       monto,
-      boletaUrl: getArchivoUrl(group.boletaArchivo?.rutaArchivo),
+      boletaUrl,
       rendicionUrl,
       cuentaPago,
+    });
+    const envioMetadata = await buildLiquidacionEnvioMetadata({
+      liquidacionId: liquidacion.id,
+      tipoEnvio: params.tipoEnvio,
+      group,
+      boletaUrl,
+      rendicionUrl,
     });
 
     if (group.destinatarios.length === 0) {
@@ -783,6 +839,7 @@ async function procesarEnviosLiquidacion(params: {
           tipoEnvio: params.tipoEnvio,
           liquidacionId: liquidacion.id,
           unidadId: group.primaryUnidadId,
+          ...envioMetadata,
           destinatario: null,
           asunto: template.subject,
           cuerpo: template.body,
@@ -802,6 +859,7 @@ async function procesarEnviosLiquidacion(params: {
         tipoEnvio: params.tipoEnvio,
         liquidacionId: liquidacion.id,
         unidadId: group.primaryUnidadId,
+        ...envioMetadata,
         destinatario: group.destinatarios.join(", "),
         asunto: template.subject,
         cuerpo: template.body,
@@ -887,9 +945,11 @@ export async function buildReminderDrafts(liquidacionId: number): Promise<Remind
 
     return {
       unidadId: group.primaryUnidadId,
+      unidadIdsCsv: group.unidadIds.join(","),
       unidadLabel: group.unidadesLabel,
       unidadCount: group.unidadCount,
       responsablesLabel: group.responsablesLabel,
+      responsableIdsCsv: group.responsableIds.join(","),
       destinatario: group.destinatarios.join(", "),
       asunto: reminderEmail.subject,
       cuerpo: buildReminderEditableContent({
@@ -959,6 +1019,29 @@ export async function sendReminderDrafts(params: {
 
   for (const draft of params.drafts) {
     const destinatarios = parseDestinatariosInput(draft.destinatario);
+    const boletaArchivo =
+      draft.boletaArchivoId !== null
+        ? liquidacion.archivos.find((archivo) => archivo.id === draft.boletaArchivoId) ?? null
+        : null;
+    const boletaUrl = getArchivoUrl(boletaArchivo?.rutaArchivo);
+    const grupoEnvioKey = `${draft.unidadId}:${draft.unidadLabel}`;
+    const envioMetadata = {
+      grupoEnvioKey,
+      intento:
+        (await prisma.envioEmail.count({
+          where: {
+            liquidacionId: liquidacion.id,
+            tipoEnvio: EMAIL_TIPO_ENVIO.RECORDATORIO_VENCIMIENTO,
+            grupoEnvioKey,
+          },
+        })) + 1,
+      destinatarioNombre: draft.responsablesLabel,
+      unidadIdsCsv: draft.unidadIdsCsv,
+      unidadesIncluidas: draft.unidadLabel,
+      responsableIdsCsv: draft.responsableIdsCsv || null,
+      boletaUrl,
+      rendicionUrl: null,
+    };
 
     if (destinatarios.length === 0) {
       const replyKey = createEmailReplyKey();
@@ -969,6 +1052,7 @@ export async function sendReminderDrafts(params: {
           tipoEnvio: EMAIL_TIPO_ENVIO.RECORDATORIO_VENCIMIENTO,
           liquidacionId: liquidacion.id,
           unidadId: draft.unidadId,
+          ...envioMetadata,
           destinatario: null,
           asunto: draft.asunto,
           cuerpo: draft.cuerpo,
@@ -981,10 +1065,6 @@ export async function sendReminderDrafts(params: {
       continue;
     }
 
-    const boletaArchivo =
-      draft.boletaArchivoId !== null
-        ? liquidacion.archivos.find((archivo) => archivo.id === draft.boletaArchivoId) ?? null
-        : null;
     const rendered = renderReminderEmail({
       subject: draft.asunto,
       consorcioNombre: liquidacion.consorcio.nombre,
@@ -1005,6 +1085,7 @@ export async function sendReminderDrafts(params: {
         tipoEnvio: EMAIL_TIPO_ENVIO.RECORDATORIO_VENCIMIENTO,
         liquidacionId: liquidacion.id,
         unidadId: draft.unidadId,
+        ...envioMetadata,
         destinatario: destinatarios.join(", "),
         asunto: draft.asunto,
         cuerpo: draft.cuerpo,
