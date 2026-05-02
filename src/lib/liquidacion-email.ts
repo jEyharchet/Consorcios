@@ -47,6 +47,7 @@ type CuentaPago = {
 export type ReminderDraft = {
   unidadId: number;
   unidadLabel: string;
+  unidadCount: number;
   responsablesLabel: string;
   destinatario: string;
   asunto: string;
@@ -59,9 +60,13 @@ export type ReminderDraft = {
 
 type ReminderDraftInput = {
   unidadId: number;
+  unidadCount: number;
+  unidadLabel: string;
+  responsablesLabel: string;
   destinatario: string;
   asunto: string;
   cuerpo: string;
+  saldoPendiente: number;
   boletaArchivoId: number | null;
 };
 
@@ -70,11 +75,45 @@ type ReminderEmailRenderParams = {
   consorcioNombre: string;
   periodo: string;
   unidadLabel: string;
+  unidadCount: number;
   responsablesLabel: string;
   fechaVencimiento: Date | null;
   montoPendiente: number;
   mensajeEditable: string;
   cuentaPago: CuentaPago | null;
+};
+
+type LiquidacionEmailExpensa = {
+  id: number;
+  monto: number;
+  saldo: number;
+  unidadId: number;
+  unidad: {
+    identificador: string;
+    tipo: string;
+    personas: ResponsableRelacion[];
+  };
+};
+
+type LiquidacionEmailArchivo = {
+  id: number;
+  tipoArchivo: string;
+  nombreArchivo: string;
+  rutaArchivo: string;
+  mimeType: string;
+  responsableGroupKey: string | null;
+};
+
+type LiquidacionEmailGroup = {
+  key: string;
+  primaryUnidadId: number;
+  unidadCount: number;
+  unidadesLabel: string;
+  responsablesLabel: string;
+  destinatarios: string[];
+  montoTotal: number;
+  saldoTotal: number;
+  boletaArchivo: LiquidacionEmailArchivo | null;
 };
 
 function formatCurrency(value: number) {
@@ -125,6 +164,10 @@ function formatPeriodoLabel(periodo: string) {
     month: "long",
     year: "numeric",
   }).format(new Date(Number(year), Number(month) - 1, 1));
+}
+
+function buildUnidadLabel(unidad: { identificador: string; tipo: string }) {
+  return `${unidad.identificador} (${unidad.tipo})`;
 }
 
 function resolveBaseResponsables(relaciones: ResponsableRelacion[], tipos: string[]) {
@@ -189,6 +232,73 @@ function resolveDestinatariosGenerales(relaciones: ResponsableRelacion[]) {
 
 function resolveDestinatariosBoleta(relaciones: ResponsableRelacion[]) {
   return resolveDestinatarios(relaciones, getTiposRelacionParaBoletaPago());
+}
+
+function buildLiquidacionEmailGroups(params: {
+  expensas: LiquidacionEmailExpensa[];
+  archivos: LiquidacionEmailArchivo[];
+  tipoEnvio: TipoEnvioEmail;
+}): LiquidacionEmailGroup[] {
+  const groups = new Map<
+    string,
+    {
+      key: string;
+      primaryUnidadId: number;
+      unidades: string[];
+      responsablesLabel: string;
+      destinatarios: string[];
+      montoTotal: number;
+      saldoTotal: number;
+    }
+  >();
+
+  for (const expensa of params.expensas) {
+    const key = buildResponsableGroupKey(expensa.unidad.personas);
+    const destinatarios =
+      params.tipoEnvio === EMAIL_TIPO_ENVIO.RECORDATORIO_VENCIMIENTO
+        ? resolveDestinatariosBoleta(expensa.unidad.personas)
+        : resolveDestinatariosGenerales(expensa.unidad.personas);
+    const unidadLabel = buildUnidadLabel(expensa.unidad);
+    const current = groups.get(key);
+
+    if (current) {
+      if (!current.unidades.includes(unidadLabel)) {
+        current.unidades.push(unidadLabel);
+      }
+
+      current.destinatarios = Array.from(new Set([...current.destinatarios, ...destinatarios.emails]));
+      current.montoTotal += expensa.monto;
+      current.saldoTotal += expensa.saldo;
+      continue;
+    }
+
+    groups.set(key, {
+      key,
+      primaryUnidadId: expensa.unidadId,
+      unidades: [unidadLabel],
+      responsablesLabel: destinatarios.responsablesLabel,
+      destinatarios: destinatarios.emails,
+      montoTotal: expensa.monto,
+      saldoTotal: expensa.saldo,
+    });
+  }
+
+  return Array.from(groups.values())
+    .map((group) => ({
+      key: group.key,
+      primaryUnidadId: group.primaryUnidadId,
+      unidadCount: group.unidades.length,
+      unidadesLabel: group.unidades.join(" · "),
+      responsablesLabel: group.responsablesLabel,
+      destinatarios: group.destinatarios,
+      montoTotal: group.montoTotal,
+      saldoTotal: group.saldoTotal,
+      boletaArchivo:
+        params.archivos.find(
+          (archivo) => archivo.tipoArchivo === "BOLETA_RESPONSABLE" && archivo.responsableGroupKey === group.key,
+        ) ?? null,
+    }))
+    .sort((a, b) => a.responsablesLabel.localeCompare(b.responsablesLabel, "es"));
 }
 
 function parseCuentaSnapshot(snapshot: string | null | undefined): CuentaPago | null {
@@ -323,19 +433,23 @@ function buildMessageHtml(mensajeEditable: string) {
 
 function buildReminderEditableContent(params: {
   unidadLabel: string;
+  unidadCount: number;
   periodo: string;
 }) {
   const periodoLabel = formatPeriodoLabel(params.periodo);
+  const unidadPrefix = params.unidadCount === 1 ? "la unidad" : "las unidades";
+  const verbo = params.unidadCount === 1 ? "registra" : "registran";
 
-  return `Te recordamos que la unidad ${params.unidadLabel} registra un saldo pendiente correspondiente a la liquidación del período ${periodoLabel}.`;
+  return `Te recordamos que ${unidadPrefix} ${params.unidadLabel} ${verbo} un saldo pendiente correspondiente a la liquidación del período ${periodoLabel}.`;
 }
 
 export function renderReminderEmail(params: ReminderEmailRenderParams) {
   const periodoLabel = formatPeriodoLabel(params.periodo);
   const montoLabel = formatCurrency(params.montoPendiente);
   const logoUrl = getBrandingLogoUrl();
+  const unidadTitle = params.unidadCount === 1 ? "Unidad" : "Unidades";
   const subject =
-    params.subject ?? `${params.consorcioNombre} - Recordatorio de vencimiento ${params.periodo} - ${params.unidadLabel}`;
+    params.subject ?? `${params.consorcioNombre} - Recordatorio de vencimiento ${params.periodo} - ${params.responsablesLabel}`;
   const text = [
     "Recordatorio de vencimiento de expensas",
     "",
@@ -343,7 +457,7 @@ export function renderReminderEmail(params: ReminderEmailRenderParams) {
     "",
     `Consorcio: ${params.consorcioNombre}`,
     `Periodo: ${params.periodo}`,
-    `Unidad: ${params.unidadLabel}`,
+    `${unidadTitle}: ${params.unidadLabel}`,
     `Responsable: ${params.responsablesLabel}`,
     `Fecha de vencimiento: ${formatDate(params.fechaVencimiento)}`,
     `Monto pendiente: ${montoLabel}`,
@@ -392,7 +506,7 @@ export function renderReminderEmail(params: ReminderEmailRenderParams) {
                 <td style="padding:0 0 10px;font-size:14px;font-weight:600;color:#0f172a">${escapeHtml(params.periodo)} (${escapeHtml(periodoLabel)})</td>
               </tr>
               <tr>
-                <td style="padding:0 12px 10px 0;font-size:13px;color:#64748b">Unidad</td>
+                <td style="padding:0 12px 10px 0;font-size:13px;color:#64748b">${escapeHtml(unidadTitle)}</td>
                 <td style="padding:0 0 10px;font-size:14px;font-weight:600;color:#0f172a">${escapeHtml(params.unidadLabel)}</td>
               </tr>
               <tr>
@@ -456,6 +570,7 @@ function buildTemplate(params: {
   consorcioNombre: string;
   periodo: string;
   unidadLabel: string;
+  unidadCount: number;
   responsablesLabel: string;
   fechaVencimiento: Date | null;
   monto: number;
@@ -465,15 +580,17 @@ function buildTemplate(params: {
 }) {
   const periodoLabel = formatPeriodoLabel(params.periodo);
   const montoLabel = formatCurrency(params.monto);
+  const unidadTitle = params.unidadCount === 1 ? "Unidad" : "Unidades";
+  const subjectScope = params.responsablesLabel !== "Sin responsable" ? params.responsablesLabel : params.unidadLabel;
   const subject =
     params.tipoEnvio === EMAIL_TIPO_ENVIO.LIQUIDACION_CIERRE
-      ? `${params.consorcioNombre} - Liquidacion ${params.periodo} - ${params.unidadLabel}`
-      : `${params.consorcioNombre} - Recordatorio de vencimiento ${params.periodo} - ${params.unidadLabel}`;
+      ? `${params.consorcioNombre} - Liquidacion ${params.periodo} - ${subjectScope}`
+      : `${params.consorcioNombre} - Recordatorio de vencimiento ${params.periodo} - ${subjectScope}`;
 
   const intro =
     params.tipoEnvio === EMAIL_TIPO_ENVIO.LIQUIDACION_CIERRE
       ? `La liquidación del período ${periodoLabel} ya fue cerrada y la boleta correspondiente se encuentra disponible.`
-      : `Te recordamos que la unidad ${params.unidadLabel} mantiene un saldo pendiente para la liquidación del período ${periodoLabel}.`;
+      : `Te recordamos que ${params.unidadCount === 1 ? "la unidad" : "las unidades"} ${params.unidadLabel} ${params.unidadCount === 1 ? "mantiene" : "mantienen"} un saldo pendiente para la liquidación del período ${periodoLabel}.`;
 
   const amountLine =
     params.tipoEnvio === EMAIL_TIPO_ENVIO.LIQUIDACION_CIERRE
@@ -489,7 +606,7 @@ function buildTemplate(params: {
     "",
     `Consorcio: ${params.consorcioNombre}`,
     `Periodo: ${params.periodo}`,
-    `Unidad: ${params.unidadLabel}`,
+    `${unidadTitle}: ${params.unidadLabel}`,
     `Responsable: ${params.responsablesLabel}`,
     `Vencimiento: ${formatDate(params.fechaVencimiento)}`,
     amountLine,
@@ -515,7 +632,7 @@ function buildTemplate(params: {
         <div style="border:1px solid #e2e8f0;border-radius:10px;padding:16px;background:#f8fafc">
           <p style="margin:0 0 8px"><strong>Consorcio:</strong> ${escapeHtml(params.consorcioNombre)}</p>
           <p style="margin:0 0 8px"><strong>Periodo:</strong> ${escapeHtml(params.periodo)}</p>
-          <p style="margin:0 0 8px"><strong>Unidad:</strong> ${escapeHtml(params.unidadLabel)}</p>
+          <p style="margin:0 0 8px"><strong>${escapeHtml(unidadTitle)}:</strong> ${escapeHtml(params.unidadLabel)}</p>
           <p style="margin:0 0 8px"><strong>Responsable:</strong> ${escapeHtml(params.responsablesLabel)}</p>
           <p style="margin:0 0 8px"><strong>Vencimiento:</strong> ${escapeHtml(formatDate(params.fechaVencimiento))}</p>
           <p style="margin:0"><strong>${escapeHtml(amountLine)}</strong></p>
@@ -633,36 +750,31 @@ async function procesarEnviosLiquidacion(params: {
 
   const rendicionArchivo = liquidacion.archivos.find((archivo) => archivo.tipoArchivo === "RENDICION") ?? null;
   const rendicionUrl = getArchivoUrl(rendicionArchivo?.rutaArchivo);
+  const groups = buildLiquidacionEmailGroups({
+    expensas: liquidacion.expensas,
+    archivos: liquidacion.archivos,
+    tipoEnvio: params.tipoEnvio,
+  });
 
   const results: Array<{ estado: string }> = [];
 
-  for (const expensa of liquidacion.expensas) {
-    const destinatarios =
-      params.tipoEnvio === EMAIL_TIPO_ENVIO.RECORDATORIO_VENCIMIENTO
-        ? resolveDestinatariosBoleta(expensa.unidad.personas)
-        : resolveDestinatariosGenerales(expensa.unidad.personas);
-    const boletaArchivo =
-      liquidacion.archivos.find(
-        (archivo) =>
-          archivo.tipoArchivo === "BOLETA_RESPONSABLE" &&
-          archivo.responsableGroupKey === buildResponsableGroupKey(expensa.unidad.personas),
-      ) ?? null;
-
-    const monto = params.tipoEnvio === EMAIL_TIPO_ENVIO.RECORDATORIO_VENCIMIENTO ? expensa.saldo : expensa.monto;
+  for (const group of groups) {
+    const monto = params.tipoEnvio === EMAIL_TIPO_ENVIO.RECORDATORIO_VENCIMIENTO ? group.saldoTotal : group.montoTotal;
     const template = buildTemplate({
       tipoEnvio: params.tipoEnvio,
       consorcioNombre: liquidacion.consorcio.nombre,
       periodo: liquidacion.periodo,
-      unidadLabel: `${expensa.unidad.identificador} (${expensa.unidad.tipo})`,
-      responsablesLabel: destinatarios.responsablesLabel,
+      unidadLabel: group.unidadesLabel,
+      unidadCount: group.unidadCount,
+      responsablesLabel: group.responsablesLabel,
       fechaVencimiento: liquidacion.fechaVencimiento,
       monto,
-      boletaUrl: getArchivoUrl(boletaArchivo?.rutaArchivo),
+      boletaUrl: getArchivoUrl(group.boletaArchivo?.rutaArchivo),
       rendicionUrl,
       cuentaPago,
     });
 
-    if (destinatarios.emails.length === 0) {
+    if (group.destinatarios.length === 0) {
       const replyKey = createEmailReplyKey();
 
       await prisma.envioEmail.create({
@@ -670,12 +782,12 @@ async function procesarEnviosLiquidacion(params: {
           consorcioId: liquidacion.consorcioId,
           tipoEnvio: params.tipoEnvio,
           liquidacionId: liquidacion.id,
-          unidadId: expensa.unidadId,
+          unidadId: group.primaryUnidadId,
           destinatario: null,
           asunto: template.subject,
           cuerpo: template.body,
           estado: EMAIL_ESTADO.SIN_DESTINATARIO,
-          errorMensaje: "No se encontro un email valido para el responsable vigente de la unidad.",
+          errorMensaje: "No se encontro un email valido para el grupo responsable de la boleta.",
           replyKey,
         },
       });
@@ -689,8 +801,8 @@ async function procesarEnviosLiquidacion(params: {
         consorcioId: liquidacion.consorcioId,
         tipoEnvio: params.tipoEnvio,
         liquidacionId: liquidacion.id,
-        unidadId: expensa.unidadId,
-        destinatario: destinatarios.emails.join(", "),
+        unidadId: group.primaryUnidadId,
+        destinatario: group.destinatarios.join(", "),
         asunto: template.subject,
         cuerpo: template.body,
         estado: EMAIL_ESTADO.PENDIENTE,
@@ -701,12 +813,12 @@ async function procesarEnviosLiquidacion(params: {
 
     try {
       const response = await sendEmail({
-        to: destinatarios.emails,
+        to: group.destinatarios,
         subject: template.subject,
         html: template.html,
         text: template.text,
         replyTo: buildReplyToAddress(envio.replyKey) ?? undefined,
-        attachments: await resolveAttachment(boletaArchivo),
+        attachments: await resolveAttachment(group.boletaArchivo),
       });
 
       await prisma.envioEmail.update({
@@ -750,44 +862,45 @@ export async function buildReminderDrafts(liquidacionId: number): Promise<Remind
     liquidacion.consorcio.cuentasBancarias.find((cuenta) => cuenta.esCuentaExpensas) ??
     liquidacion.consorcio.cuentasBancarias[0] ??
     null;
+  const groups = buildLiquidacionEmailGroups({
+    expensas: liquidacion.expensas,
+    archivos: liquidacion.archivos,
+    tipoEnvio: EMAIL_TIPO_ENVIO.RECORDATORIO_VENCIMIENTO,
+  });
 
-  return liquidacion.expensas.map((expensa) => {
-    const destinatarios = resolveDestinatariosBoleta(expensa.unidad.personas);
-    const boletaArchivo =
-      liquidacion.archivos.find(
-        (archivo) =>
-          archivo.tipoArchivo === "BOLETA_RESPONSABLE" &&
-          archivo.responsableGroupKey === buildResponsableGroupKey(expensa.unidad.personas),
-      ) ?? null;
-
+  return groups.map((group) => {
     const reminderEmail = renderReminderEmail({
       consorcioNombre: liquidacion.consorcio.nombre,
       periodo: liquidacion.periodo,
-      unidadLabel: `${expensa.unidad.identificador} (${expensa.unidad.tipo})`,
-      responsablesLabel: destinatarios.responsablesLabel,
+      unidadLabel: group.unidadesLabel,
+      unidadCount: group.unidadCount,
+      responsablesLabel: group.responsablesLabel,
       fechaVencimiento: liquidacion.fechaVencimiento,
-      montoPendiente: expensa.saldo,
+      montoPendiente: group.saldoTotal,
       mensajeEditable: buildReminderEditableContent({
-        unidadLabel: `${expensa.unidad.identificador} (${expensa.unidad.tipo})`,
+        unidadLabel: group.unidadesLabel,
+        unidadCount: group.unidadCount,
         periodo: liquidacion.periodo,
       }),
       cuentaPago,
     });
 
     return {
-      unidadId: expensa.unidadId,
-      unidadLabel: `${expensa.unidad.identificador} (${expensa.unidad.tipo})`,
-      responsablesLabel: destinatarios.responsablesLabel,
-      destinatario: destinatarios.emails.join(", "),
+      unidadId: group.primaryUnidadId,
+      unidadLabel: group.unidadesLabel,
+      unidadCount: group.unidadCount,
+      responsablesLabel: group.responsablesLabel,
+      destinatario: group.destinatarios.join(", "),
       asunto: reminderEmail.subject,
       cuerpo: buildReminderEditableContent({
-        unidadLabel: `${expensa.unidad.identificador} (${expensa.unidad.tipo})`,
+        unidadLabel: group.unidadesLabel,
+        unidadCount: group.unidadCount,
         periodo: liquidacion.periodo,
       }),
-      saldoPendiente: expensa.saldo,
-      boletaArchivoId: boletaArchivo?.id ?? null,
-      boletaNombre: boletaArchivo?.nombreArchivo ?? null,
-      tieneBoletaAdjunta: Boolean(boletaArchivo),
+      saldoPendiente: group.saldoTotal,
+      boletaArchivoId: group.boletaArchivo?.id ?? null,
+      boletaNombre: group.boletaArchivo?.nombreArchivo ?? null,
+      tieneBoletaAdjunta: Boolean(group.boletaArchivo),
     };
   });
 }
@@ -842,41 +955,6 @@ export async function sendReminderDrafts(params: {
     liquidacion.consorcio.cuentasBancarias.find((cuenta) => cuenta.esCuentaExpensas) ??
     liquidacion.consorcio.cuentasBancarias[0] ??
     null;
-
-  const expensas = await prisma.expensa.findMany({
-    where: {
-      liquidacionId: liquidacion.id,
-      unidadId: { in: params.drafts.map((draft) => draft.unidadId) },
-    },
-    select: {
-      unidadId: true,
-      saldo: true,
-      unidad: {
-        select: {
-          identificador: true,
-          tipo: true,
-          personas: {
-            orderBy: [{ desde: "desc" }, { persona: { apellido: "asc" } }, { persona: { nombre: "asc" } }],
-            select: {
-              desde: true,
-              hasta: true,
-              tipoRelacion: true,
-              persona: {
-                select: {
-                  id: true,
-                  nombre: true,
-                  apellido: true,
-                  email: true,
-                },
-              },
-            },
-          },
-        },
-      },
-    },
-  });
-
-  const expensaByUnidadId = new Map(expensas.map((expensa) => [expensa.unidadId, expensa]));
   const results: Array<{ estado: string }> = [];
 
   for (const draft of params.drafts) {
@@ -907,17 +985,15 @@ export async function sendReminderDrafts(params: {
       draft.boletaArchivoId !== null
         ? liquidacion.archivos.find((archivo) => archivo.id === draft.boletaArchivoId) ?? null
         : null;
-    const expensa = expensaByUnidadId.get(draft.unidadId);
-    const unidadLabel = expensa ? `${expensa.unidad.identificador} (${expensa.unidad.tipo})` : `Unidad #${draft.unidadId}`;
-    const responsablesLabel = expensa ? resolveDestinatariosBoleta(expensa.unidad.personas).responsablesLabel : "Sin responsable";
     const rendered = renderReminderEmail({
       subject: draft.asunto,
       consorcioNombre: liquidacion.consorcio.nombre,
       periodo: liquidacion.periodo,
-      unidadLabel,
-      responsablesLabel,
+      unidadLabel: draft.unidadLabel,
+      unidadCount: draft.unidadCount,
+      responsablesLabel: draft.responsablesLabel,
       fechaVencimiento: liquidacion.fechaVencimiento,
-      montoPendiente: expensa?.saldo ?? 0,
+      montoPendiente: draft.saldoPendiente,
       mensajeEditable: draft.cuerpo,
       cuentaPago,
     });

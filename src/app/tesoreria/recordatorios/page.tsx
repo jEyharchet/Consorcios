@@ -117,9 +117,13 @@ export default async function RecordatoriosPreviewPage({
 
         return {
           unidadId,
+          unidadCount: Number(formData.get(`unidadCount_${unidadId}`) ?? 1),
+          unidadLabel: (formData.get(`unidadLabel_${unidadId}`)?.toString() ?? "").trim(),
+          responsablesLabel: (formData.get(`responsablesLabel_${unidadId}`)?.toString() ?? "").trim(),
           destinatario: (formData.get(`destinatario_${unidadId}`)?.toString() ?? "").trim(),
           asunto: (formData.get(`asunto_${unidadId}`)?.toString() ?? "").trim(),
           cuerpo: (formData.get(`cuerpo_${unidadId}`)?.toString() ?? "").trim(),
+          saldoPendiente: Number(formData.get(`saldoPendiente_${unidadId}`) ?? 0),
           boletaArchivoId,
         };
       });
@@ -212,6 +216,10 @@ export default async function RecordatoriosPreviewPage({
             <article key={draft.unidadId} className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
               <input type="hidden" name="draftUnitId" value={draft.unidadId} />
               <input type="hidden" name={`boletaArchivoId_${draft.unidadId}`} value={draft.boletaArchivoId ?? ""} />
+              <input type="hidden" name={`unidadCount_${draft.unidadId}`} value={draft.unidadCount} />
+              <input type="hidden" name={`unidadLabel_${draft.unidadId}`} value={draft.unidadLabel} />
+              <input type="hidden" name={`responsablesLabel_${draft.unidadId}`} value={draft.responsablesLabel} />
+              <input type="hidden" name={`saldoPendiente_${draft.unidadId}`} value={draft.saldoPendiente} />
 
               <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div>
