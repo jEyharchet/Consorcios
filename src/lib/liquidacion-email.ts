@@ -14,6 +14,24 @@ import {
 
 export { formatEmailSummary } from "./email-tracking";
 
+export type LiquidacionEmailTraceItem = {
+  estado: string;
+  destinatario: string | null;
+  destinatarioNombre: string;
+  unidadesIncluidas: string;
+  asunto: string;
+  errorMensaje: string | null;
+};
+
+export type LiquidacionEmailProgress = {
+  total: number;
+  processed: number;
+  enviados: number;
+  fallidos: number;
+  sinDestinatario: number;
+  ultimoError: string | null;
+};
+
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
 const DEFAULT_PUBLIC_APP_URL = "https://app.amiconsorcio.com.ar";
 
@@ -60,6 +78,25 @@ export type ReminderDraft = {
   tieneBoletaAdjunta: boolean;
 };
 
+export type LiquidacionClosureDraft = {
+  unidadId: number;
+  unidadIdsCsv: string;
+  unidadLabel: string;
+  unidadCount: number;
+  responsablesLabel: string;
+  responsableIdsCsv: string;
+  destinatario: string;
+  asunto: string;
+  cuerpo: string;
+  importeLiquidado: number;
+  boletaArchivoId: number | null;
+  boletaNombre: string | null;
+  tieneBoletaAdjunta: boolean;
+  rendicionUrl: string | null;
+  ultimoEstado: "ENVIADO" | "ERROR" | "SIN_ENVIO" | "SIN_DESTINATARIO";
+  ultimoError: string | null;
+};
+
 type ReminderDraftInput = {
   unidadId: number;
   unidadIdsCsv: string;
@@ -71,6 +108,20 @@ type ReminderDraftInput = {
   asunto: string;
   cuerpo: string;
   saldoPendiente: number;
+  boletaArchivoId: number | null;
+};
+
+type LiquidacionClosureDraftInput = {
+  unidadId: number;
+  unidadIdsCsv: string;
+  unidadCount: number;
+  unidadLabel: string;
+  responsablesLabel: string;
+  responsableIdsCsv: string;
+  destinatario: string;
+  asunto: string;
+  cuerpo: string;
+  importeLiquidado: number;
   boletaArchivoId: number | null;
 };
 
@@ -142,6 +193,46 @@ function formatDate(value: Date | null | undefined) {
 function normalizeEmail(email: string | null | undefined) {
   const value = email?.trim().toLowerCase() ?? "";
   return EMAIL_REGEX.test(value) ? value : null;
+}
+
+function extractEmailErrorMessage(error: unknown) {
+  if (error instanceof Error) {
+    const maybeError = error as Error & {
+      statusCode?: number;
+      name?: string;
+      message?: string;
+      response?: { data?: unknown; error?: unknown };
+    };
+
+    const parts = [
+      maybeError.name && maybeError.name !== "Error" ? maybeError.name : null,
+      maybeError.statusCode ? `status ${maybeError.statusCode}` : null,
+      maybeError.message ?? null,
+    ].filter((value): value is string => Boolean(value));
+
+    const responsePayload =
+      maybeError.response && typeof maybeError.response === "object"
+        ? (maybeError.response.data ?? maybeError.response.error ?? null)
+        : null;
+
+    if (responsePayload) {
+      const responseText =
+        typeof responsePayload === "string" ? responsePayload : JSON.stringify(responsePayload).slice(0, 500);
+      parts.push(responseText);
+    }
+
+    return parts.join(" - ").slice(0, 1000) || "Error desconocido al enviar email.";
+  }
+
+  if (typeof error === "string") {
+    return error.slice(0, 1000);
+  }
+
+  try {
+    return JSON.stringify(error).slice(0, 1000);
+  } catch {
+    return "Error desconocido al enviar email.";
+  }
 }
 
 function escapeHtml(value: string) {
@@ -622,6 +713,7 @@ function buildTemplate(params: {
   responsablesLabel: string;
   fechaVencimiento: Date | null;
   monto: number;
+  mensajeEditable?: string;
   boletaUrl: string | null;
   rendicionUrl: string | null;
   cuentaPago: CuentaPago | null;
@@ -635,10 +727,11 @@ function buildTemplate(params: {
       ? `${params.consorcioNombre} - Liquidacion ${params.periodo} - ${subjectScope}`
       : `${params.consorcioNombre} - Recordatorio de vencimiento ${params.periodo} - ${subjectScope}`;
 
-  const intro =
+  const introBase =
     params.tipoEnvio === EMAIL_TIPO_ENVIO.LIQUIDACION_CIERRE
       ? `La liquidación del período ${periodoLabel} ya fue cerrada y la boleta correspondiente se encuentra disponible.`
       : `Te recordamos que ${params.unidadCount === 1 ? "la unidad" : "las unidades"} ${params.unidadLabel} ${params.unidadCount === 1 ? "mantiene" : "mantienen"} un saldo pendiente para la liquidación del período ${periodoLabel}.`;
+  const intro = params.mensajeEditable?.trim() || introBase;
 
   const amountLine =
     params.tipoEnvio === EMAIL_TIPO_ENVIO.LIQUIDACION_CIERRE
@@ -783,6 +876,7 @@ async function procesarEnviosLiquidacion(params: {
   liquidacionId: number;
   tipoEnvio: TipoEnvioEmail;
   onlyPendientes: boolean;
+  onProgress?: (progress: LiquidacionEmailProgress) => void | Promise<void>;
 }) {
   const liquidacion = await getLiquidacionEmailContext(params.liquidacionId, params.onlyPendientes);
 
@@ -805,6 +899,24 @@ async function procesarEnviosLiquidacion(params: {
   });
 
   const results: Array<{ estado: string }> = [];
+  const details: LiquidacionEmailTraceItem[] = [];
+  const notifyProgress = async (ultimoError: string | null = null) => {
+    if (!params.onProgress) {
+      return;
+    }
+
+    const summary = buildEmailSummary(results);
+    await params.onProgress({
+      total: groups.length,
+      processed: results.length,
+      enviados: summary.enviados,
+      fallidos: summary.fallidos,
+      sinDestinatario: summary.sinDestinatario,
+      ultimoError,
+    });
+  };
+
+  await notifyProgress();
 
   for (const group of groups) {
     const monto = params.tipoEnvio === EMAIL_TIPO_ENVIO.RECORDATORIO_VENCIMIENTO ? group.saldoTotal : group.montoTotal;
@@ -849,6 +961,15 @@ async function procesarEnviosLiquidacion(params: {
         },
       });
       results.push({ estado: EMAIL_ESTADO.SIN_DESTINATARIO });
+      details.push({
+        estado: EMAIL_ESTADO.SIN_DESTINATARIO,
+        destinatario: null,
+        destinatarioNombre: group.responsablesLabel,
+        unidadesIncluidas: group.unidadesLabel,
+        asunto: template.subject,
+        errorMensaje: "No se encontro un email valido para el grupo responsable de la boleta.",
+      });
+      await notifyProgress("No se encontro un email valido para el grupo responsable de la boleta.");
       continue;
     }
 
@@ -890,8 +1011,17 @@ async function procesarEnviosLiquidacion(params: {
       });
 
       results.push({ estado: EMAIL_ESTADO.ENVIADO });
+      details.push({
+        estado: EMAIL_ESTADO.ENVIADO,
+        destinatario: group.destinatarios.join(", "),
+        destinatarioNombre: group.responsablesLabel,
+        unidadesIncluidas: group.unidadesLabel,
+        asunto: template.subject,
+        errorMensaje: null,
+      });
+      await notifyProgress();
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message.slice(0, 1000) : "Error desconocido al enviar email.";
+      const errorMessage = extractEmailErrorMessage(error);
 
       await prisma.envioEmail.update({
         where: { id: envio.id },
@@ -902,10 +1032,22 @@ async function procesarEnviosLiquidacion(params: {
       });
 
       results.push({ estado: EMAIL_ESTADO.ERROR });
+      details.push({
+        estado: EMAIL_ESTADO.ERROR,
+        destinatario: group.destinatarios.join(", "),
+        destinatarioNombre: group.responsablesLabel,
+        unidadesIncluidas: group.unidadesLabel,
+        asunto: template.subject,
+        errorMensaje: errorMessage,
+      });
+      await notifyProgress(errorMessage);
     }
   }
 
-  return buildEmailSummary(results);
+  return {
+    ...buildEmailSummary(results),
+    detalles: details,
+  };
 }
 
 export async function buildReminderDrafts(liquidacionId: number): Promise<ReminderDraft[]> {
@@ -1117,7 +1259,7 @@ export async function sendReminderDrafts(params: {
 
       results.push({ estado: EMAIL_ESTADO.ENVIADO });
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message.slice(0, 1000) : "Error desconocido al enviar email.";
+      const errorMessage = extractEmailErrorMessage(error);
 
       await prisma.envioEmail.update({
         where: { id: envio.id },
@@ -1134,11 +1276,224 @@ export async function sendReminderDrafts(params: {
   return buildEmailSummary(results);
 }
 
-export async function enviarLiquidacionCerradaEmails(liquidacionId: number) {
+export async function buildLiquidacionClosureDrafts(liquidacionId: number): Promise<LiquidacionClosureDraft[]> {
+  const liquidacion = await getLiquidacionEmailContext(liquidacionId, false);
+
+  if (!liquidacion) {
+    throw new Error("liquidacion_inexistente");
+  }
+
+  const rendicionArchivo = liquidacion.archivos.find((archivo) => archivo.tipoArchivo === "RENDICION") ?? null;
+  const rendicionUrl = getArchivoUrl(rendicionArchivo?.rutaArchivo);
+  const groups = buildLiquidacionEmailGroups({
+    expensas: liquidacion.expensas,
+    archivos: liquidacion.archivos,
+    tipoEnvio: EMAIL_TIPO_ENVIO.LIQUIDACION_CIERRE,
+  });
+
+  const latestByGroup = new Map(
+    (
+      await prisma.envioEmail.findMany({
+        where: {
+          liquidacionId,
+          tipoEnvio: EMAIL_TIPO_ENVIO.LIQUIDACION_CIERRE,
+          grupoEnvioKey: { not: null },
+        },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      })
+    ).map((envio) => [envio.grupoEnvioKey ?? "", envio]),
+  );
+
+  return groups.map((group) => {
+    const template = buildTemplate({
+      tipoEnvio: EMAIL_TIPO_ENVIO.LIQUIDACION_CIERRE,
+      consorcioNombre: liquidacion.consorcio.nombre,
+      periodo: liquidacion.periodo,
+      unidadLabel: group.unidadesLabel,
+      unidadCount: group.unidadCount,
+      responsablesLabel: group.responsablesLabel,
+      fechaVencimiento: liquidacion.fechaVencimiento,
+      monto: group.montoTotal,
+      boletaUrl: getArchivoUrl(group.boletaArchivo?.rutaArchivo),
+      rendicionUrl,
+      cuentaPago:
+        parseCuentaSnapshot(liquidacion.boletaCuentaSnapshot) ??
+        liquidacion.consorcio.cuentasBancarias.find((cuenta) => cuenta.esCuentaExpensas) ??
+        liquidacion.consorcio.cuentasBancarias[0] ??
+        null,
+    });
+    const latest = latestByGroup.get(group.key) ?? null;
+
+    return {
+      unidadId: group.primaryUnidadId,
+      unidadIdsCsv: group.unidadIds.join(","),
+      unidadLabel: group.unidadesLabel,
+      unidadCount: group.unidadCount,
+      responsablesLabel: group.responsablesLabel,
+      responsableIdsCsv: group.responsableIds.join(","),
+      destinatario: group.destinatarios.join(", "),
+      asunto: template.subject,
+      cuerpo: template.body,
+      importeLiquidado: group.montoTotal,
+      boletaArchivoId: group.boletaArchivo?.id ?? null,
+      boletaNombre: group.boletaArchivo?.nombreArchivo ?? null,
+      tieneBoletaAdjunta: Boolean(group.boletaArchivo),
+      rendicionUrl,
+      ultimoEstado:
+        latest?.estado === EMAIL_ESTADO.ENVIADO || latest?.estado === EMAIL_ESTADO.ERROR || latest?.estado === EMAIL_ESTADO.SIN_DESTINATARIO
+          ? (latest.estado as "ENVIADO" | "ERROR" | "SIN_DESTINATARIO")
+          : "SIN_ENVIO",
+      ultimoError: latest?.errorMensaje ?? null,
+    };
+  });
+}
+
+export async function sendLiquidacionClosureDrafts(params: {
+  liquidacionId: number;
+  drafts: LiquidacionClosureDraftInput[];
+}) {
+  const liquidacion = await getLiquidacionEmailContext(params.liquidacionId, false);
+
+  if (!liquidacion) {
+    throw new Error("liquidacion_inexistente");
+  }
+
+  const cuentaPago =
+    parseCuentaSnapshot(liquidacion.boletaCuentaSnapshot) ??
+    liquidacion.consorcio.cuentasBancarias.find((cuenta) => cuenta.esCuentaExpensas) ??
+    liquidacion.consorcio.cuentasBancarias[0] ??
+    null;
+  const rendicionArchivo = liquidacion.archivos.find((archivo) => archivo.tipoArchivo === "RENDICION") ?? null;
+  const rendicionUrl = getArchivoUrl(rendicionArchivo?.rutaArchivo);
+  const results: Array<{ estado: string }> = [];
+
+  for (const draft of params.drafts) {
+    const destinatarios = parseDestinatariosInput(draft.destinatario);
+    const boletaArchivo =
+      draft.boletaArchivoId !== null
+        ? liquidacion.archivos.find((archivo) => archivo.id === draft.boletaArchivoId) ?? null
+        : null;
+    const boletaUrl = getArchivoUrl(boletaArchivo?.rutaArchivo);
+    const grupoEnvioKey = `${draft.unidadIdsCsv}:${draft.responsableIdsCsv || draft.responsablesLabel}`;
+    const envioMetadata = {
+      grupoEnvioKey,
+      intento:
+        (await prisma.envioEmail.count({
+          where: {
+            liquidacionId: liquidacion.id,
+            tipoEnvio: EMAIL_TIPO_ENVIO.LIQUIDACION_CIERRE,
+            grupoEnvioKey,
+          },
+        })) + 1,
+      destinatarioNombre: draft.responsablesLabel,
+      unidadIdsCsv: draft.unidadIdsCsv,
+      unidadesIncluidas: draft.unidadLabel,
+      responsableIdsCsv: draft.responsableIdsCsv || null,
+      boletaUrl,
+      rendicionUrl,
+    };
+    const rendered = buildTemplate({
+      tipoEnvio: EMAIL_TIPO_ENVIO.LIQUIDACION_CIERRE,
+      consorcioNombre: liquidacion.consorcio.nombre,
+      periodo: liquidacion.periodo,
+      unidadLabel: draft.unidadLabel,
+      unidadCount: draft.unidadCount,
+      responsablesLabel: draft.responsablesLabel,
+      fechaVencimiento: liquidacion.fechaVencimiento,
+      monto: draft.importeLiquidado,
+      mensajeEditable: draft.cuerpo,
+      boletaUrl,
+      rendicionUrl,
+      cuentaPago,
+    });
+
+    if (destinatarios.length === 0) {
+      const replyKey = createEmailReplyKey();
+
+      await prisma.envioEmail.create({
+        data: {
+          consorcioId: liquidacion.consorcioId,
+          tipoEnvio: EMAIL_TIPO_ENVIO.LIQUIDACION_CIERRE,
+          liquidacionId: liquidacion.id,
+          unidadId: draft.unidadId,
+          ...envioMetadata,
+          destinatario: null,
+          asunto: draft.asunto,
+          cuerpo: draft.cuerpo,
+          estado: EMAIL_ESTADO.SIN_DESTINATARIO,
+          errorMensaje: "No se encontro un email valido para el destinatario seleccionado.",
+          replyKey,
+        },
+      });
+      results.push({ estado: EMAIL_ESTADO.SIN_DESTINATARIO });
+      continue;
+    }
+
+    const replyKey = createEmailReplyKey();
+    const envio = await prisma.envioEmail.create({
+      data: {
+        consorcioId: liquidacion.consorcioId,
+        tipoEnvio: EMAIL_TIPO_ENVIO.LIQUIDACION_CIERRE,
+        liquidacionId: liquidacion.id,
+        unidadId: draft.unidadId,
+        ...envioMetadata,
+        destinatario: destinatarios.join(", "),
+        asunto: draft.asunto,
+        cuerpo: draft.cuerpo,
+        estado: EMAIL_ESTADO.PENDIENTE,
+        replyKey,
+      },
+      select: { id: true, replyKey: true },
+    });
+
+    try {
+      const response = await sendEmail({
+        to: destinatarios,
+        subject: draft.asunto,
+        html: rendered.html,
+        text: rendered.text,
+        replyTo: buildReplyToAddress(envio.replyKey) ?? undefined,
+        attachments: await resolveAttachment(boletaArchivo),
+      });
+
+      await prisma.envioEmail.update({
+        where: { id: envio.id },
+        data: {
+          estado: EMAIL_ESTADO.ENVIADO,
+          providerMessageId: response?.id ?? null,
+          enviadoAt: new Date(),
+          errorMensaje: null,
+        },
+      });
+
+      results.push({ estado: EMAIL_ESTADO.ENVIADO });
+    } catch (error) {
+      const errorMessage = extractEmailErrorMessage(error);
+
+      await prisma.envioEmail.update({
+        where: { id: envio.id },
+        data: {
+          estado: EMAIL_ESTADO.ERROR,
+          errorMensaje: errorMessage,
+        },
+      });
+
+      results.push({ estado: EMAIL_ESTADO.ERROR });
+    }
+  }
+
+  return buildEmailSummary(results);
+}
+
+export async function enviarLiquidacionCerradaEmails(
+  liquidacionId: number,
+  options?: { onProgress?: (progress: LiquidacionEmailProgress) => void | Promise<void> },
+) {
   return procesarEnviosLiquidacion({
     liquidacionId,
     tipoEnvio: EMAIL_TIPO_ENVIO.LIQUIDACION_CIERRE,
     onlyPendientes: false,
+    onProgress: options?.onProgress,
   });
 }
 

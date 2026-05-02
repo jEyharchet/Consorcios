@@ -2,6 +2,7 @@ import { access, rm } from "fs/promises";
 import path from "path";
 
 import { prisma } from "./prisma";
+import { EMAIL_ESTADO } from "./email-tracking";
 import { getPeriodoVariants, normalizePeriodo } from "./periodo";
 import { generarArchivosLiquidacion, getLiquidacionesUploadsBaseDir } from "./liquidacion-cierre";
 import { enviarLiquidacionCerradaEmails } from "./liquidacion-email";
@@ -758,15 +759,66 @@ export async function generarExpensasDefinitivasDesdePaso3(
   }
 
   await notify({
-    status: "COMPLETED",
-    stage: "DONE",
-    message: "Proceso completado",
+    status: "RUNNING",
+    stage: "SENDING_EMAILS",
+    message: "Enviando emails de liquidacion 0/0...",
     expectedFiles: archivosGenerados.length,
     generatedFiles: archivosGenerados.length,
     validatedFiles: archivosGenerados.length,
+    emailTotal: 0,
+    emailProcessed: 0,
+    emailSent: 0,
+    emailFailed: 0,
+    emailNoRecipient: 0,
   });
 
-  const emailSummary = await enviarLiquidacionCerradaEmails(liquidacion.id);
+  const emailSummary = await enviarLiquidacionCerradaEmails(liquidacion.id, {
+    onProgress: async (progress) => {
+      await notify({
+        status: "RUNNING",
+        stage: "SENDING_EMAILS",
+        message: `Enviando emails de liquidacion ${progress.processed}/${progress.total}...`,
+        expectedFiles: archivosGenerados.length,
+        generatedFiles: archivosGenerados.length,
+        validatedFiles: archivosGenerados.length,
+        emailTotal: progress.total,
+        emailProcessed: progress.processed,
+        emailSent: progress.enviados,
+        emailFailed: progress.fallidos,
+        emailNoRecipient: progress.sinDestinatario,
+      });
+    },
+  });
+
+  const finalMessage =
+    emailSummary.fallidos > 0 || emailSummary.sinDestinatario > 0
+      ? `Liquidacion finalizada. PDFs generados correctamente. ${emailSummary.enviados} emails enviados, ${emailSummary.fallidos} con error y ${emailSummary.sinDestinatario} sin destinatario.`
+      : "Liquidacion finalizada. PDFs generados y emails enviados correctamente.";
+  const failedDetails =
+    "detalles" in emailSummary
+      ? emailSummary.detalles
+          .filter((item) => item.estado !== EMAIL_ESTADO.ENVIADO)
+          .map(
+            (item) =>
+              `${item.destinatarioNombre} - ${item.destinatario ?? "Sin destinatario"} - ${item.errorMensaje ?? item.estado}`,
+          )
+          .join("\n")
+      : null;
+
+  await notify({
+    status: "COMPLETED",
+    stage: "DONE",
+    message: finalMessage,
+    expectedFiles: archivosGenerados.length,
+    generatedFiles: archivosGenerados.length,
+    validatedFiles: archivosGenerados.length,
+    emailTotal: emailSummary.total,
+    emailProcessed: emailSummary.total,
+    emailSent: emailSummary.enviados,
+    emailFailed: emailSummary.fallidos,
+    emailNoRecipient: emailSummary.sinDestinatario,
+    errorDetail: failedDetails ?? undefined,
+  });
 
   return {
     ok: true as const,
@@ -823,6 +875,7 @@ type RegeneracionStage =
   | "GENERATING_BOLETAS"
   | "VERIFYING_FILES"
   | "ACTIVATING_FILES"
+  | "SENDING_EMAILS"
   | "DONE";
 
 type RegeneracionStatus = "PENDING" | "RUNNING" | "VALIDATING" | "COMPLETED" | "FAILED";
@@ -831,9 +884,15 @@ type RegeneracionProgress = {
   status: RegeneracionStatus;
   stage: RegeneracionStage;
   message: string;
+  errorDetail?: string;
   expectedFiles?: number;
   generatedFiles?: number;
   validatedFiles?: number;
+  emailTotal?: number;
+  emailProcessed?: number;
+  emailSent?: number;
+  emailFailed?: number;
+  emailNoRecipient?: number;
 };
 
 function countResponsableGroupsForBoletas(rows: Array<{

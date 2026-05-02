@@ -10,6 +10,7 @@ export type RegeneracionJobStage =
   | "GENERATING_RENDICION"
   | "GENERATING_BOLETAS"
   | "VERIFYING_FILES"
+  | "SENDING_EMAILS"
   | "ACTIVATING_FILES"
   | "DONE";
 
@@ -148,6 +149,11 @@ export async function startRegeneracionArchivosJob(params: {
       expectedFiles: 0,
       generatedFiles: 0,
       validatedFiles: 0,
+      emailTotal: 0,
+      emailProcessed: 0,
+      emailSent: 0,
+      emailFailed: 0,
+      emailNoRecipient: 0,
       message: "Job en cola",
       requestedByUserId: params.requestedByUserId,
     },
@@ -206,9 +212,15 @@ export async function runRegeneracionArchivosJob(jobId: number) {
             status: progress.status,
             stage: progress.stage,
             message: progress.message,
+            errorDetail: progress.errorDetail ?? null,
             expectedFiles: progress.expectedFiles ?? 0,
             generatedFiles: progress.generatedFiles ?? 0,
             validatedFiles: progress.validatedFiles ?? 0,
+            emailTotal: progress.emailTotal ?? 0,
+            emailProcessed: progress.emailProcessed ?? 0,
+            emailSent: progress.emailSent ?? 0,
+            emailFailed: progress.emailFailed ?? 0,
+            emailNoRecipient: progress.emailNoRecipient ?? 0,
           },
         });
       },
@@ -336,6 +348,11 @@ export async function startFinalizacionLiquidacionJob(params: {
       expectedFiles: 0,
       generatedFiles: 0,
       validatedFiles: 0,
+      emailTotal: 0,
+      emailProcessed: 0,
+      emailSent: 0,
+      emailFailed: 0,
+      emailNoRecipient: 0,
       message: "Job en cola",
       requestedByUserId: params.requestedByUserId,
     },
@@ -394,9 +411,15 @@ export async function runFinalizacionLiquidacionJob(jobId: number) {
             status: progress.status,
             stage: progress.stage,
             message: progress.message,
+            errorDetail: progress.errorDetail ?? null,
             expectedFiles: progress.expectedFiles ?? 0,
             generatedFiles: progress.generatedFiles ?? 0,
             validatedFiles: progress.validatedFiles ?? 0,
+            emailTotal: progress.emailTotal ?? 0,
+            emailProcessed: progress.emailProcessed ?? 0,
+            emailSent: progress.emailSent ?? 0,
+            emailFailed: progress.emailFailed ?? 0,
+            emailNoRecipient: progress.emailNoRecipient ?? 0,
           },
         });
       },

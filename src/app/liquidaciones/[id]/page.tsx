@@ -329,9 +329,32 @@ export default async function LiquidacionDetallePage({
       },
     },
   });
+  const enviosCierre = await prisma.envioEmail.findMany({
+    where: {
+      liquidacionId: liquidacion.id,
+      tipoEnvio: "LIQUIDACION_CIERRE",
+    },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+  });
+  const latestCierreByGrupo = new Map<string, (typeof enviosCierre)[number]>();
+  for (const envio of enviosCierre) {
+    const key = envio.grupoEnvioKey ?? `legacy:${envio.unidadId ?? envio.id}`;
+    if (!latestCierreByGrupo.has(key)) {
+      latestCierreByGrupo.set(key, envio);
+    }
+  }
+  const cierreSummary = Array.from(latestCierreByGrupo.values()).reduce(
+    (acc, envio) => {
+      if (envio.estado === "ENVIADO") acc.enviados += 1;
+      else if (envio.estado === "ERROR") acc.errores += 1;
+      else acc.sinEnvio += 1;
+      return acc;
+    },
+    { enviados: 0, errores: 0, sinEnvio: 0 },
+  );
 
   const summaryMessage =
-    searchParams?.ok === "emails_liquidacion"
+    searchParams?.ok === "emails_liquidacion" || searchParams?.ok === "reenvio_emails_liquidacion"
       ? formatEmailSummary({
           total:
             Number(searchParams?.enviados ?? 0) +
@@ -545,11 +568,43 @@ export default async function LiquidacionDetallePage({
         canRegenerate={canOperate && (liquidacion.estado === "FINALIZADA" || liquidacion.estado === "CERRADA")}
       />
 
-      <section className="mt-8 rounded-xl border border-slate-200 bg-white p-6">
+      <section id="emails-liquidacion" className="mt-8 rounded-xl border border-slate-200 bg-white p-6">
         <h2 className="text-xl font-semibold">Trazabilidad de emails</h2>
         <p className="mt-1 text-sm text-slate-500">
           Registra los envios de boletas, rendicion y recordatorios asociados a esta liquidacion.
         </p>
+
+        <div className="mt-4 grid gap-4 md:grid-cols-3">
+          <article className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+            <p className="text-sm font-medium text-slate-500">Enviados</p>
+            <p className="mt-2 text-2xl font-semibold text-slate-950">{cierreSummary.enviados}</p>
+          </article>
+          <article className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+            <p className="text-sm font-medium text-slate-500">Errores</p>
+            <p className="mt-2 text-2xl font-semibold text-red-700">{cierreSummary.errores}</p>
+          </article>
+          <article className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+            <p className="text-sm font-medium text-slate-500">Sin envio / sin destinatario</p>
+            <p className="mt-2 text-2xl font-semibold text-amber-700">{cierreSummary.sinEnvio}</p>
+          </article>
+        </div>
+
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <Link
+            href="#emails-liquidacion"
+            className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            Ver trazabilidad
+          </Link>
+          {canOperate && (liquidacion.estado === "FINALIZADA" || liquidacion.estado === "CERRADA") ? (
+            <Link
+              href={`/liquidaciones/${liquidacion.id}/emails`}
+              className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
+            >
+              Reenviar emails de liquidacion
+            </Link>
+          ) : null}
+        </div>
 
         <div className="mt-4 overflow-x-auto">
           <table className="min-w-full divide-y divide-slate-200 text-sm">

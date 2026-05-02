@@ -591,6 +591,11 @@ model LiquidacionRegeneracionJob {
   expectedFiles     Int       @default(0)
   generatedFiles    Int       @default(0)
   validatedFiles    Int       @default(0)
+  emailTotal        Int       @default(0)
+  emailProcessed    Int       @default(0)
+  emailSent         Int       @default(0)
+  emailFailed       Int       @default(0)
+  emailNoRecipient  Int       @default(0)
   message           String?
   errorDetail       String?
   requestedByUserId String?

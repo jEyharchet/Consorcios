@@ -9,6 +9,7 @@ type JobStage =
   | "GENERATING_RENDICION"
   | "GENERATING_BOLETAS"
   | "VERIFYING_FILES"
+  | "SENDING_EMAILS"
   | "ACTIVATING_FILES"
   | "DONE";
 
@@ -19,6 +20,11 @@ type JobPayload = {
   expectedFiles: number;
   generatedFiles: number;
   validatedFiles: number;
+  emailTotal: number;
+  emailProcessed: number;
+  emailSent: number;
+  emailFailed: number;
+  emailNoRecipient: number;
   message: string;
   errorDetail: string | null;
 };
@@ -34,6 +40,7 @@ const STAGE_LABELS: Record<JobStage, string> = {
   GENERATING_RENDICION: "Generando rendicion PDF...",
   GENERATING_BOLETAS: "Generando boletas PDF...",
   VERIFYING_FILES: "Validando archivos...",
+  SENDING_EMAILS: "Enviando emails de liquidacion...",
   ACTIVATING_FILES: "Activando archivos nuevos...",
   DONE: "Finalizado",
 };
@@ -153,7 +160,26 @@ export default function RegenerarArchivosButton({
 
   const progressText = useMemo(() => {
     if (!job) return "";
+    if (job.stage === "SENDING_EMAILS" || job.emailTotal > 0) {
+      return `${job.emailProcessed}/${job.emailTotal || 0} procesados - ${job.emailSent} enviados - ${job.emailFailed} con error - ${job.emailNoRecipient} sin destinatario`;
+    }
     return `${job.generatedFiles}/${job.expectedFiles || 0} generados - ${job.validatedFiles}/${job.expectedFiles || 0} validados`;
+  }, [job]);
+
+  const completionTone = useMemo(() => {
+    if (!job || job.status !== "COMPLETED") {
+      return null;
+    }
+
+    if (job.emailTotal > 0 && job.emailSent === 0 && (job.emailFailed > 0 || job.emailNoRecipient > 0)) {
+      return "error" as const;
+    }
+
+    if (job.emailFailed > 0 || job.emailNoRecipient > 0) {
+      return "warning" as const;
+    }
+
+    return "success" as const;
   }, [job]);
 
   async function onStart() {
@@ -234,14 +260,22 @@ export default function RegenerarArchivosButton({
                   <span className="font-medium">Detalle:</span> {job.message || STAGE_LABELS[job.stage]}
                 </p>
                 <p>
-                  <span className="font-medium">Archivos:</span> {progressText}
+                  <span className="font-medium">{job.stage === "SENDING_EMAILS" || job.emailTotal > 0 ? "Emails:" : "Archivos:"}</span> {progressText}
                 </p>
-                {job.status === "FAILED" && job.errorDetail ? (
+                {(job.status === "FAILED" || (job.status === "COMPLETED" && completionTone !== "success")) && job.errorDetail ? (
                   <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-red-700">{job.errorDetail}</p>
                 ) : null}
                 {job.status === "COMPLETED" ? (
-                  <p className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-emerald-700">
-                    {successMessage}
+                  <p
+                    className={`rounded-md border px-3 py-2 ${
+                      completionTone === "error"
+                        ? "border-red-200 bg-red-50 text-red-700"
+                        : completionTone === "warning"
+                          ? "border-amber-200 bg-amber-50 text-amber-800"
+                          : "border-emerald-200 bg-emerald-50 text-emerald-700"
+                    }`}
+                  >
+                    {completionTone === "success" ? successMessage : job.message || successMessage}
                   </p>
                 ) : (
                   <div className="mt-2 flex items-center gap-2">
