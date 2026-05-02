@@ -5,7 +5,11 @@ import LiquidacionArchivosPanel from "../_components/LiquidacionArchivosPanel";
 
 import { prisma } from "../../../lib/prisma";
 import { getAccessContext, requireConsorcioAccess, requireConsorcioRole } from "../../../lib/auth";
-import { createLiquidacionGastosHistoricosWithSequenceRecovery } from "../../../lib/liquidacion-gastos-historicos";
+import {
+  createLiquidacionGastosHistoricos,
+  isLiquidacionGastoHistoricoIdCollision,
+  realignLiquidacionGastoHistoricoIdSequence,
+} from "../../../lib/liquidacion-gastos-historicos";
 import { getPeriodoVariants } from "../../../lib/periodo";
 import { enviarLiquidacionCerradaEmails, formatEmailSummary } from "../../../lib/liquidacion-email";
 
@@ -220,12 +224,12 @@ export default async function LiquidacionDetallePage({
       orderBy: [{ fecha: "asc" }, { id: "asc" }],
     });
 
-    await prisma.$transaction(async (tx) => {
+    const closeTransaction = () => prisma.$transaction(async (tx) => {
       await tx.liquidacionGastoHistorico.deleteMany({
         where: { liquidacionId: liquidacion.id },
       });
 
-      await createLiquidacionGastosHistoricosWithSequenceRecovery(tx, {
+      await createLiquidacionGastosHistoricos(tx, {
         liquidacionId: liquidacion.id,
         gastos: gastosPeriodo,
       });
@@ -235,6 +239,17 @@ export default async function LiquidacionDetallePage({
         data: { estado: "CERRADA" },
       });
     });
+
+    try {
+      await closeTransaction();
+    } catch (error) {
+      if (!isLiquidacionGastoHistoricoIdCollision(error)) {
+        throw error;
+      }
+
+      await realignLiquidacionGastoHistoricoIdSequence();
+      await closeTransaction();
+    }
 
     const summary = await enviarLiquidacionCerradaEmails(liquidacion.id);
     const params = new URLSearchParams({

@@ -5,7 +5,11 @@ import { prisma } from "./prisma";
 import { getPeriodoVariants, normalizePeriodo } from "./periodo";
 import { generarArchivosLiquidacion, getLiquidacionesUploadsBaseDir } from "./liquidacion-cierre";
 import { enviarLiquidacionCerradaEmails } from "./liquidacion-email";
-import { createLiquidacionGastosHistoricosWithSequenceRecovery } from "./liquidacion-gastos-historicos";
+import {
+  createLiquidacionGastosHistoricos,
+  isLiquidacionGastoHistoricoIdCollision,
+  realignLiquidacionGastoHistoricoIdSequence,
+} from "./liquidacion-gastos-historicos";
 import { getAdministradorVigente } from "./consorcio-administradores";
 import { buildEstadoCuentaDisplayByUnidad } from "./liquidacion-estado-cuenta-display";
 import { buildGastoPagoSummary } from "./pagos-gastos";
@@ -693,7 +697,7 @@ export async function generarExpensasDefinitivasDesdePaso3(
       validatedFiles: archivosGenerados.length,
     });
 
-    await prisma.$transaction(async (tx) => {
+    const finalizeTransaction = () => prisma.$transaction(async (tx) => {
       await tx.expensa.deleteMany({ where: { liquidacionId: liquidacion.id } });
 
       await tx.expensa.createMany({ data: expensasData });
@@ -704,7 +708,7 @@ export async function generarExpensasDefinitivasDesdePaso3(
         where: { liquidacionId: liquidacion.id },
       });
 
-      await createLiquidacionGastosHistoricosWithSequenceRecovery(tx, {
+      await createLiquidacionGastosHistoricos(tx, {
         liquidacionId: liquidacion.id,
         gastos: data.gastos,
       });
@@ -735,6 +739,17 @@ export async function generarExpensasDefinitivasDesdePaso3(
         })),
       });
     });
+
+    try {
+      await finalizeTransaction();
+    } catch (error) {
+      if (!isLiquidacionGastoHistoricoIdCollision(error)) {
+        throw error;
+      }
+
+      await realignLiquidacionGastoHistoricoIdSequence();
+      await finalizeTransaction();
+    }
   } catch (error) {
     if (outputRoot) {
       await rm(outputRoot, { recursive: true, force: true });

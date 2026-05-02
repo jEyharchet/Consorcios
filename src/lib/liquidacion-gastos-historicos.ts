@@ -4,7 +4,7 @@ import { prisma } from "./prisma";
 
 type DbClient = typeof prisma | Prisma.TransactionClient;
 
-type GastoHistoricoInput = {
+export type GastoHistoricoInput = {
   id: number;
   fecha: Date;
   periodo: string;
@@ -16,7 +16,7 @@ type GastoHistoricoInput = {
   proveedor?: { nombre: string } | null;
 };
 
-function isLiquidacionGastoHistoricoIdCollision(error: unknown) {
+export function isLiquidacionGastoHistoricoIdCollision(error: unknown) {
   return (
     error instanceof Prisma.PrismaClientKnownRequestError &&
     error.code === "P2002" &&
@@ -25,7 +25,7 @@ function isLiquidacionGastoHistoricoIdCollision(error: unknown) {
   );
 }
 
-async function realignLiquidacionGastoHistoricoIdSequence(db: DbClient) {
+export async function realignLiquidacionGastoHistoricoIdSequence(db: typeof prisma = prisma) {
   await db.$executeRawUnsafe(`
     SELECT setval(
       pg_get_serial_sequence('"LiquidacionGastoHistorico"', 'id'),
@@ -35,7 +35,7 @@ async function realignLiquidacionGastoHistoricoIdSequence(db: DbClient) {
   `);
 }
 
-export async function createLiquidacionGastosHistoricosWithSequenceRecovery(
+export async function createLiquidacionGastosHistoricos(
   db: DbClient,
   params: {
     liquidacionId: number;
@@ -59,14 +59,5 @@ export async function createLiquidacionGastosHistoricosWithSequenceRecovery(
     return;
   }
 
-  try {
-    await db.liquidacionGastoHistorico.createMany({ data });
-  } catch (error) {
-    if (!isLiquidacionGastoHistoricoIdCollision(error)) {
-      throw error;
-    }
-
-    await realignLiquidacionGastoHistoricoIdSequence(db);
-    await db.liquidacionGastoHistorico.createMany({ data });
-  }
+  await db.liquidacionGastoHistorico.createMany({ data });
 }
