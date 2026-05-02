@@ -5,6 +5,7 @@ import { prisma } from "./prisma";
 import { getPeriodoVariants, normalizePeriodo } from "./periodo";
 import { generarArchivosLiquidacion, getLiquidacionesUploadsBaseDir } from "./liquidacion-cierre";
 import { enviarLiquidacionCerradaEmails } from "./liquidacion-email";
+import { createLiquidacionGastosHistoricosWithSequenceRecovery } from "./liquidacion-gastos-historicos";
 import { getAdministradorVigente } from "./consorcio-administradores";
 import { buildEstadoCuentaDisplayByUnidad } from "./liquidacion-estado-cuenta-display";
 import { buildGastoPagoSummary } from "./pagos-gastos";
@@ -703,22 +704,10 @@ export async function generarExpensasDefinitivasDesdePaso3(
         where: { liquidacionId: liquidacion.id },
       });
 
-      if (data.gastos.length > 0) {
-        await tx.liquidacionGastoHistorico.createMany({
-          data: data.gastos.map((g) => ({
-            liquidacionId: liquidacion.id,
-            gastoOrigenId: g.id,
-            fecha: g.fecha,
-            periodo: g.periodo,
-            concepto: g.concepto,
-            descripcion: g.descripcion,
-            tipoExpensa: g.tipoExpensa,
-            rubroExpensa: g.rubroExpensa,
-            monto: g.monto,
-            proveedorNombre: g.proveedor?.nombre ?? null,
-          })),
-        });
-      }
+      await createLiquidacionGastosHistoricosWithSequenceRecovery(tx, {
+        liquidacionId: liquidacion.id,
+        gastos: data.gastos,
+      });
 
       await tx.liquidacion.update({
         where: { id: liquidacion.id },

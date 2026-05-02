@@ -5,6 +5,7 @@ import LiquidacionArchivosPanel from "../_components/LiquidacionArchivosPanel";
 
 import { prisma } from "../../../lib/prisma";
 import { getAccessContext, requireConsorcioAccess, requireConsorcioRole } from "../../../lib/auth";
+import { createLiquidacionGastosHistoricosWithSequenceRecovery } from "../../../lib/liquidacion-gastos-historicos";
 import { getPeriodoVariants } from "../../../lib/periodo";
 import { enviarLiquidacionCerradaEmails, formatEmailSummary } from "../../../lib/liquidacion-email";
 
@@ -224,22 +225,10 @@ export default async function LiquidacionDetallePage({
         where: { liquidacionId: liquidacion.id },
       });
 
-      if (gastosPeriodo.length > 0) {
-        await tx.liquidacionGastoHistorico.createMany({
-          data: gastosPeriodo.map((g) => ({
-            liquidacionId: liquidacion.id,
-            gastoOrigenId: g.id,
-            fecha: g.fecha,
-            periodo: g.periodo,
-            concepto: g.concepto,
-            descripcion: g.descripcion,
-            tipoExpensa: g.tipoExpensa,
-            rubroExpensa: g.rubroExpensa,
-            monto: g.monto,
-            proveedorNombre: g.proveedor?.nombre ?? null,
-          })),
-        });
-      }
+      await createLiquidacionGastosHistoricosWithSequenceRecovery(tx, {
+        liquidacionId: liquidacion.id,
+        gastos: gastosPeriodo,
+      });
 
       await tx.liquidacion.update({
         where: { id: liquidacion.id },
