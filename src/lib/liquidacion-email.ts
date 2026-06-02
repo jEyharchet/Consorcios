@@ -32,6 +32,8 @@ export type LiquidacionEmailProgress = {
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
 const DEFAULT_PUBLIC_APP_URL = "https://app.amiconsorcio.com.ar";
+const EMAIL_SEND_THROTTLE_MS = 250;
+const EMAIL_RATE_LIMIT_RETRY_DELAYS_MS = [1500, 3000, 5000] as const;
 
 export const EMAIL_TIPO_ENVIO = {
   LIQUIDACION_CIERRE: "LIQUIDACION_CIERRE",
@@ -244,6 +246,55 @@ function extractEmailErrorMessage(error: unknown) {
   } catch {
     return "Error desconocido al enviar email.";
   }
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRateLimitEmailError(error: unknown) {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const maybeError = error as {
+    statusCode?: number;
+    name?: string;
+    message?: string;
+  };
+
+  return (
+    maybeError.statusCode === 429 ||
+    maybeError.name === "rate_limit_exceeded" ||
+    maybeError.message?.toLowerCase().includes("too many requests") === true ||
+    maybeError.message?.toLowerCase().includes("rate limit") === true
+  );
+}
+
+async function sendEmailWithThrottleAndRetry(
+  payload: Parameters<typeof sendEmail>[0],
+) {
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt <= EMAIL_RATE_LIMIT_RETRY_DELAYS_MS.length; attempt += 1) {
+    if (attempt > 0) {
+      await sleep(EMAIL_RATE_LIMIT_RETRY_DELAYS_MS[attempt - 1]);
+    }
+
+    try {
+      const response = await sendEmail(payload);
+      await sleep(EMAIL_SEND_THROTTLE_MS);
+      return response;
+    } catch (error) {
+      lastError = error;
+
+      if (!isRateLimitEmailError(error) || attempt === EMAIL_RATE_LIMIT_RETRY_DELAYS_MS.length) {
+        throw error;
+      }
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error("Email send failed");
 }
 
 function escapeHtml(value: string) {
@@ -1009,7 +1060,7 @@ async function procesarEnviosLiquidacion(params: {
     });
 
     try {
-      const response = await sendEmail({
+      const response = await sendEmailWithThrottleAndRetry({
         to: group.destinatarios,
         subject: template.subject,
         html: template.html,
@@ -1256,7 +1307,7 @@ export async function sendReminderDrafts(params: {
     });
 
     try {
-      const response = await sendEmail({
+      const response = await sendEmailWithThrottleAndRetry({
         to: destinatarios,
         subject: draft.asunto,
         html: rendered.html,
@@ -1478,7 +1529,7 @@ export async function sendLiquidacionClosureDrafts(params: {
     });
 
     try {
-      const response = await sendEmail({
+      const response = await sendEmailWithThrottleAndRetry({
         to: destinatarios,
         subject: renderedSubject,
         html: rendered.html,
