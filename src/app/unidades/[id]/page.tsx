@@ -142,6 +142,8 @@ export default async function UnidadDetallePage({
       },
       select: {
         id: true,
+        desde: true,
+        hasta: true,
         tipoRelacion: true,
       },
     });
@@ -170,6 +172,8 @@ export default async function UnidadDetallePage({
 
       return {
         id: row.id,
+        desde: relacion.desde,
+        hasta: relacion.hasta,
         tipoRelacion: relacion.tipoRelacion,
         porcentajeExpensasOrdinarias,
         porcentajeExpensasExtraordinarias,
