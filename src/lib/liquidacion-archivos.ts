@@ -76,5 +76,7 @@ export async function createLiquidacionArchivos(
     })),
   });
 
-  await db.liquidacionArchivo.createMany({ data });
+  for (const item of data) {
+    await db.liquidacionArchivo.create({ data: item });
+  }
 }
