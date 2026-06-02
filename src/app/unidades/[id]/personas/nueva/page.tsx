@@ -6,6 +6,7 @@ import { prisma } from "../../../../../../lib/prisma";
 import { requireConsorcioRole } from "../../../../../lib/auth";
 import { createUnidadPersonaWithSequenceRecovery, validateNoOverlap } from "../../../../../lib/relaciones";
 import {
+  buildUnidadPersonaNotificationDefaults,
   isTipoRelacionUnidadValue,
   TIPO_RELACION_UNIDAD,
   TIPO_RELACION_UNIDAD_OPTIONS,
@@ -137,10 +138,21 @@ export default async function NuevaPersonaPage({
       redirect(`/unidades/${unidadId}/personas/nueva?${qs.toString()}`);
     }
 
+    const relacionesActivasUnidad = await prisma.unidadPersona.count({
+      where: {
+        unidadId,
+        desde: { lte: new Date() },
+        OR: [{ hasta: null }, { hasta: { gte: new Date() } }],
+      },
+    });
+
     await createUnidadPersonaWithSequenceRecovery(prisma, {
       unidadId,
       personaId,
       tipoRelacion,
+      ...buildUnidadPersonaNotificationDefaults({
+        hasActiveRelations: relacionesActivasUnidad > 0,
+      }),
       desde,
       hasta,
     });
@@ -202,10 +214,21 @@ export default async function NuevaPersonaPage({
       redirect(`/unidades/${unidadId}/personas/nueva?${qs.toString()}`);
     }
 
+    const relacionesActivasUnidad = await prisma.unidadPersona.count({
+      where: {
+        unidadId,
+        desde: { lte: new Date() },
+        OR: [{ hasta: null }, { hasta: { gte: new Date() } }],
+      },
+    });
+
     await createUnidadPersonaWithSequenceRecovery(prisma, {
       unidadId,
       personaId: persona.id,
       tipoRelacion,
+      ...buildUnidadPersonaNotificationDefaults({
+        hasActiveRelations: relacionesActivasUnidad > 0,
+      }),
       desde,
       hasta,
     });

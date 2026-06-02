@@ -105,16 +105,18 @@ enum TipoRelacionUnidad {
   RESPONSABLE
   DUENO
   INQUILINO
-  INQUILINO_EXP
 }
 
 model UnidadPersona {
-  id           Int                @id @default(autoincrement())
-  unidadId     Int
-  personaId    Int
-  tipoRelacion TipoRelacionUnidad @default(RESPONSABLE)
-  desde        DateTime
-  hasta        DateTime?
+  id                                Int                @id @default(autoincrement())
+  unidadId                          Int
+  personaId                         Int
+  tipoRelacion                      TipoRelacionUnidad @default(RESPONSABLE)
+  porcentajeExpensasOrdinarias      Float              @default(0)
+  porcentajeExpensasExtraordinarias Float              @default(0)
+  recibeLiquidacion                 Boolean            @default(false)
+  desde                             DateTime
+  hasta                             DateTime?
 
   unidad  Unidad  @relation(fields: [unidadId], references: [id], onDelete: Cascade)
   persona Persona @relation(fields: [personaId], references: [id], onDelete: Cascade)

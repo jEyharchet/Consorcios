@@ -1,22 +1,26 @@
-﻿import Link from "next/link";
+import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Fragment } from "react";
 
 import { prisma } from "../../../../lib/prisma";
 import { requireConsorcioAccess, requireConsorcioRole } from "../../../lib/auth";
-import { formatDateAR, isVigente, normalizeDate } from "../../../lib/relaciones";
-import { formatTipoRelacionUnidadLabel } from "../../../lib/unidad-relacion";
+import { isVigente, normalizeDate } from "../../../lib/relaciones";
+import {
+  areUnidadRelacionPorcentajeTotalsValid,
+  calculateUnidadRelacionPorcentajeTotals,
+} from "../../../lib/unidad-relacion";
+import UnidadRelacionesEditor from "./UnidadRelacionesEditor";
 
 export default async function UnidadDetallePage({
   params,
   searchParams,
 }: {
   params: { id: string };
-  searchParams?: { finalizar?: string; error?: string };
+  searchParams?: { finalizar?: string; error?: string; ok?: string };
 }) {
   const id = Number(params.id);
   const finalizarId = Number(searchParams?.finalizar);
   const error = searchParams?.error;
+  const ok = searchParams?.ok;
 
   const unidad = await prisma.unidad.findUnique({
     where: { id },
@@ -97,6 +101,103 @@ export default async function UnidadDetallePage({
     redirect(`/unidades/${unidadId}`);
   }
 
+  async function guardarDistribucion(formData: FormData) {
+    "use server";
+
+    const unidadId = Number(formData.get("unidadId"));
+    const payloadRaw = (formData.get("payload")?.toString() ?? "").trim();
+
+    const unidadActual = await prisma.unidad.findUnique({ where: { id: unidadId }, select: { consorcioId: true } });
+    if (!unidadActual) {
+      redirect("/consorcios");
+    }
+
+    await requireConsorcioRole(unidadActual.consorcioId, ["ADMIN", "OPERADOR"]);
+
+    let payload:
+      | Array<{
+          id: number;
+          porcentajeExpensasOrdinarias: number;
+          porcentajeExpensasExtraordinarias: number;
+          recibeLiquidacion: boolean;
+        }>
+      | null = null;
+
+    try {
+      payload = JSON.parse(payloadRaw);
+    } catch {
+      redirect(`/unidades/${unidadId}?error=porcentajes_invalidos`);
+    }
+
+    if (!Array.isArray(payload) || payload.length === 0) {
+      redirect(`/unidades/${unidadId}?error=porcentajes_invalidos`);
+    }
+
+    const today = new Date();
+    const relacionesActivas = await prisma.unidadPersona.findMany({
+      where: {
+        unidadId,
+        desde: { lte: today },
+        OR: [{ hasta: null }, { hasta: { gte: today } }],
+      },
+      select: {
+        id: true,
+        tipoRelacion: true,
+      },
+    });
+
+    const relationIds = new Set(relacionesActivas.map((relacion) => relacion.id));
+    if (relationIds.size !== payload.length || payload.some((row) => !relationIds.has(row.id))) {
+      redirect(`/unidades/${unidadId}?error=porcentajes_invalidos`);
+    }
+
+    const normalizedRows = payload.map((row) => {
+      const relacion = relacionesActivas.find((item) => item.id === row.id);
+      const porcentajeExpensasOrdinarias = Number(row.porcentajeExpensasOrdinarias);
+      const porcentajeExpensasExtraordinarias = Number(row.porcentajeExpensasExtraordinarias);
+
+      if (
+        !relacion ||
+        !Number.isFinite(porcentajeExpensasOrdinarias) ||
+        !Number.isFinite(porcentajeExpensasExtraordinarias) ||
+        porcentajeExpensasOrdinarias < 0 ||
+        porcentajeExpensasOrdinarias > 100 ||
+        porcentajeExpensasExtraordinarias < 0 ||
+        porcentajeExpensasExtraordinarias > 100
+      ) {
+        redirect(`/unidades/${unidadId}?error=porcentajes_invalidos`);
+      }
+
+      return {
+        id: row.id,
+        tipoRelacion: relacion.tipoRelacion,
+        porcentajeExpensasOrdinarias,
+        porcentajeExpensasExtraordinarias,
+        recibeLiquidacion: relacion.tipoRelacion === "INQUILINO" ? Boolean(row.recibeLiquidacion) : false,
+      };
+    });
+
+    const totals = calculateUnidadRelacionPorcentajeTotals(normalizedRows);
+    if (!areUnidadRelacionPorcentajeTotalsValid(totals)) {
+      redirect(`/unidades/${unidadId}?error=porcentajes_totales`);
+    }
+
+    await prisma.$transaction(
+      normalizedRows.map((row) =>
+        prisma.unidadPersona.update({
+          where: { id: row.id },
+          data: {
+            porcentajeExpensasOrdinarias: row.porcentajeExpensasOrdinarias,
+            porcentajeExpensasExtraordinarias: row.porcentajeExpensasExtraordinarias,
+            recibeLiquidacion: row.recibeLiquidacion,
+          },
+        }),
+      ),
+    );
+
+    redirect(`/unidades/${unidadId}?ok=distribucion_guardada`);
+  }
+
   async function deleteUnidad(formData: FormData) {
     "use server";
 
@@ -138,10 +239,15 @@ export default async function UnidadDetallePage({
         ? "La relacion ya estaba finalizada."
         : error === "fin_menor_desde"
           ? "La fecha de fin no puede ser anterior a la fecha de inicio."
-          : null;
+          : error === "porcentajes_totales"
+            ? "Los porcentajes de expensas ordinarias y extraordinarias deben sumar 100% entre las relaciones vigentes."
+            : error === "porcentajes_invalidos"
+              ? "No pudimos validar la distribución de porcentajes. Probá nuevamente."
+              : null;
+  const successMessage = ok === "distribucion_guardada" ? "La distribución de notificaciones se guardó correctamente." : null;
 
   return (
-    <main className="mx-auto w-full max-w-3xl px-6 py-10">
+    <main className="mx-auto w-full max-w-7xl px-6 py-10">
       <Link href={`/consorcios/${unidad.consorcioId}`} className="text-blue-600 hover:underline">
         Volver al consorcio
       </Link>
@@ -183,15 +289,15 @@ export default async function UnidadDetallePage({
           <span className="font-medium">Superficie:</span> {unidad.superficie ?? "-"}
         </p>
         <p>
-          <span className="font-medium">Porcentaje expensas:</span> {unidad.porcentajeExpensas ?? "-"}
+          <span className="font-medium">Porcentaje expensas de la unidad:</span> {unidad.porcentajeExpensas ?? "-"}
         </p>
       </div>
 
       <h2 className="mt-8 text-xl font-semibold">Personas</h2>
 
-      {errorMessage ? (
-        <div className="mt-2 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {errorMessage}
+      {successMessage ? (
+        <div className="mt-2 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+          {successMessage}
         </div>
       ) : null}
 
@@ -205,86 +311,35 @@ export default async function UnidadDetallePage({
       {relacionesOrdenadas.length === 0 ? (
         <p className="mt-2 text-slate-500">Esta unidad aun no tiene personas asociadas.</p>
       ) : (
-        <div className="mt-2 overflow-hidden rounded-lg border border-slate-200 bg-white">
-          <div className="overflow-x-auto">
-            <table className="min-w-[900px] w-full border-collapse">
-              <thead className="bg-slate-50">
-                <tr className="text-left text-sm text-slate-600">
-                  <th className="px-4 py-3 font-medium">Nombre</th>
-                  <th className="px-4 py-3 font-medium">Apellido</th>
-                  <th className="px-4 py-3 font-medium">Email</th>
-                  <th className="px-4 py-3 font-medium">Telefono</th>
-                  <th className="px-4 py-3 font-medium">Relacion</th>
-                  <th className="px-4 py-3 font-medium">Desde</th>
-                  <th className="px-4 py-3 font-medium">Hasta</th>
-                  <th className="px-4 py-3 font-medium">Acciones</th>
-                </tr>
-              </thead>
-              <tbody className="text-sm text-slate-800">
-                {relacionesOrdenadas.map((rel) => {
-                  const vigente = isVigente(rel.desde, rel.hasta, today);
-                  const inactiva = !vigente;
+        <UnidadRelacionesEditor
+          unidadId={unidad.id}
+          finalizarId={Number.isInteger(finalizarId) ? finalizarId : undefined}
+          errorMessage={errorMessage}
+          onSaveDistribucion={guardarDistribucion}
+          onRemovePersona={removePersona}
+          onFinalizarRelacion={finalizarRelacion}
+          relaciones={relacionesOrdenadas.map((rel) => {
+            const vigente = isVigente(rel.desde, rel.hasta, today);
 
-                  return (
-                    <Fragment key={rel.id}>
-                      <tr className={`border-t border-slate-100 ${inactiva ? "bg-gray-50 text-gray-500" : ""}`}>
-                        <td className="px-4 py-3">{rel.persona.nombre}</td>
-                        <td className="px-4 py-3">{rel.persona.apellido}</td>
-                        <td className="px-4 py-3">{rel.persona.email ?? "-"}</td>
-                        <td className="px-4 py-3">{rel.persona.telefono ?? "-"}</td>
-                        <td className="px-4 py-3">{formatTipoRelacionUnidadLabel(rel.tipoRelacion)}</td>
-                        <td className="px-4 py-3">{formatDateAR(rel.desde)}</td>
-                        <td className="px-4 py-3">{formatDateAR(rel.hasta)}</td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-3">
-                            <form action={removePersona}>
-                              <input type="hidden" name="unidadId" value={unidad.id} />
-                              <input type="hidden" name="relacionId" value={rel.id} />
-                              <button type="submit" className="text-red-600 hover:underline">
-                                Desasociar
-                              </button>
-                            </form>
-
-                            {vigente ? (
-                              <Link href={`/unidades/${unidad.id}?finalizar=${rel.id}`} className="text-slate-700 hover:underline">
-                                Finalizar
-                              </Link>
-                            ) : null}
-                          </div>
-                        </td>
-                      </tr>
-
-                      {vigente && finalizarId === rel.id ? (
-                        <tr className="border-t border-slate-100 bg-slate-50/40">
-                          <td className="px-4 py-3" colSpan={8}>
-                            <form action={finalizarRelacion} className="flex items-center gap-3">
-                              <input type="hidden" name="unidadId" value={unidad.id} />
-                              <input type="hidden" name="relacionId" value={rel.id} />
-                              <input
-                                type="date"
-                                name="hasta"
-                                className="rounded-md border border-slate-300 px-3 py-2 text-sm outline-none ring-blue-500 focus:ring-2"
-                              />
-                              <button
-                                type="submit"
-                                className="rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800"
-                              >
-                                Guardar fin
-                              </button>
-                              <Link href={`/unidades/${unidad.id}`} className="text-slate-700 hover:underline">
-                                Cancelar
-                              </Link>
-                            </form>
-                          </td>
-                        </tr>
-                      ) : null}
-                    </Fragment>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
+            return {
+              id: rel.id,
+              persona: {
+                nombre: rel.persona.nombre,
+                apellido: rel.persona.apellido,
+                email: rel.persona.email,
+                telefono: rel.persona.telefono,
+              },
+              tipoRelacion: rel.tipoRelacion,
+              porcentajeExpensasOrdinarias: rel.porcentajeExpensasOrdinarias ?? 0,
+              porcentajeExpensasExtraordinarias: rel.porcentajeExpensasExtraordinarias ?? 0,
+              recibeLiquidacion: rel.recibeLiquidacion ?? false,
+              desde: rel.desde.toISOString(),
+              hasta: rel.hasta ? rel.hasta.toISOString() : null,
+              vigente,
+              inactiva: !vigente,
+            };
+          })}
+        />
       )}
     </main>
   );

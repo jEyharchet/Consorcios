@@ -3,7 +3,11 @@ import { redirect } from "next/navigation";
 
 import { prisma } from "../../../../../lib/prisma";
 import { createUnidadPersonaWithSequenceRecovery, overlaps, validateNoOverlap } from "../../../../lib/relaciones";
-import { isTipoRelacionUnidadValue, TIPO_RELACION_UNIDAD } from "../../../../lib/unidad-relacion";
+import {
+  buildUnidadPersonaNotificationDefaults,
+  isTipoRelacionUnidadValue,
+  TIPO_RELACION_UNIDAD,
+} from "../../../../lib/unidad-relacion";
 import AsociarUnidadForm from "./AsociarUnidadForm";
 
 export default async function AsociarPersonaUnidadPage({
@@ -123,10 +127,21 @@ export default async function AsociarPersonaUnidadPage({
     }
 
     try {
+      const relacionesActivasUnidad = await prisma.unidadPersona.count({
+        where: {
+          unidadId,
+          desde: { lte: new Date() },
+          OR: [{ hasta: null }, { hasta: { gte: new Date() } }],
+        },
+      });
+
       await createUnidadPersonaWithSequenceRecovery(prisma, {
         unidadId,
         personaId,
         tipoRelacion,
+        ...buildUnidadPersonaNotificationDefaults({
+          hasActiveRelations: relacionesActivasUnidad > 0,
+        }),
         desde: nuevoDesde,
         hasta: nuevoHasta,
       });

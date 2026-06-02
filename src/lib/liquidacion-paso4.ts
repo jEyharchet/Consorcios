@@ -7,6 +7,11 @@ import { getPeriodoVariants, normalizePeriodo } from "./periodo";
 import { generarArchivosLiquidacion, getLiquidacionesUploadsBaseDir } from "./liquidacion-cierre";
 import { enviarLiquidacionCerradaEmails } from "./liquidacion-email";
 import {
+  createLiquidacionArchivos,
+  isLiquidacionArchivoIdCollision,
+  realignLiquidacionArchivoIdSequence,
+} from "./liquidacion-archivos";
+import {
   createLiquidacionGastosHistoricos,
   isLiquidacionGastoHistoricoIdCollision,
   realignLiquidacionGastoHistoricoIdSequence,
@@ -15,16 +20,17 @@ import { getAdministradorVigente } from "./consorcio-administradores";
 import { buildEstadoCuentaDisplayByUnidad } from "./liquidacion-estado-cuenta-display";
 import { buildGastoPagoSummary } from "./pagos-gastos";
 import {
-  filterRelacionesUnidadPorTipos,
-  filterRelacionesUnidadVigentesPorTipos,
-  getTiposRelacionParaBoletaPago,
-  getTiposRelacionParaNotificacionGeneral,
+  getRelacionesDestinatariasBoleta,
+  getRelacionesDestinatariasLiquidacion,
 } from "./unidad-relacion";
 
 type OwnerRel = {
   desde: Date;
   hasta: Date | null;
   tipoRelacion?: string | null;
+  porcentajeExpensasOrdinarias?: number | null;
+  porcentajeExpensasExtraordinarias?: number | null;
+  recibeLiquidacion?: boolean | null;
   persona: { id: number; nombre: string; apellido: string };
 };
 
@@ -114,14 +120,12 @@ function parseBoletaCuentaSnapshot(snapshot: string | null | undefined): BoletaC
   }
 }
 
-function getOwnerProfiles(relaciones: OwnerRel[], allowedTipos = getTiposRelacionParaNotificacionGeneral()): OwnerProfile[] {
+function getOwnerProfiles(relaciones: OwnerRel[], mode: "liquidacion" | "boleta" = "liquidacion"): OwnerProfile[] {
   if (relaciones.length === 0) {
     return [{ id: 0, label: "-" }];
   }
 
-  const vigentes = filterRelacionesUnidadVigentesPorTipos(relaciones, allowedTipos);
-  const filtradas = filterRelacionesUnidadPorTipos(relaciones, allowedTipos);
-  const base = vigentes.length > 0 ? vigentes : filtradas.length > 0 ? [filtradas[0]] : [];
+  const base = mode === "boleta" ? getRelacionesDestinatariasBoleta(relaciones) : getRelacionesDestinatariasLiquidacion(relaciones);
 
   if (base.length === 0) {
     return [{ id: 0, label: "-" }];
@@ -138,12 +142,12 @@ function getOwnerProfiles(relaciones: OwnerRel[], allowedTipos = getTiposRelacio
   return Array.from(uniqueById.values()).sort((a, b) => a.label.localeCompare(b.label, "es"));
 }
 
-function getOwnerLabels(relaciones: OwnerRel[], allowedTipos = getTiposRelacionParaNotificacionGeneral()) {
-  return getOwnerProfiles(relaciones, allowedTipos).map((p) => p.label);
+function getOwnerLabels(relaciones: OwnerRel[], mode: "liquidacion" | "boleta" = "liquidacion") {
+  return getOwnerProfiles(relaciones, mode).map((p) => p.label);
 }
 
-function getOwnerLabel(relaciones: OwnerRel[], allowedTipos = getTiposRelacionParaNotificacionGeneral()) {
-  return getOwnerLabels(relaciones, allowedTipos)[0] ?? "-";
+function getOwnerLabel(relaciones: OwnerRel[], mode: "liquidacion" | "boleta" = "liquidacion") {
+  return getOwnerLabels(relaciones, mode)[0] ?? "-";
 }
 
 function formatUnidadTipo(tipo: string) {
@@ -484,9 +488,9 @@ export async function getLiquidacionPaso4Data(liquidacionId: number) {
       propietario: getOwnerLabel(row.unidad.personas),
       propietarios: getOwnerLabels(row.unidad.personas),
       propietariosInfo: getOwnerProfiles(row.unidad.personas),
-      boletaPropietario: getOwnerLabel(row.unidad.personas, getTiposRelacionParaBoletaPago()),
-      boletaPropietarios: getOwnerLabels(row.unidad.personas, getTiposRelacionParaBoletaPago()),
-      boletaPropietariosInfo: getOwnerProfiles(row.unidad.personas, getTiposRelacionParaBoletaPago()),
+      boletaPropietario: getOwnerLabel(row.unidad.personas, "boleta"),
+      boletaPropietarios: getOwnerLabels(row.unidad.personas, "boleta"),
+      boletaPropietariosInfo: getOwnerProfiles(row.unidad.personas, "boleta"),
       coeficiente: row.coeficiente,
       saldoAnterior: row.saldoAnterior,
       saldoAnteriorDisplay: display?.saldoAnterior ?? row.saldoAnterior,
@@ -698,6 +702,8 @@ export async function generarExpensasDefinitivasDesdePaso3(
       validatedFiles: archivosGenerados.length,
     });
 
+    await prepareLiquidacionArchivoInsert();
+
     const finalizeTransaction = () => prisma.$transaction(async (tx) => {
       await tx.expensa.deleteMany({ where: { liquidacionId: liquidacion.id } });
 
@@ -728,9 +734,9 @@ export async function generarExpensasDefinitivasDesdePaso3(
         where: { liquidacionId: liquidacion.id, activo: true },
         data: { activo: false, reemplazadoAt: new Date() },
       });
-      await tx.liquidacionArchivo.createMany({
-        data: archivosGenerados.map((a) => ({
-          liquidacionId: liquidacion.id,
+      await createLiquidacionArchivos(tx, {
+        liquidacionId: liquidacion.id,
+        archivos: archivosGenerados.map((a) => ({
           tipoArchivo: a.tipoArchivo,
           nombreArchivo: a.nombreArchivo,
           rutaArchivo: a.rutaArchivo,
@@ -741,16 +747,7 @@ export async function generarExpensasDefinitivasDesdePaso3(
       });
     });
 
-    try {
-      await finalizeTransaction();
-    } catch (error) {
-      if (!isLiquidacionGastoHistoricoIdCollision(error)) {
-        throw error;
-      }
-
-      await realignLiquidacionGastoHistoricoIdSequence();
-      await finalizeTransaction();
-    }
+    await withLiquidacionSequenceRecovery(finalizeTransaction);
   } catch (error) {
     if (outputRoot) {
       await rm(outputRoot, { recursive: true, force: true });
@@ -920,6 +917,38 @@ function countResponsableGroupsForBoletas(rows: Array<{
   return groups.size;
 }
 
+async function withLiquidacionSequenceRecovery<T>(operation: () => Promise<T>) {
+  let fixedGastosHistoricos = false;
+  let fixedArchivos = false;
+
+  while (true) {
+    try {
+      return await operation();
+    } catch (error) {
+      if (isLiquidacionGastoHistoricoIdCollision(error) && !fixedGastosHistoricos) {
+        fixedGastosHistoricos = true;
+        console.warn("[liquidacion-finalizacion] realigning LiquidacionGastoHistorico id sequence");
+        await realignLiquidacionGastoHistoricoIdSequence();
+        continue;
+      }
+
+      if (isLiquidacionArchivoIdCollision(error) && !fixedArchivos) {
+        fixedArchivos = true;
+        console.warn("[liquidacion-finalizacion] realigning LiquidacionArchivo id sequence");
+        await realignLiquidacionArchivoIdSequence();
+        continue;
+      }
+
+      throw error;
+    }
+  }
+}
+
+async function prepareLiquidacionArchivoInsert() {
+  console.info("[liquidacion-archivo] preflight realign sequence");
+  await realignLiquidacionArchivoIdSequence();
+}
+
 export async function regenerarArchivosLiquidacion(
   liquidacionId: number,
   options?: { onProgress?: (event: RegeneracionProgress) => void | Promise<void> },
@@ -1025,28 +1054,32 @@ export async function regenerarArchivosLiquidacion(
       validatedFiles,
     });
 
+    await prepareLiquidacionArchivoInsert();
+
     const previousActiveIds = liquidacion.archivos.map((a) => a.id);
 
-    await prisma.$transaction(async (tx) => {
-      await tx.liquidacionArchivo.createMany({
-        data: archivosGenerados.map((a) => ({
-          liquidacionId: liquidacion.id,
-          tipoArchivo: a.tipoArchivo,
-          nombreArchivo: a.nombreArchivo,
-          rutaArchivo: a.rutaArchivo,
-          mimeType: "application/pdf",
-          responsableGroupKey: a.responsableGroupKey,
-          activo: true,
-        })),
-      });
+    await withLiquidacionSequenceRecovery(() =>
+      prisma.$transaction(async (tx) => {
+        if (previousActiveIds.length > 0) {
+          await tx.liquidacionArchivo.updateMany({
+            where: { id: { in: previousActiveIds } },
+            data: { activo: false, reemplazadoAt: new Date() },
+          });
+        }
 
-      if (previousActiveIds.length > 0) {
-        await tx.liquidacionArchivo.updateMany({
-          where: { id: { in: previousActiveIds } },
-          data: { activo: false, reemplazadoAt: new Date() },
+        await createLiquidacionArchivos(tx, {
+          liquidacionId: liquidacion.id,
+          archivos: archivosGenerados.map((a) => ({
+            tipoArchivo: a.tipoArchivo,
+            nombreArchivo: a.nombreArchivo,
+            rutaArchivo: a.rutaArchivo,
+            mimeType: "application/pdf",
+            responsableGroupKey: a.responsableGroupKey,
+            activo: true,
+          })),
         });
-      }
-    });
+      }),
+    );
   } catch (error) {
     const newRoots = Array.from(
       new Set(

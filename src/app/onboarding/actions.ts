@@ -10,7 +10,7 @@ import { ONBOARDING_PATH } from "../../lib/onboarding";
 import { ensureUserPersona, findPersonaByEmail, normalizeEmailIdentity } from "../../lib/persona-identity";
 import { prisma } from "../../lib/prisma";
 import { createUnidadPersonaWithSequenceRecovery } from "../../lib/relaciones";
-import { TIPO_RELACION_UNIDAD } from "../../lib/unidad-relacion";
+import { buildUnidadPersonaNotificationDefaults, TIPO_RELACION_UNIDAD } from "../../lib/unidad-relacion";
 
 const ESTADO_PENDIENTE = "PENDIENTE";
 const ESTADO_APROBADA = "APROBADA";
@@ -362,10 +362,21 @@ async function resolveSolicitud(params: {
         });
 
         if (!existingRelation) {
+          const relacionesActivasUnidad = await tx.unidadPersona.count({
+            where: {
+              unidadId: unidad.id,
+              desde: { lte: now },
+              OR: [{ hasta: null }, { hasta: { gte: now } }],
+            },
+          });
+
           await createUnidadPersonaWithSequenceRecovery(tx, {
             unidadId: unidad.id,
             personaId,
             tipoRelacion: TIPO_RELACION_UNIDAD.RESPONSABLE,
+            ...buildUnidadPersonaNotificationDefaults({
+              hasActiveRelations: relacionesActivasUnidad > 0,
+            }),
             desde: now,
             hasta: null,
           });

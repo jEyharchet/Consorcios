@@ -1,8 +1,11 @@
 import crypto from "crypto";
 
+import { Prisma } from "@prisma/client";
+
 import { prisma } from "./prisma";
 import { generarExpensasDefinitivasDesdePaso3, regenerarArchivosLiquidacion } from "./liquidacion-paso4";
 import { formatEmailSummary } from "./liquidacion-email";
+import { isLiquidacionArchivoIdCollision } from "./liquidacion-archivos";
 
 export type RegeneracionJobStatus = "PENDING" | "RUNNING" | "VALIDATING" | "COMPLETED" | "FAILED";
 export type RegeneracionJobStage =
@@ -67,6 +70,24 @@ function isJobStale(updatedAt: Date | null | undefined) {
 }
 
 function serializeError(error: unknown) {
+  if (isLiquidacionArchivoIdCollision(error)) {
+    return {
+      message: "No se pudieron registrar los archivos generados de la liquidacion. Reintenta la generacion o regenera los archivos.",
+      detail:
+        "La insercion de archivos generados fallo por una colision del identificador interno de LiquidacionArchivo. El proceso se puede reintentar.",
+    };
+  }
+
+  if (error instanceof Prisma.PrismaClientKnownRequestError) {
+    return {
+      message: error.message,
+      detail: JSON.stringify({
+        code: error.code,
+        meta: error.meta ?? null,
+      }).slice(0, 2000),
+    };
+  }
+
   if (error instanceof Error) {
     return {
       message: error.message,

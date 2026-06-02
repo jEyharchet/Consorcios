@@ -96,6 +96,9 @@ type UnidadPersonaCreateData = {
   unidadId: number;
   personaId: number;
   tipoRelacion: TipoRelacionUnidadValue;
+  porcentajeExpensasOrdinarias?: number;
+  porcentajeExpensasExtraordinarias?: number;
+  recibeLiquidacion?: boolean;
   desde: Date;
   hasta: Date | null;
 };

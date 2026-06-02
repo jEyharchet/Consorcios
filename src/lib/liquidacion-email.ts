@@ -6,10 +6,8 @@ import { buildEmailSummary, EMAIL_ESTADO, formatEmailSummary, type EmailSummary 
 import { buildReplyToAddress, createEmailReplyKey } from "./email-replies";
 import { prisma } from "./prisma";
 import {
-  filterRelacionesUnidadPorTipos,
-  filterRelacionesUnidadVigentesPorTipos,
-  getTiposRelacionParaBoletaPago,
-  getTiposRelacionParaNotificacionGeneral,
+  getRelacionesDestinatariasBoleta,
+  getRelacionesDestinatariasLiquidacion,
 } from "./unidad-relacion";
 
 export { formatEmailSummary } from "./email-tracking";
@@ -46,6 +44,9 @@ type ResponsableRelacion = {
   desde: Date;
   hasta: Date | null;
   tipoRelacion?: string | null;
+  porcentajeExpensasOrdinarias?: number | null;
+  porcentajeExpensasExtraordinarias?: number | null;
+  recibeLiquidacion?: boolean | null;
   persona: {
     id: number;
     nombre: string;
@@ -277,25 +278,26 @@ function buildUnidadLabel(unidad: { identificador: string; tipo: string }) {
   return `${unidad.identificador} (${unidad.tipo})`;
 }
 
-function resolveBaseResponsables(relaciones: ResponsableRelacion[], tipos: string[]) {
-  if (relaciones.length === 0) {
-    return [] as ResponsableRelacion[];
-  }
-
-  const vigentes = filterRelacionesUnidadVigentesPorTipos(relaciones, tipos);
-  if (vigentes.length > 0) {
-    return vigentes;
-  }
-
-  const filtradas = filterRelacionesUnidadPorTipos(relaciones, tipos);
-  return filtradas.length > 0 ? [filtradas[0]] : [];
-}
-
-function buildResponsableGroupKey(relaciones: ResponsableRelacion[]) {
-  const base = resolveBaseResponsables(relaciones, getTiposRelacionParaBoletaPago());
+function buildResponsableGroupKey(relaciones: ResponsableRelacion[], tipoEnvio: TipoEnvioEmail) {
+  const base =
+    tipoEnvio === EMAIL_TIPO_ENVIO.RECORDATORIO_VENCIMIENTO
+      ? getRelacionesDestinatariasBoleta(relaciones)
+      : getRelacionesDestinatariasLiquidacion(relaciones);
 
   if (base.length === 0) {
-    return "fallback-sin-responsable";
+    const fallback = relaciones
+      .map((rel) => ({
+        id: rel.persona.id,
+        label: `${rel.persona.apellido}, ${rel.persona.nombre}`,
+      }))
+      .sort((a, b) => a.id - b.id || a.label.localeCompare(b.label, "es"));
+    const ids = fallback.map((item) => item.id).filter((value) => value > 0);
+
+    if (ids.length > 0) {
+      return `fallback-${ids.join("|")}`;
+    }
+
+    return `fallback-${slugify(fallback.map((item) => item.label).join("-")) || "sin-responsable"}`;
   }
 
   const responsables = base
@@ -314,8 +316,7 @@ function buildResponsableGroupKey(relaciones: ResponsableRelacion[]) {
   return `fallback-${slugify(responsables.map((responsable) => responsable.label).join("-"))}`;
 }
 
-function resolveDestinatarios(relaciones: ResponsableRelacion[], tipos: string[]) {
-  const base = resolveBaseResponsables(relaciones, tipos);
+function resolveDestinatarios(base: ResponsableRelacion[]) {
   const emails = Array.from(
     new Set(
       base
@@ -334,11 +335,11 @@ function resolveDestinatarios(relaciones: ResponsableRelacion[], tipos: string[]
 }
 
 function resolveDestinatariosGenerales(relaciones: ResponsableRelacion[]) {
-  return resolveDestinatarios(relaciones, getTiposRelacionParaNotificacionGeneral());
+  return resolveDestinatarios(getRelacionesDestinatariasLiquidacion(relaciones));
 }
 
 function resolveDestinatariosBoleta(relaciones: ResponsableRelacion[]) {
-  return resolveDestinatarios(relaciones, getTiposRelacionParaBoletaPago());
+  return resolveDestinatarios(getRelacionesDestinatariasBoleta(relaciones));
 }
 
 function buildLiquidacionEmailGroups(params: {
@@ -362,11 +363,15 @@ function buildLiquidacionEmailGroups(params: {
   >();
 
   for (const expensa of params.expensas) {
-    const key = buildResponsableGroupKey(expensa.unidad.personas);
+    const key = buildResponsableGroupKey(expensa.unidad.personas, params.tipoEnvio);
     const destinatarios =
       params.tipoEnvio === EMAIL_TIPO_ENVIO.RECORDATORIO_VENCIMIENTO
         ? resolveDestinatariosBoleta(expensa.unidad.personas)
         : resolveDestinatariosGenerales(expensa.unidad.personas);
+    const relacionesBase =
+      params.tipoEnvio === EMAIL_TIPO_ENVIO.RECORDATORIO_VENCIMIENTO
+        ? getRelacionesDestinatariasBoleta(expensa.unidad.personas)
+        : getRelacionesDestinatariasLiquidacion(expensa.unidad.personas);
     const unidadLabel = buildUnidadLabel(expensa.unidad);
     const current = groups.get(key);
 
@@ -381,7 +386,7 @@ function buildLiquidacionEmailGroups(params: {
       current.responsableIds = Array.from(
         new Set([
           ...current.responsableIds,
-          ...expensa.unidad.personas.map((relacion) => relacion.persona.id).filter((value) => value > 0),
+          ...relacionesBase.map((relacion) => relacion.persona.id).filter((value) => value > 0),
         ]),
       ).sort((a, b) => a - b);
       current.destinatarios = Array.from(new Set([...current.destinatarios, ...destinatarios.emails]));
@@ -395,7 +400,7 @@ function buildLiquidacionEmailGroups(params: {
       primaryUnidadId: expensa.unidadId,
       unidadIds: [expensa.unidadId],
       unidades: [unidadLabel],
-      responsableIds: expensa.unidad.personas.map((relacion) => relacion.persona.id).filter((value) => value > 0),
+      responsableIds: relacionesBase.map((relacion) => relacion.persona.id).filter((value) => value > 0),
       responsablesLabel: destinatarios.responsablesLabel,
       destinatarios: destinatarios.emails,
       montoTotal: expensa.monto,
@@ -864,6 +869,9 @@ async function getLiquidacionEmailContext(liquidacionId: number, onlyPendientes:
                     desde: true,
                     hasta: true,
                     tipoRelacion: true,
+                    porcentajeExpensasOrdinarias: true,
+                    porcentajeExpensasExtraordinarias: true,
+                    recibeLiquidacion: true,
                     persona: {
                       select: {
                         id: true,
