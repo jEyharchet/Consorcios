@@ -20,8 +20,9 @@ export function isLiquidacionGastoHistoricoIdCollision(error: unknown) {
   return (
     error instanceof Prisma.PrismaClientKnownRequestError &&
     error.code === "P2002" &&
-    Array.isArray(error.meta?.target) &&
-    error.meta.target.includes("id")
+    (error.meta as { modelName?: unknown } | undefined)?.modelName === "LiquidacionGastoHistorico" &&
+    ((Array.isArray(error.meta?.target) && error.meta.target.includes("id")) ||
+      (typeof error.meta?.target === "string" && error.meta.target.includes("id")))
   );
 }
 

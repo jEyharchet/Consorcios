@@ -25,6 +25,7 @@ export function isLiquidacionArchivoIdCollision(error: unknown) {
   return (
     error instanceof Prisma.PrismaClientKnownRequestError &&
     error.code === "P2002" &&
+    (error.meta as { modelName?: unknown } | undefined)?.modelName === "LiquidacionArchivo" &&
     targetIncludesId
   );
 }

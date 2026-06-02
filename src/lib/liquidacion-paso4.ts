@@ -12,6 +12,11 @@ import {
   realignLiquidacionArchivoIdSequence,
 } from "./liquidacion-archivos";
 import {
+  createExpensas,
+  isExpensaIdCollision,
+  realignExpensaIdSequence,
+} from "./expensa-write";
+import {
   createLiquidacionGastosHistoricos,
   isLiquidacionGastoHistoricoIdCollision,
   realignLiquidacionGastoHistoricoIdSequence,
@@ -702,12 +707,16 @@ export async function generarExpensasDefinitivasDesdePaso3(
       validatedFiles: archivosGenerados.length,
     });
 
+    await prepareExpensaInsert();
     await prepareLiquidacionArchivoInsert();
 
     const finalizeTransaction = () => prisma.$transaction(async (tx) => {
       await tx.expensa.deleteMany({ where: { liquidacionId: liquidacion.id } });
 
-      await tx.expensa.createMany({ data: expensasData });
+      await createExpensas(tx, {
+        liquidacionId: liquidacion.id,
+        expensas: expensasData,
+      });
 
       const total = liquidacion.prorrateos.reduce((acc, row) => acc + row.total, 0);
 
@@ -918,6 +927,7 @@ function countResponsableGroupsForBoletas(rows: Array<{
 }
 
 async function withLiquidacionSequenceRecovery<T>(operation: () => Promise<T>) {
+  let fixedExpensas = false;
   let fixedGastosHistoricos = false;
   let fixedArchivos = false;
 
@@ -925,6 +935,13 @@ async function withLiquidacionSequenceRecovery<T>(operation: () => Promise<T>) {
     try {
       return await operation();
     } catch (error) {
+      if (isExpensaIdCollision(error) && !fixedExpensas) {
+        fixedExpensas = true;
+        console.warn("[liquidacion-finalizacion] realigning Expensa id sequence");
+        await realignExpensaIdSequence();
+        continue;
+      }
+
       if (isLiquidacionGastoHistoricoIdCollision(error) && !fixedGastosHistoricos) {
         fixedGastosHistoricos = true;
         console.warn("[liquidacion-finalizacion] realigning LiquidacionGastoHistorico id sequence");
@@ -942,6 +959,11 @@ async function withLiquidacionSequenceRecovery<T>(operation: () => Promise<T>) {
       throw error;
     }
   }
+}
+
+async function prepareExpensaInsert() {
+  console.info("[expensa] preflight realign sequence");
+  await realignExpensaIdSequence();
 }
 
 async function prepareLiquidacionArchivoInsert() {

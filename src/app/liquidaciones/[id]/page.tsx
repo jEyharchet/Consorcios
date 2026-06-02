@@ -10,6 +10,7 @@ import {
   isLiquidacionGastoHistoricoIdCollision,
   realignLiquidacionGastoHistoricoIdSequence,
 } from "../../../lib/liquidacion-gastos-historicos";
+import { createExpensas, isExpensaIdCollision, realignExpensaIdSequence } from "../../../lib/expensa-write";
 import { getPeriodoVariants } from "../../../lib/periodo";
 import { enviarLiquidacionCerradaEmails, formatEmailSummary } from "../../../lib/liquidacion-email";
 
@@ -145,18 +146,34 @@ export default async function LiquidacionDetallePage({
       };
     });
 
-    await prisma.$transaction(async (tx) => {
-      await tx.liquidacion.update({
-        where: { id: liquidacion.id },
-        data: { total },
+    const generateTransaction = () =>
+      prisma.$transaction(async (tx) => {
+        await tx.liquidacion.update({
+          where: { id: liquidacion.id },
+          data: { total },
+        });
+
+        if (existingExpensas.length > 0) {
+          await tx.expensa.deleteMany({ where: { liquidacionId: liquidacion.id } });
+        }
+
+        await createExpensas(tx, {
+          liquidacionId: liquidacion.id,
+          expensas: expensasData,
+        });
       });
 
-      if (existingExpensas.length > 0) {
-        await tx.expensa.deleteMany({ where: { liquidacionId: liquidacion.id } });
+    try {
+      await realignExpensaIdSequence();
+      await generateTransaction();
+    } catch (error) {
+      if (!isExpensaIdCollision(error)) {
+        throw error;
       }
 
-      await tx.expensa.createMany({ data: expensasData });
-    });
+      await realignExpensaIdSequence();
+      await generateTransaction();
+    }
 
     redirect(`/liquidaciones/${liquidacion.id}`);
   }

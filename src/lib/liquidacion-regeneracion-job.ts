@@ -6,6 +6,7 @@ import { prisma } from "./prisma";
 import { generarExpensasDefinitivasDesdePaso3, regenerarArchivosLiquidacion } from "./liquidacion-paso4";
 import { formatEmailSummary } from "./liquidacion-email";
 import { isLiquidacionArchivoIdCollision } from "./liquidacion-archivos";
+import { isExpensaIdCollision } from "./expensa-write";
 
 export type RegeneracionJobStatus = "PENDING" | "RUNNING" | "VALIDATING" | "COMPLETED" | "FAILED";
 export type RegeneracionJobStage =
@@ -70,6 +71,14 @@ function isJobStale(updatedAt: Date | null | undefined) {
 }
 
 function serializeError(error: unknown) {
+  if (isExpensaIdCollision(error)) {
+    return {
+      message: "No se pudieron registrar las expensas generadas de la liquidacion. Reintenta la finalizacion.",
+      detail:
+        "La insercion de expensas generadas fallo por una colision del identificador interno de Expensa. El proceso se puede reintentar.",
+    };
+  }
+
   if (isLiquidacionArchivoIdCollision(error)) {
     return {
       message: "No se pudieron registrar los archivos generados de la liquidacion. Reintenta la generacion o regenera los archivos.",
