@@ -761,7 +761,7 @@ async function renderConvocatoriaPdfBuffer(asamblea: NonNullable<AsambleaConvoca
   try {
     const page = await browser.newPage();
     await page.setContent(buildConvocatoriaPdfHtml(asamblea), {
-      waitUntil: "networkidle0",
+      waitUntil: "domcontentloaded",
     });
 
     return Buffer.from(
@@ -784,7 +784,7 @@ async function renderCancelacionPdfBuffer(
   try {
     const page = await browser.newPage();
     await page.setContent(buildCancelacionPdfHtml(asamblea, mensajePersonalizado), {
-      waitUntil: "networkidle0",
+      waitUntil: "domcontentloaded",
     });
 
     return Buffer.from(
