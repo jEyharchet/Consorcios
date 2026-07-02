@@ -297,6 +297,13 @@ function buildStyles() {
         color: #334155;
       }
 
+      .tipo-total-row td {
+        background: #edf2f7;
+        font-weight: 700;
+        color: #0f172a;
+        border-top: 1px solid #cbd5e1;
+      }
+
       .totals-row td {
         background: #e2e8f0;
         font-weight: 700;
@@ -452,11 +459,17 @@ function buildGastosTable(data: LiquidacionData) {
     return Array.from(map.entries()).sort(([a], [b]) => a.localeCompare(b, "es"));
   };
 
-  const renderGroup = (title: string, grouped: ReturnType<typeof groupRows>) => {
+  const renderGroup = (title: string, grouped: ReturnType<typeof groupRows>, totalLabel: string) => {
+    const groupTotal = grouped.reduce(
+      (acc, [, rows]) => acc + rows.reduce((rowsAcc, row) => rowsAcc + row.monto, 0),
+      0,
+    );
+
     if (grouped.length === 0) {
       return `
         <tr class="group-title"><td colspan="2">${title}</td></tr>
         <tr><td colspan="2" class="small">Sin gastos.</td></tr>
+        <tr class="tipo-total-row"><td class="text-right">${escapeHtml(totalLabel)}</td><td class="text-right">${escapeHtml(formatCurrency(groupTotal))}</td></tr>
       `;
     }
 
@@ -474,7 +487,7 @@ function buildGastosTable(data: LiquidacionData) {
       })
       .join("");
 
-    return `<tr class="group-title"><td colspan="2">${title}</td></tr>${lines}`;
+    return `<tr class="group-title"><td colspan="2">${title}</td></tr>${lines}<tr class="tipo-total-row"><td class="text-right">${escapeHtml(totalLabel)}</td><td class="text-right">${escapeHtml(formatCurrency(groupTotal))}</td></tr>`;
   };
 
   const total = ordinarios.reduce((a, b) => a + b.monto, 0) + extraordinarios.reduce((a, b) => a + b.monto, 0) + fondo;
@@ -485,8 +498,8 @@ function buildGastosTable(data: LiquidacionData) {
         <tr><th>DESCRIPCION</th><th class="text-right">IMPORTE</th></tr>
       </thead>
       <tbody>
-        ${renderGroup("GASTOS ORDINARIOS", groupRows(ordinarios))}
-        ${renderGroup("GASTOS EXTRAORDINARIOS", groupRows(extraordinarios))}
+        ${renderGroup("GASTOS ORDINARIOS", groupRows(ordinarios), "TOTAL GASTOS ORDINARIOS")}
+        ${renderGroup("GASTOS EXTRAORDINARIOS", groupRows(extraordinarios), "TOTAL GASTOS EXTRAORDINARIOS")}
         <tr class="subtotal-row"><td class="font-bold">Aporte al fondo de reserva</td><td class="text-right">${escapeHtml(formatCurrency(fondo))}</td></tr>
         <tr class="total-prorratear-row"><td>TOTAL A PRORRATEAR</td><td class="text-right">${escapeHtml(formatCurrency(total))}</td></tr>
       </tbody>
@@ -500,9 +513,9 @@ function buildProrrateoTable(data: LiquidacionData) {
   const totals = rows.reduce(
     (acc, row) => {
       acc.coef += row.coeficiente;
-      acc.saldoAnterior += row.saldoAnteriorDisplay ?? row.saldoAnterior;
-      acc.pagos += row.pagosPeriodoDisplay ?? row.pagosPeriodo;
       acc.saldoRemanente += row.saldoDeudor;
+      acc.expensasOrdinarias += row.expensasOrdinarias;
+      acc.expensasExtraordinarias += row.expensasExtraordinarias;
       acc.expensasMes += row.expensasDelMes;
       acc.fondoReserva += row.fondoReserva;
       acc.intereses += row.intereses;
@@ -512,9 +525,9 @@ function buildProrrateoTable(data: LiquidacionData) {
     },
     {
       coef: 0,
-      saldoAnterior: 0,
-      pagos: 0,
       saldoRemanente: 0,
+      expensasOrdinarias: 0,
+      expensasExtraordinarias: 0,
       expensasMes: 0,
       fondoReserva: 0,
       intereses: 0,
@@ -534,9 +547,9 @@ function buildProrrateoTable(data: LiquidacionData) {
           <td class="col-ubicacion">${escapeHtml(buildCompactUbicacion(row))}</td>
           <td class="col-responsables cell-lines responsables-cell responsable-cell">${responsables}</td>
           <td class="col-coef text-right coef-cell">${escapeHtml(formatCoef(row.coeficiente))}</td>
-          <td class="col-num text-right">${escapeHtml(formatCurrencyNoDecimals(row.saldoAnteriorDisplay ?? row.saldoAnterior))}</td>
-          <td class="col-num text-right">${escapeHtml(formatCurrencyNoDecimals(row.pagosPeriodoDisplay ?? row.pagosPeriodo))}</td>
           <td class="col-num text-right">${escapeHtml(formatCurrencyNoDecimals(row.saldoDeudor))}</td>
+          <td class="col-num text-right">${escapeHtml(formatCurrencyNoDecimals(row.expensasOrdinarias))}</td>
+          <td class="col-num text-right">${escapeHtml(formatCurrencyNoDecimals(row.expensasExtraordinarias))}</td>
           <td class="col-num text-right">${escapeHtml(formatCurrencyNoDecimals(row.expensasDelMes))}</td>
           <td class="col-num text-right">${escapeHtml(formatCurrencyNoDecimals(row.fondoReserva))}</td>
           <td class="col-num text-right">${escapeHtml(formatCurrencyNoDecimals(row.intereses))}</td>
@@ -553,8 +566,8 @@ function buildProrrateoTable(data: LiquidacionData) {
       <thead>
         <tr>
           <th class="col-uf">U.F.</th><th class="col-ubicacion">UBICACION</th><th class="col-responsables">RESPONSABLE</th><th class="col-coef text-right">COEF.</th>
-          <th class="col-num text-right">SALDO ANTERIOR</th><th class="col-num text-right">PAGOS</th><th class="col-num text-right">SALDO REMANENTE</th>
-          <th class="col-num text-right">EXPENSAS DEL MES</th><th class="col-num text-right">FONDO DE RESERVA</th><th class="col-num text-right">INTERESES</th>
+          <th class="col-num text-right">SALDO REMANENTE</th><th class="col-num text-right">EXP. ORDINARIAS</th><th class="col-num text-right">EXP. EXTRAORDINARIAS</th>
+          <th class="col-num text-right">EXP. DEL MES</th><th class="col-num text-right">FONDO DE RESERVA</th><th class="col-num text-right">INTERESES</th>
           <th class="col-num text-right">AJUSTE</th><th class="col-total text-right">TOTAL A PAGAR</th>
         </tr>
       </thead>
@@ -563,9 +576,9 @@ function buildProrrateoTable(data: LiquidacionData) {
         <tr class="totals-row">
           <td colspan="3">TOTALES GENERALES</td>
           <td class="text-right">${escapeHtml(formatCoef(totals.coef))}</td>
-          <td class="text-right">${escapeHtml(formatCurrencyNoDecimals(totals.saldoAnterior))}</td>
-          <td class="text-right">${escapeHtml(formatCurrencyNoDecimals(totals.pagos))}</td>
           <td class="text-right">${escapeHtml(formatCurrencyNoDecimals(totals.saldoRemanente))}</td>
+          <td class="text-right">${escapeHtml(formatCurrencyNoDecimals(totals.expensasOrdinarias))}</td>
+          <td class="text-right">${escapeHtml(formatCurrencyNoDecimals(totals.expensasExtraordinarias))}</td>
           <td class="text-right">${escapeHtml(formatCurrencyNoDecimals(totals.expensasMes))}</td>
           <td class="text-right">${escapeHtml(formatCurrencyNoDecimals(totals.fondoReserva))}</td>
           <td class="text-right">${escapeHtml(formatCurrencyNoDecimals(totals.intereses))}</td>

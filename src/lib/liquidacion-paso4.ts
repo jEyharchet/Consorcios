@@ -478,10 +478,14 @@ export async function getLiquidacionPaso4Data(liquidacionId: number) {
   const saldoCajaActual = saldoCajaPeriodoAnterior - totalEgresosGeneralesActual - totalEgresosParticularesActual;
 
   const fondoTotal = liquidacion.montoFondoReserva ?? 0;
+  const totalGastosOrdinarios = liquidacion.montoOrdinarias ?? 0;
+  const totalGastosExtraordinarios = liquidacion.montoExtraordinarias ?? 0;
 
   const prorrateoRows = liquidacion.prorrateos.map((row) => {
     const fondoReserva = fondoTotal * row.coeficiente;
-    const expensasDelMes = row.gastoOrdinario - fondoReserva;
+    const expensasOrdinarias = totalGastosOrdinarios * row.coeficiente;
+    const expensasExtraordinarias = totalGastosExtraordinarios * row.coeficiente;
+    const expensasDelMes = expensasOrdinarias + expensasExtraordinarias;
     const display = estadoCuentaDisplayByUnidad.get(row.unidadId);
 
     return {
@@ -502,6 +506,8 @@ export async function getLiquidacionPaso4Data(liquidacionId: number) {
       pagosPeriodo: row.pagosPeriodo,
       pagosPeriodoDisplay: display?.pagosPeriodo ?? row.pagosPeriodo,
       saldoDeudor: row.saldoDeudor,
+      expensasOrdinarias,
+      expensasExtraordinarias,
       expensasDelMes,
       fondoReserva,
       intereses: row.intereses,
