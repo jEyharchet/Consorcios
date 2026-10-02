@@ -1,3 +1,4 @@
+import { withEnvioEmailIdRecovery } from "@/lib/envio-email-write";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
@@ -400,7 +401,7 @@ export default async function RespuestaEmailDetailPage({
     const inReplyToHeader = normalizeMessageHeader(actual.messageId);
     const referencesHeader = buildReplyReferences([actual.inReplyTo, actual.messageId]);
     const replyKey = createEmailReplyKey();
-    const envio = await prisma.envioEmail.create({
+    const envio = await withEnvioEmailIdRecovery(() => prisma.envioEmail.create({
       data: {
         consorcioId: actual.consorcioId,
         tipoEnvio: actual.envioEmail?.tipoEnvio ?? "RESPUESTA_ADMIN",
@@ -414,7 +415,7 @@ export default async function RespuestaEmailDetailPage({
         replyKey,
       },
       select: { id: true, replyKey: true },
-    });
+    }));
 
     let sentAt: Date | null = null;
     let providerMessageId: string | null = null;

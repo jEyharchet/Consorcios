@@ -263,6 +263,8 @@ export default function RegenerarArchivosButton({
                   >
                     {completionTone === "success" ? successMessage : job.message || successMessage}
                   </p>
+                ) : job.status === "FAILED" ? (
+                  <p className="text-red-700">El proceso se detuvo por un error.</p>
                 ) : (
                   <div className="mt-2 flex items-center gap-2">
                     <span className="inline-block h-2.5 w-2.5 animate-pulse rounded-full bg-blue-600" />

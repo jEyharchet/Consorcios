@@ -1,3 +1,4 @@
+import { withEnvioEmailIdRecovery } from "@/lib/envio-email-write";
 import path from "path";
 import { readFile } from "fs/promises";
 
@@ -1014,7 +1015,7 @@ async function procesarEnviosLiquidacion(params: {
     if (group.destinatarios.length === 0) {
       const replyKey = createEmailReplyKey();
 
-      await prisma.envioEmail.create({
+      await withEnvioEmailIdRecovery(() => prisma.envioEmail.create({
         data: {
           consorcioId: liquidacion.consorcioId,
           tipoEnvio: params.tipoEnvio,
@@ -1028,7 +1029,7 @@ async function procesarEnviosLiquidacion(params: {
           errorMensaje: "No se encontro un email valido para el grupo responsable de la boleta.",
           replyKey,
         },
-      });
+      }));
       results.push({ estado: EMAIL_ESTADO.SIN_DESTINATARIO });
       details.push({
         estado: EMAIL_ESTADO.SIN_DESTINATARIO,
@@ -1043,7 +1044,7 @@ async function procesarEnviosLiquidacion(params: {
     }
 
     const replyKey = createEmailReplyKey();
-    const envio = await prisma.envioEmail.create({
+    const envio = await withEnvioEmailIdRecovery(() => prisma.envioEmail.create({
       data: {
         consorcioId: liquidacion.consorcioId,
         tipoEnvio: params.tipoEnvio,
@@ -1057,7 +1058,7 @@ async function procesarEnviosLiquidacion(params: {
         replyKey,
       },
       select: { id: true, replyKey: true },
-    });
+    }));
 
     try {
       const response = await sendEmailWithThrottleAndRetry({
@@ -1257,7 +1258,7 @@ export async function sendReminderDrafts(params: {
     if (destinatarios.length === 0) {
       const replyKey = createEmailReplyKey();
 
-      await prisma.envioEmail.create({
+      await withEnvioEmailIdRecovery(() => prisma.envioEmail.create({
         data: {
           consorcioId: liquidacion.consorcioId,
           tipoEnvio: EMAIL_TIPO_ENVIO.RECORDATORIO_VENCIMIENTO,
@@ -1271,7 +1272,7 @@ export async function sendReminderDrafts(params: {
           errorMensaje: "No se encontro un email valido para el borrador seleccionado.",
           replyKey,
         },
-      });
+      }));
       results.push({ estado: EMAIL_ESTADO.SIN_DESTINATARIO });
       continue;
     }
@@ -1290,7 +1291,7 @@ export async function sendReminderDrafts(params: {
     });
 
     const replyKey = createEmailReplyKey();
-    const envio = await prisma.envioEmail.create({
+    const envio = await withEnvioEmailIdRecovery(() => prisma.envioEmail.create({
       data: {
         consorcioId: liquidacion.consorcioId,
         tipoEnvio: EMAIL_TIPO_ENVIO.RECORDATORIO_VENCIMIENTO,
@@ -1304,7 +1305,7 @@ export async function sendReminderDrafts(params: {
         replyKey,
       },
       select: { id: true, replyKey: true },
-    });
+    }));
 
     try {
       const response = await sendEmailWithThrottleAndRetry({
@@ -1492,7 +1493,7 @@ export async function sendLiquidacionClosureDrafts(params: {
     if (destinatarios.length === 0) {
       const replyKey = createEmailReplyKey();
 
-      await prisma.envioEmail.create({
+      await withEnvioEmailIdRecovery(() => prisma.envioEmail.create({
         data: {
           consorcioId: liquidacion.consorcioId,
           tipoEnvio: EMAIL_TIPO_ENVIO.LIQUIDACION_CIERRE,
@@ -1506,13 +1507,13 @@ export async function sendLiquidacionClosureDrafts(params: {
           errorMensaje: "No se encontro un email valido para el destinatario seleccionado.",
           replyKey,
         },
-      });
+      }));
       results.push({ estado: EMAIL_ESTADO.SIN_DESTINATARIO });
       continue;
     }
 
     const replyKey = createEmailReplyKey();
-    const envio = await prisma.envioEmail.create({
+    const envio = await withEnvioEmailIdRecovery(() => prisma.envioEmail.create({
       data: {
         consorcioId: liquidacion.consorcioId,
         tipoEnvio: EMAIL_TIPO_ENVIO.LIQUIDACION_CIERRE,
@@ -1526,7 +1527,7 @@ export async function sendLiquidacionClosureDrafts(params: {
         replyKey,
       },
       select: { id: true, replyKey: true },
-    });
+    }));
 
     try {
       const response = await sendEmailWithThrottleAndRetry({

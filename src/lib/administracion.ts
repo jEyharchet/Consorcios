@@ -1,3 +1,4 @@
+import { withEnvioEmailIdRecovery } from "@/lib/envio-email-write";
 import "server-only";
 
 import { Buffer } from "node:buffer";
@@ -407,7 +408,7 @@ async function registrarYEnviar(params: {
     if (destinatario.emails.length === 0) {
       const replyKey = createEmailReplyKey();
 
-      await prisma.envioEmail.create({
+      await withEnvioEmailIdRecovery(() => prisma.envioEmail.create({
         data: {
           consorcioId: params.consorcioId,
           asambleaId: params.asambleaId ?? null,
@@ -420,13 +421,13 @@ async function registrarYEnviar(params: {
           errorMensaje: "No se encontro un email valido para los responsables vigentes de la unidad.",
           replyKey,
         },
-      });
+      }));
       results.push({ estado: EMAIL_ESTADO.SIN_DESTINATARIO });
       continue;
     }
 
     const replyKey = createEmailReplyKey();
-    const envio = await prisma.envioEmail.create({
+    const envio = await withEnvioEmailIdRecovery(() => prisma.envioEmail.create({
       data: {
         consorcioId: params.consorcioId,
         asambleaId: params.asambleaId ?? null,
@@ -439,7 +440,7 @@ async function registrarYEnviar(params: {
         replyKey,
       },
       select: { id: true, replyKey: true },
-    });
+    }));
 
     try {
       const response = await sendEmail({
@@ -898,7 +899,7 @@ export async function enviarSimulacionConvocatoriaAsamblea(asambleaId: number): 
   if (adminEmails.length === 0) {
     const replyKey = createEmailReplyKey();
 
-    await prisma.envioEmail.create({
+    await withEnvioEmailIdRecovery(() => prisma.envioEmail.create({
       data: {
         consorcioId: asamblea.consorcioId,
         asambleaId: asamblea.id,
@@ -911,7 +912,7 @@ export async function enviarSimulacionConvocatoriaAsamblea(asambleaId: number): 
         errorMensaje: "El consorcio no tiene un email de administrador vigente configurado.",
         replyKey,
       },
-    });
+    }));
 
     throw new Error("administrador_sin_email");
   }
@@ -923,7 +924,7 @@ export async function enviarSimulacionConvocatoriaAsamblea(asambleaId: number): 
     `Asamblea prevista: ${buildTipoLabel(asamblea.tipo)} del ${formatLongDate(asamblea.fecha)} a las ${asamblea.hora}.`,
   ].join("\n\n");
 
-  const envio = await prisma.envioEmail.create({
+  const envio = await withEnvioEmailIdRecovery(() => prisma.envioEmail.create({
     data: {
       consorcioId: asamblea.consorcioId,
       asambleaId: asamblea.id,
@@ -935,7 +936,7 @@ export async function enviarSimulacionConvocatoriaAsamblea(asambleaId: number): 
       replyKey: createEmailReplyKey(),
     },
     select: { id: true, replyKey: true },
-  });
+  }));
 
   try {
     const pdfBuffer = await renderConvocatoriaPdfBuffer(asamblea);
@@ -1128,7 +1129,7 @@ export async function enviarSimulacionCancelacionAsamblea(params: {
   const pdfNombre = `cancelacion-convocatoria-asamblea-${asamblea.id}.pdf`;
 
   if (adminEmails.length === 0) {
-    await prisma.envioEmail.create({
+    await withEnvioEmailIdRecovery(() => prisma.envioEmail.create({
       data: {
         consorcioId: asamblea.consorcioId,
         asambleaId: asamblea.id,
@@ -1140,12 +1141,12 @@ export async function enviarSimulacionCancelacionAsamblea(params: {
         errorMensaje: "El consorcio no tiene un email de administrador vigente configurado.",
         replyKey: createEmailReplyKey(),
       },
-    });
+    }));
 
     throw new Error("administrador_sin_email");
   }
 
-  const envio = await prisma.envioEmail.create({
+  const envio = await withEnvioEmailIdRecovery(() => prisma.envioEmail.create({
     data: {
       consorcioId: asamblea.consorcioId,
       asambleaId: asamblea.id,
@@ -1157,7 +1158,7 @@ export async function enviarSimulacionCancelacionAsamblea(params: {
       replyKey: createEmailReplyKey(),
     },
     select: { id: true, replyKey: true },
-  });
+  }));
 
   try {
     const pdfBuffer = await renderCancelacionPdfBuffer(asamblea, mensajePersonalizado);

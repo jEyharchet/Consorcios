@@ -1,0 +1,33 @@
+import assert from "node:assert/strict";
+import { createExecutablePathResolver, launchWithBusyRetry } from "../src/lib/pdf-browser-launch";
+async function main() {
+ let calls = 0;
+ let release!: (value: string) => void;
+ const extract = new Promise<string>((resolve) => { release = resolve; });
+ const resolvePath = createExecutablePathResolver(() => { calls++; return extract; });
+ const first = resolvePath();
+ const second = resolvePath();
+ assert.equal(first, second);
+ assert.equal(calls, 1);
+ release('/tmp/chromium');
+ assert.deepEqual(await Promise.all([first, second]), ['/tmp/chromium', '/tmp/chromium']);
+ await resolvePath(); assert.equal(calls, 1);
+ let failures = 0;
+ const recovery = createExecutablePathResolver(async () => { if (++failures === 1) throw new Error('extract failed'); return '/tmp/chromium'; });
+ await assert.rejects(recovery(), /extract failed/);
+ assert.equal(await recovery(), '/tmp/chromium');
+ const busy = Object.assign(new Error('busy'), {code:'ETXTBSY'});
+ let launches = 0;
+ const waits: number[] = [];
+ assert.equal(await launchWithBusyRetry(async () => { if (++launches < 3) throw busy; return 'browser'; }, async (ms) => {waits.push(ms);}), 'browser');
+ assert.deepEqual(waits, [250, 500]);
+ launches = 0;
+ await assert.rejects(launchWithBusyRetry(async () => { launches++; throw busy; }, async () => {}), (e) => e === busy);
+ assert.equal(launches, 4);
+ launches = 0;
+ const unrelated = new Error('unrelated');
+ await assert.rejects(launchWithBusyRetry(async () => { launches++; throw unrelated; }), (e) => e === unrelated);
+ assert.equal(launches, 1);
+ console.log('PDF launcher: concurrent extraction, extraction recovery, busy retries, retry limit and unrelated errors passed.');
+}
+main().catch((error) => {console.error(error); process.exitCode = 1;});
