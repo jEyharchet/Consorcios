@@ -3,7 +3,7 @@ import crypto from "crypto";
 import { Prisma } from "@prisma/client";
 
 import { prisma } from "./prisma";
-import { generarExpensasDefinitivasDesdePaso3, regenerarArchivosLiquidacion } from "./liquidacion-paso4";
+import { createLiquidacionJob } from "./liquidacion-job-write";
 import { formatEmailSummary } from "./liquidacion-email";
 import { isLiquidacionArchivoIdCollision } from "./liquidacion-archivos";
 import { isExpensaIdCollision } from "./expensa-write";
@@ -170,24 +170,21 @@ export async function startRegeneracionArchivosJob(params: {
     return { ok: true as const, jobId: existing.id, reused: true };
   }
 
-  const job = await prisma.liquidacionRegeneracionJob.create({
-    data: {
-      liquidacionId: liquidacion.id,
-      tipo: "REGENERAR_ARCHIVOS",
-      status: "PENDING",
-      stage: "PREPARING",
-      expectedFiles: 0,
-      generatedFiles: 0,
-      validatedFiles: 0,
-      emailTotal: 0,
-      emailProcessed: 0,
-      emailSent: 0,
-      emailFailed: 0,
-      emailNoRecipient: 0,
-      message: "Job en cola",
-      requestedByUserId: params.requestedByUserId,
-    },
-    select: { id: true },
+  const job = await createLiquidacionJob({
+    liquidacion: { connect: { id: liquidacion.id } },
+    tipo: "REGENERAR_ARCHIVOS",
+    status: "PENDING",
+    stage: "PREPARING",
+    expectedFiles: 0,
+    generatedFiles: 0,
+    validatedFiles: 0,
+    emailTotal: 0,
+    emailProcessed: 0,
+    emailSent: 0,
+    emailFailed: 0,
+    emailNoRecipient: 0,
+    message: "Job en cola",
+    requestedByUserId: params.requestedByUserId,
   });
 
   return { ok: true as const, jobId: job.id, reused: false };
@@ -234,6 +231,7 @@ export async function runRegeneracionArchivosJob(jobId: number) {
   }
 
   try {
+    const { regenerarArchivosLiquidacion } = await import("./liquidacion-paso4");
     const result = await regenerarArchivosLiquidacion(job.liquidacionId, {
       onProgress: async (progress) => {
         await prisma.liquidacionRegeneracionJob.update({
@@ -369,24 +367,21 @@ export async function startFinalizacionLiquidacionJob(params: {
     return { ok: true as const, jobId: existing.id, reused: true };
   }
 
-  const job = await prisma.liquidacionRegeneracionJob.create({
-    data: {
-      liquidacionId: liquidacion.id,
-      tipo: "FINALIZAR_LIQUIDACION",
-      status: "PENDING",
-      stage: "PREPARING",
-      expectedFiles: 0,
-      generatedFiles: 0,
-      validatedFiles: 0,
-      emailTotal: 0,
-      emailProcessed: 0,
-      emailSent: 0,
-      emailFailed: 0,
-      emailNoRecipient: 0,
-      message: "Job en cola",
-      requestedByUserId: params.requestedByUserId,
-    },
-    select: { id: true },
+  const job = await createLiquidacionJob({
+    liquidacion: { connect: { id: liquidacion.id } },
+    tipo: "FINALIZAR_LIQUIDACION",
+    status: "PENDING",
+    stage: "PREPARING",
+    expectedFiles: 0,
+    generatedFiles: 0,
+    validatedFiles: 0,
+    emailTotal: 0,
+    emailProcessed: 0,
+    emailSent: 0,
+    emailFailed: 0,
+    emailNoRecipient: 0,
+    message: "Job en cola",
+    requestedByUserId: params.requestedByUserId,
   });
 
   return { ok: true as const, jobId: job.id, reused: false };
@@ -433,6 +428,7 @@ export async function runFinalizacionLiquidacionJob(jobId: number) {
   }
 
   try {
+    const { generarExpensasDefinitivasDesdePaso3 } = await import("./liquidacion-paso4");
     const result = await generarExpensasDefinitivasDesdePaso3(job.liquidacionId, {
       onProgress: async (progress) => {
         await prisma.liquidacionRegeneracionJob.update({

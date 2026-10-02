@@ -10,59 +10,67 @@ function json(data: unknown, status = 200) {
 }
 
 export async function GET(_req: Request, { params }: { params: { jobId: string } }) {
-  const jobId = Number(params.jobId);
+  try {
+    const jobId = Number(params.jobId);
 
-  if (!Number.isInteger(jobId) || jobId <= 0) {
-    return json({ ok: false, reason: 'job_invalido' }, 400);
+    if (!Number.isInteger(jobId) || jobId <= 0) {
+      return json({ ok: false, reason: 'job_invalido' }, 400);
+    }
+
+    const session = await auth();
+    const userId = session?.user?.id;
+    if (!userId) {
+      return json({ ok: false, reason: 'no_autorizado' }, 401);
+    }
+
+    const job = await getRegeneracionJob(jobId);
+
+    if (!job) {
+      return json({ ok: false, reason: 'job_inexistente' }, 404);
+    }
+
+    const hasAccess = await hasConsorcioAccessForUserId(userId, job.liquidacion.consorcioId);
+    if (!hasAccess) {
+      return json({ ok: false, reason: 'sin_permiso' }, 403);
+    }
+
+    const shouldRun = await retryLiquidacionJobIfNeeded(job.id);
+
+    const refreshedJob = await getRegeneracionJob(jobId);
+    if (!refreshedJob) {
+      return json({ ok: false, reason: 'job_inexistente' }, 404);
+    }
+
+    return json({
+      ok: true,
+      job: {
+        id: refreshedJob.id,
+        liquidacionId: refreshedJob.liquidacionId,
+        tipo: refreshedJob.tipo,
+        status: refreshedJob.status,
+        stage: refreshedJob.stage,
+        expectedFiles: refreshedJob.expectedFiles,
+        generatedFiles: refreshedJob.generatedFiles,
+        validatedFiles: refreshedJob.validatedFiles,
+        emailTotal: refreshedJob.emailTotal,
+        emailProcessed: refreshedJob.emailProcessed,
+        emailSent: refreshedJob.emailSent,
+        emailFailed: refreshedJob.emailFailed,
+        emailNoRecipient: refreshedJob.emailNoRecipient,
+        message: refreshedJob.message,
+        errorDetail: refreshedJob.errorDetail,
+        startedAt: refreshedJob.startedAt,
+        finishedAt: refreshedJob.finishedAt,
+        createdAt: refreshedJob.createdAt,
+        updatedAt: refreshedJob.updatedAt,
+      },
+      shouldRun,
+    });
+  } catch (error) {
+    console.error("[liquidacion-job] request failed", error);
+    return json({
+      ok: false,
+      reason: "No se pudo consultar o iniciar el proceso de liquidacion. Intenta nuevamente; si el error persiste, revisa los registros del servidor.",
+    }, 500);
   }
-
-  const session = await auth();
-  const userId = session?.user?.id;
-  if (!userId) {
-    return json({ ok: false, reason: 'no_autorizado' }, 401);
-  }
-
-  const job = await getRegeneracionJob(jobId);
-
-  if (!job) {
-    return json({ ok: false, reason: 'job_inexistente' }, 404);
-  }
-
-  const hasAccess = await hasConsorcioAccessForUserId(userId, job.liquidacion.consorcioId);
-  if (!hasAccess) {
-    return json({ ok: false, reason: 'sin_permiso' }, 403);
-  }
-
-  const shouldRun = await retryLiquidacionJobIfNeeded(job.id);
-
-  const refreshedJob = await getRegeneracionJob(jobId);
-  if (!refreshedJob) {
-    return json({ ok: false, reason: 'job_inexistente' }, 404);
-  }
-
-  return json({
-    ok: true,
-    job: {
-      id: refreshedJob.id,
-      liquidacionId: refreshedJob.liquidacionId,
-      tipo: refreshedJob.tipo,
-      status: refreshedJob.status,
-      stage: refreshedJob.stage,
-      expectedFiles: refreshedJob.expectedFiles,
-      generatedFiles: refreshedJob.generatedFiles,
-      validatedFiles: refreshedJob.validatedFiles,
-      emailTotal: refreshedJob.emailTotal,
-      emailProcessed: refreshedJob.emailProcessed,
-      emailSent: refreshedJob.emailSent,
-      emailFailed: refreshedJob.emailFailed,
-      emailNoRecipient: refreshedJob.emailNoRecipient,
-      message: refreshedJob.message,
-      errorDetail: refreshedJob.errorDetail,
-      startedAt: refreshedJob.startedAt,
-      finishedAt: refreshedJob.finishedAt,
-      createdAt: refreshedJob.createdAt,
-      updatedAt: refreshedJob.updatedAt,
-    },
-    shouldRun,
-  });
 }

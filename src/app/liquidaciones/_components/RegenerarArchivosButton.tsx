@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { fetchJson } from "@/lib/fetch-json";
 
 type JobStatus = "PENDING" | "RUNNING" | "VALIDATING" | "COMPLETED" | "FAILED";
 type JobStage =
@@ -44,24 +45,6 @@ const STAGE_LABELS: Record<JobStage, string> = {
   ACTIVATING_FILES: "Activando archivos nuevos...",
   DONE: "Finalizado",
 };
-
-async function fetchJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
-  const response = await fetch(input, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(init?.headers ?? {}),
-    },
-  });
-
-  const payload = await response.json();
-  if (!response.ok) {
-    const reason = payload?.reason ?? "Error inesperado";
-    throw new Error(String(reason));
-  }
-
-  return payload as T;
-}
 
 type Props = {
   liquidacionId: number;
@@ -125,11 +108,12 @@ export default function RegenerarArchivosButton({
 
     runRequestInFlightRef.current = true;
 
-    void fetch(`/api/liquidaciones/regeneracion-jobs/${jobId}/run`, {
+    void fetchJson(`/api/liquidaciones/regeneracion-jobs/${jobId}/run`, {
       method: "POST",
     })
       .catch((runError) => {
         console.error("[liquidacion-job] run request failed", runError);
+        setError(runError instanceof Error ? runError.message : "No se pudo ejecutar el proceso");
       })
       .finally(() => {
         runRequestInFlightRef.current = false;
@@ -147,6 +131,7 @@ export default function RegenerarArchivosButton({
           `/api/liquidaciones/regeneracion-jobs/${job.id}`,
         );
         setJob(payload.job);
+        setError(null);
         if (payload.shouldRun) {
           triggerJobRun(payload.job.id);
         }
@@ -190,6 +175,7 @@ export default function RegenerarArchivosButton({
     }
 
     setIsStarting(true);
+    setJob(null);
     setError(null);
     setIsOpen(true);
 
@@ -285,7 +271,7 @@ export default function RegenerarArchivosButton({
                 )}
               </div>
             ) : (
-              <p className="mt-3 text-sm text-slate-600">Preparando inicio del proceso...</p>
+              <p className="mt-3 text-sm text-slate-600">{error ? "No se pudo confirmar el inicio del proceso." : "Preparando inicio del proceso..."}</p>
             )}
 
             <div className="mt-5 flex justify-end">
