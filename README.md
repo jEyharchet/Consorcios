@@ -1,13 +1,13 @@
 # AmiConsorcio
 
-## Prisma + Neon
+## Prisma + Neon (sa-east-1)
 
-Prisma usa `DATABASE_URL` con el pooler de Neon para runtime y migraciones en esta configuracion.
+Prisma usa `DATABASE_URL` con el pooler de Neon (host `-pooler`, `sslmode=require`) para runtime y migraciones. La base está en `sa-east-1` (São Paulo), la misma región que las funciones de Vercel (`gru1`).
 
 Ejemplo de configuracion:
 
 ```env
-DATABASE_URL="postgresql://USER:PASSWORD@HOST-pooler.REGION.aws.neon.tech/neondb?sslmode=require&pgbouncer=true&connect_timeout=10"
+DATABASE_URL="postgresql://USER:PASSWORD@HOST-pooler.sa-east-1.aws.neon.tech/neondb?sslmode=require&pgbouncer=true&connect_timeout=10"
 ```
 
 ## Migraciones Prisma
