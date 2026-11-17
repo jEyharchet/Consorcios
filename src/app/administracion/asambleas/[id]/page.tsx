@@ -107,6 +107,8 @@ function getFeedback(searchParams: {
       return { type: "error" as const, text: "No se encontro la asamblea indicada." };
     case "asamblea_sin_orden":
       return { type: "error" as const, text: "Debes cargar al menos un punto del orden del dia antes de convocar." };
+    case "asamblea_incompleta":
+      return { type: "error" as const, text: "Completá fecha, hora y lugar antes de convocar." };
     case "administrador_sin_email":
       return {
         type: "error" as const,
@@ -314,15 +316,18 @@ export default async function AsambleaDetallePage({
     await requireConsorcioRole(consorcioId, ["ADMIN", "OPERADOR"]);
     await ensureAsambleaEditable(id);
 
-    if (!fecha) {
+    // Un borrador puede quedar incompleto; fuera de BORRADOR fecha, hora y lugar son obligatorios.
+    const esBorrador = estado === ASAMBLEA_ESTADO.BORRADOR;
+
+    if (!fecha && !esBorrador) {
       redirect(`/administracion/asambleas/${id}${buildReturnQuery({ error: "fecha_requerida" })}`);
     }
 
-    if (!hora) {
+    if (!hora && !esBorrador) {
       redirect(`/administracion/asambleas/${id}${buildReturnQuery({ error: "hora_requerida" })}`);
     }
 
-    if (!lugar) {
+    if (!lugar && !esBorrador) {
       redirect(`/administracion/asambleas/${id}${buildReturnQuery({ error: "lugar_requerido" })}`);
     }
 
@@ -330,7 +335,7 @@ export default async function AsambleaDetallePage({
       where: { id },
       data: {
         tipo,
-        fecha: new Date(`${fecha}T00:00:00`),
+        fecha: fecha ? new Date(`${fecha}T00:00:00`) : null,
         hora,
         lugar,
         convocatoriaTexto: convocatoriaTexto || null,
@@ -561,6 +566,9 @@ export default async function AsambleaDetallePage({
       if (message === "asamblea_sin_orden") {
         return { ok: false, errorMessage: "Debes cargar al menos un punto del orden del dia antes de convocar." };
       }
+      if (message === "asamblea_incompleta") {
+        return { ok: false, errorMessage: "Completá fecha, hora y lugar antes de convocar." };
+      }
 
       if (message === "asamblea_inexistente") {
         return { ok: false, errorMessage: "No se encontro la asamblea indicada." };
@@ -596,6 +604,9 @@ export default async function AsambleaDetallePage({
       const message = error instanceof Error ? error.message : "error_desconocido";
       if (message === "asamblea_sin_orden") {
         return { ok: false, errorMessage: "Debes cargar al menos un punto del orden del dia antes de convocar." };
+      }
+      if (message === "asamblea_incompleta") {
+        return { ok: false, errorMessage: "Completá fecha, hora y lugar antes de convocar." };
       }
       if (message === "asamblea_inexistente") {
         return { ok: false, errorMessage: "No se encontro la asamblea indicada." };
@@ -743,6 +754,14 @@ export default async function AsambleaDetallePage({
         </div>
 
         <div className="flex items-center gap-3">
+          {asamblea.estado === ASAMBLEA_ESTADO.BORRADOR ? (
+            <Link
+              href={`/administracion/asambleas/${asamblea.id}/editar`}
+              className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              Editar borrador con vista previa
+            </Link>
+          ) : null}
           <span className={`inline-flex rounded-full px-3 py-1 text-sm font-medium ${estadoClass(asamblea.estado)}`}>
             {asamblea.estado}
           </span>

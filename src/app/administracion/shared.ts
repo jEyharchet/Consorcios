@@ -11,7 +11,9 @@ export function buildReturnQuery(values: Record<string, string | undefined | nul
   return query ? `?${query}` : "";
 }
 
-export function formatDate(value: Date) {
+// Asambleas en borrador pueden no tener fecha todavía.
+export function formatDate(value: Date | null) {
+  if (!value) return "Sin fecha";
   return new Intl.DateTimeFormat("es-AR", {
     day: "2-digit",
     month: "2-digit",
@@ -19,7 +21,8 @@ export function formatDate(value: Date) {
   }).format(value);
 }
 
-export function formatDateInput(value: Date) {
+export function formatDateInput(value: Date | null) {
+  if (!value) return "";
   return value.toISOString().slice(0, 10);
 }
 

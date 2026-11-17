@@ -756,7 +756,7 @@ model Asamblea {
   id                   Int       @id @default(autoincrement())
   consorcioId          Int
   tipo                 String
-  fecha                DateTime
+  fecha                DateTime?
   hora                 String
   lugar                String
   convocatoriaTexto    String?

@@ -19,16 +19,20 @@ function getEstadoBadgeClasses(estado: string) {
 }
 
 function buildContextoLabel(item: {
-  asamblea: { id: number; fecha: Date; tipo: string } | null;
+  asamblea: { id: number; fecha: Date | null; tipo: string } | null;
   envioEmail: { tipoEnvio: string; liquidacionId: number | null } | null;
 }) {
   if (item.asamblea) {
     return {
-      label: `Asamblea ${item.asamblea.tipo.toLowerCase()} del ${new Intl.DateTimeFormat("es-AR", {
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-      }).format(item.asamblea.fecha)}`,
+      label: `Asamblea ${item.asamblea.tipo.toLowerCase()} del ${
+        item.asamblea.fecha
+          ? new Intl.DateTimeFormat("es-AR", {
+              day: "2-digit",
+              month: "2-digit",
+              year: "numeric",
+            }).format(item.asamblea.fecha)
+          : "(sin fecha)"
+      }`,
       href: `/administracion/asambleas/${item.asamblea.id}`,
     };
   }

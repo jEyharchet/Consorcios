@@ -82,6 +82,17 @@ function formatDate(value: Date) {
   }).format(value);
 }
 
+/**
+ * Fecha de una asamblea que se convoca o se cancela. Convocar exige fecha,
+ * así que solo un borrador incompleto puede llegar sin ella.
+ */
+function fechaAsamblea(asamblea: { fecha: Date | null }) {
+  if (!asamblea.fecha) {
+    throw new Error("La asamblea no tiene fecha cargada.");
+  }
+  return asamblea.fecha;
+}
+
 function formatLongDate(value: Date) {
   return new Intl.DateTimeFormat("es-AR", {
     day: "2-digit",
@@ -681,7 +692,7 @@ function buildConvocatoriaPdfHtml(asamblea: NonNullable<AsambleaConvocatoriaReco
     consorcioNombre: asamblea.consorcio.nombre,
     consorcioNombreLegal: asamblea.consorcio.tituloLegal?.trim() || asamblea.consorcio.nombre,
     tipo: asamblea.tipo,
-    fecha: asamblea.fecha.toISOString().slice(0, 10),
+    fecha: asamblea.fecha ? asamblea.fecha.toISOString().slice(0, 10) : "",
     hora: asamblea.hora,
     lugar: asamblea.lugar,
     observaciones: asamblea.observaciones ?? undefined,
@@ -770,7 +781,7 @@ function buildCancelacionPdfHtml(
           <div class="grid">
             <div>
               <p class="label">Fecha prevista</p>
-              <p class="value">${escapeHtml(formatDate(asamblea.fecha))}</p>
+              <p class="value">${escapeHtml(formatDate(fechaAsamblea(asamblea)))}</p>
             </div>
             <div>
               <p class="label">Hora</p>
@@ -874,10 +885,14 @@ export async function enviarConvocatoriaAsamblea(
     throw new Error("asamblea_sin_orden");
   }
 
+  if (!asamblea.fecha || !asamblea.hora.trim() || !asamblea.lugar.trim()) {
+    throw new Error("asamblea_incompleta");
+  }
+
   const cuerpo = buildConvocatoriaTexto({
     consorcioNombre: asamblea.consorcio.nombre,
     tipo: asamblea.tipo,
-    fecha: asamblea.fecha,
+    fecha: fechaAsamblea(asamblea),
     hora: asamblea.hora,
     lugar: asamblea.lugar,
     convocatoriaTexto: asamblea.convocatoriaTexto,
@@ -909,7 +924,7 @@ export async function enviarConvocatoriaAsamblea(
     groupStrategy: isSelectivo ? "none" : "unidad",
     detailLines: [
       `Consorcio: ${asamblea.consorcio.nombre}`,
-      `Fecha: ${formatDate(asamblea.fecha)}`,
+      `Fecha: ${formatDate(fechaAsamblea(asamblea))}`,
       `Hora: ${asamblea.hora}`,
       `Lugar: ${asamblea.lugar}`,
       `Tipo de envio: ${isSelectivo ? "convocatoria selectiva" : "convocatoria a todos los responsables vigentes"}`,
@@ -941,6 +956,10 @@ export async function enviarSimulacionConvocatoriaAsamblea(asambleaId: number): 
 
   if (asamblea.ordenDia.length === 0) {
     throw new Error("asamblea_sin_orden");
+  }
+
+  if (!asamblea.fecha || !asamblea.hora.trim() || !asamblea.lugar.trim()) {
+    throw new Error("asamblea_incompleta");
   }
 
   const adminEmails = Array.from(
@@ -982,7 +1001,7 @@ export async function enviarSimulacionConvocatoriaAsamblea(asambleaId: number): 
   const cuerpo = [
     "Adjuntamos una simulacion interna de la convocatoria de asamblea para revision previa.",
     "Este mensaje fue enviado solo al administrador del consorcio y no fue distribuido a propietarios ni responsables.",
-    `Asamblea prevista: ${buildTipoLabel(asamblea.tipo)} del ${formatLongDate(asamblea.fecha)} a las ${asamblea.hora}.`,
+    `Asamblea prevista: ${buildTipoLabel(asamblea.tipo)} del ${formatLongDate(fechaAsamblea(asamblea))} a las ${asamblea.hora}.`,
   ].join("\n\n");
 
   const envio = await withEnvioEmailIdRecovery(() => prisma.envioEmail.create({
@@ -1011,7 +1030,7 @@ export async function enviarSimulacionConvocatoriaAsamblea(asambleaId: number): 
         detailLines: [
           `Consorcio: ${asamblea.consorcio.nombre}`,
           `Administrador destinatario: ${administradorLabel}`,
-          `Fecha: ${formatDate(asamblea.fecha)}`,
+          `Fecha: ${formatDate(fechaAsamblea(asamblea))}`,
           `Hora: ${asamblea.hora}`,
           `Lugar: ${asamblea.lugar}`,
           "Tipo de envio: simulacion interna para revision",
@@ -1112,7 +1131,7 @@ export async function cancelarConvocatoriaAsamblea(params: {
     cuerpoTemplate: buildCancelacionTexto({
       consorcioNombre: asamblea.consorcio.nombre,
       tipo: asamblea.tipo,
-      fecha: asamblea.fecha,
+      fecha: fechaAsamblea(asamblea),
       hora: asamblea.hora,
       lugar: asamblea.lugar,
       mensajePersonalizado,
@@ -1121,7 +1140,7 @@ export async function cancelarConvocatoriaAsamblea(params: {
     detailLines: [
       `Consorcio: ${asamblea.consorcio.nombre}`,
       `Tipo de asamblea: ${buildTipoLabel(asamblea.tipo)}`,
-      `Fecha: ${formatDate(asamblea.fecha)}`,
+      `Fecha: ${formatDate(fechaAsamblea(asamblea))}`,
       `Hora: ${asamblea.hora}`,
       `Lugar: ${asamblea.lugar}`,
       "Tipo de envio: cancelacion de convocatoria",
@@ -1183,7 +1202,7 @@ export async function enviarSimulacionCancelacionAsamblea(params: {
   const cuerpo = [
     "Adjuntamos una simulacion interna de la cancelacion de convocatoria para revision previa.",
     "Este mensaje fue enviado solo al administrador del consorcio y no fue distribuido a propietarios ni responsables.",
-    `Asamblea prevista: ${buildTipoLabel(asamblea.tipo)} del ${formatLongDate(asamblea.fecha)} a las ${asamblea.hora}.`,
+    `Asamblea prevista: ${buildTipoLabel(asamblea.tipo)} del ${formatLongDate(fechaAsamblea(asamblea))} a las ${asamblea.hora}.`,
     "Mensaje del administrador:",
     mensajePersonalizado,
   ].join("\n\n");
@@ -1233,7 +1252,7 @@ export async function enviarSimulacionCancelacionAsamblea(params: {
         detailLines: [
           `Consorcio: ${asamblea.consorcio.nombre}`,
           `Administrador destinatario: ${administradorLabel}`,
-          `Fecha prevista: ${formatDate(asamblea.fecha)}`,
+          `Fecha prevista: ${formatDate(fechaAsamblea(asamblea))}`,
           `Hora: ${asamblea.hora}`,
           `Lugar: ${asamblea.lugar}`,
           "Tipo de envio: simulacion interna",

@@ -13,11 +13,27 @@ import ConvocatoriaPaginada from "./ConvocatoriaPaginada";
 
 type OrdenDiaDraft = {
   id: string;
+  /** Id del punto ya guardado (borradores); null para puntos nuevos. */
+  dbId: number | null;
   titulo: string;
+};
+
+export type AsambleaEditorInicial = {
+  asambleaId: number;
+  tipo: string;
+  fecha: string;
+  hora: string;
+  lugar: string;
+  observaciones: string;
+  firmaEspacioPx: number;
+  firmaAltoPx: number;
+  ordenDelDia: Array<{ id: number; titulo: string }>;
 };
 
 type Props = {
   action: (formData: FormData) => void;
+  /** Valores de un borrador existente; sin esto el editor es de alta. */
+  inicial?: AsambleaEditorInicial;
   consorcioId: number;
   consorcioNombre: string;
   consorcioNombreLegal: string;
@@ -35,10 +51,11 @@ type AsambleaTipo = (typeof ASAMBLEA_TIPO)[keyof typeof ASAMBLEA_TIPO];
 
 let draftSequence = 0;
 
-function createOrdenDiaDraft(titulo = ""): OrdenDiaDraft {
+function createOrdenDiaDraft(titulo = "", dbId: number | null = null): OrdenDiaDraft {
   draftSequence += 1;
   return {
     id: `orden-${draftSequence}-${Date.now()}`,
+    dbId,
     titulo,
   };
 }
@@ -56,6 +73,7 @@ function limpiarLinea(linea: string) {
 
 export default function NuevaAsambleaEditor({
   action,
+  inicial,
   consorcioId,
   consorcioNombre,
   consorcioNombreLegal,
@@ -63,18 +81,21 @@ export default function NuevaAsambleaEditor({
   firmaAclaracion,
   firmaRol,
 }: Props) {
-  const [tipo, setTipo] = useState<AsambleaTipo>(ASAMBLEA_TIPO.ORDINARIA);
-  const [fecha, setFecha] = useState("");
-  const [hora, setHora] = useState("");
-  const [lugar, setLugar] = useState("");
-  const [observaciones, setObservaciones] = useState("");
-  const [firmaEspacioPx, setFirmaEspacioPx] = useState<number>(FIRMA_ESPACIO_PX.defecto);
-  const [firmaAltoPx, setFirmaAltoPx] = useState<number>(FIRMA_ALTO_PX.defecto);
+  const [tipo, setTipo] = useState<AsambleaTipo>(
+    inicial?.tipo === ASAMBLEA_TIPO.EXTRAORDINARIA ? ASAMBLEA_TIPO.EXTRAORDINARIA : ASAMBLEA_TIPO.ORDINARIA,
+  );
+  const [fecha, setFecha] = useState(inicial?.fecha ?? "");
+  const [hora, setHora] = useState(inicial?.hora ?? "");
+  const [lugar, setLugar] = useState(inicial?.lugar ?? "");
+  const [observaciones, setObservaciones] = useState(inicial?.observaciones ?? "");
+  const [firmaEspacioPx, setFirmaEspacioPx] = useState<number>(inicial?.firmaEspacioPx ?? FIRMA_ESPACIO_PX.defecto);
+  const [firmaAltoPx, setFirmaAltoPx] = useState<number>(inicial?.firmaAltoPx ?? FIRMA_ALTO_PX.defecto);
   const [firmaSola, setFirmaSola] = useState(false);
-  const [ordenDelDia, setOrdenDelDia] = useState<OrdenDiaDraft[]>(() => [
-    createOrdenDiaDraft(),
-    createOrdenDiaDraft(),
-  ]);
+  const [ordenDelDia, setOrdenDelDia] = useState<OrdenDiaDraft[]>(() =>
+    inicial && inicial.ordenDelDia.length > 0
+      ? inicial.ordenDelDia.map((item) => createOrdenDiaDraft(item.titulo, item.id))
+      : [createOrdenDiaDraft(), createOrdenDiaDraft()],
+  );
   const inputRefs = useRef(new Map<string, HTMLTextAreaElement>());
   const [focusId, setFocusId] = useState<string | null>(null);
 
@@ -203,6 +224,7 @@ export default function NuevaAsambleaEditor({
     <div className="grid gap-6 xl:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]">
       <form action={action} className="space-y-5 self-start rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         <input type="hidden" name="consorcioId" value={consorcioId} />
+        {inicial ? <input type="hidden" name="asambleaId" value={inicial.asambleaId} /> : null}
 
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-1">
@@ -335,6 +357,7 @@ export default function NuevaAsambleaEditor({
                     ×
                   </button>
                 </div>
+                <input type="hidden" name="ordenId" value={item.dbId ?? ""} />
                 <input type="hidden" name="ordenTitulo" value={item.titulo} />
               </li>
             ))}
@@ -414,9 +437,28 @@ export default function NuevaAsambleaEditor({
           ) : null}
         </fieldset>
 
-        <button type="submit" className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800">
-          Crear asamblea
-        </button>
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="submit"
+            name="intent"
+            value="borrador"
+            formNoValidate
+            className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            Guardar borrador
+          </button>
+          <button
+            type="submit"
+            name="intent"
+            value="crear"
+            className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
+          >
+            {inicial ? "Guardar e ir a la asamblea" : "Crear asamblea"}
+          </button>
+          <p className="w-full text-xs text-slate-500">
+            El borrador se guarda aunque falten fecha, hora o lugar. Para convocar hay que completarlos.
+          </p>
+        </div>
       </form>
 
       <section className="self-start rounded-xl border border-slate-200 bg-white shadow-sm xl:sticky xl:top-4">

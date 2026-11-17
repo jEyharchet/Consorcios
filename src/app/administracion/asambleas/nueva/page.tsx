@@ -1,28 +1,12 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
 
 import { getFirmaAdministradorVigente } from "../../../../lib/administracion";
-import { ASAMBLEA_ESTADO, ASAMBLEA_TIPO } from "../../../../lib/administracion-shared";
-import { FIRMA_ALTO_PX, FIRMA_ESPACIO_PX, parseAjusteFirma } from "../../../../lib/asamblea-convocatoria-preview";
-import { requireConsorcioRole } from "../../../../lib/auth";
 import { getActiveConsorcioContext } from "../../../../lib/consorcio-activo";
 import { redirectToOnboardingIfNoConsorcios } from "../../../../lib/onboarding";
 import { prisma } from "../../../../lib/prisma";
-import { buildReturnQuery } from "../../shared";
+import { guardarAsambleaEditor } from "./actions";
+import { getEditorFeedback } from "./feedback";
 import NuevaAsambleaEditor from "./NuevaAsambleaEditor";
-
-function getFeedback(error?: string) {
-  switch (error) {
-    case "fecha_requerida":
-      return "La fecha de la asamblea es obligatoria.";
-    case "hora_requerida":
-      return "La hora de la asamblea es obligatoria.";
-    case "lugar_requerido":
-      return "El lugar es obligatorio.";
-    default:
-      return null;
-  }
-}
 
 export default async function NuevaAsambleaPage({
   searchParams,
@@ -78,64 +62,7 @@ export default async function NuevaAsambleaPage({
     );
   }
 
-  async function crearAsamblea(formData: FormData) {
-    "use server";
-
-    const consorcioId = Number(formData.get("consorcioId"));
-    const tipo = (formData.get("tipo")?.toString() ?? ASAMBLEA_TIPO.ORDINARIA).trim();
-    const fecha = (formData.get("fecha")?.toString() ?? "").trim();
-    const hora = (formData.get("hora")?.toString() ?? "").trim();
-    const lugar = (formData.get("lugar")?.toString() ?? "").trim();
-    const observaciones = (formData.get("observaciones")?.toString() ?? "").trim();
-    const ordenTitulos = formData
-      .getAll("ordenTitulo")
-      .map((value) => value.toString().trim());
-    const firmaEspacioPx = parseAjusteFirma(formData.get("firmaEspacioPx"), FIRMA_ESPACIO_PX);
-    const firmaAltoPx = parseAjusteFirma(formData.get("firmaAltoPx"), FIRMA_ALTO_PX);
-
-    await requireConsorcioRole(consorcioId, ["ADMIN", "OPERADOR"]);
-
-    if (!fecha) {
-      redirect(`/administracion/asambleas/nueva${buildReturnQuery({ error: "fecha_requerida" })}`);
-    }
-
-    if (!hora) {
-      redirect(`/administracion/asambleas/nueva${buildReturnQuery({ error: "hora_requerida" })}`);
-    }
-
-    if (!lugar) {
-      redirect(`/administracion/asambleas/nueva${buildReturnQuery({ error: "lugar_requerido" })}`);
-    }
-
-    const asamblea = await prisma.asamblea.create({
-      data: {
-        consorcioId,
-        tipo,
-        fecha: new Date(`${fecha}T00:00:00`),
-        hora,
-        lugar,
-        convocatoriaTexto: null,
-        observaciones: observaciones || null,
-        firmaEspacioPx,
-        firmaAltoPx,
-        estado: ASAMBLEA_ESTADO.BORRADOR,
-        ordenDia: {
-          create: ordenTitulos
-            .filter((titulo) => titulo.length > 0)
-            .map((titulo, index) => ({
-              orden: index + 1,
-              titulo,
-              descripcion: null,
-            })),
-        },
-      },
-      select: { id: true },
-    });
-
-    redirect(`/administracion/asambleas/${asamblea.id}`);
-  }
-
-  const feedback = getFeedback(searchParams?.error);
+  const feedback = getEditorFeedback({ error: searchParams?.error });
   const firma = await getFirmaAdministradorVigente(consorcio.id);
 
   return (
@@ -150,12 +77,12 @@ export default async function NuevaAsambleaPage({
 
       {feedback ? (
         <div className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {feedback}
+          {feedback.text}
         </div>
       ) : null}
 
       <NuevaAsambleaEditor
-        action={crearAsamblea}
+        action={guardarAsambleaEditor}
         consorcioId={consorcio.id}
         consorcioNombre={consorcio.nombre}
         consorcioNombreLegal={consorcio.tituloLegal ?? consorcio.nombre}

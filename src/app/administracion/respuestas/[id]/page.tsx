@@ -127,7 +127,7 @@ function tipoEnvioLabel(tipoEnvio: string) {
 }
 
 function buildRespuestaContexto(item: {
-  asamblea: { id: number; fecha: Date; tipo: string } | null;
+  asamblea: { id: number; fecha: Date | null; tipo: string } | null;
   envioEmail:
     | {
         id: number;
@@ -136,7 +136,7 @@ function buildRespuestaContexto(item: {
         liquidacionId: number | null;
         unidad: { id: number; identificador: string; tipo: string } | null;
         liquidacion: { id: number; periodo: string } | null;
-        asamblea: { id: number; fecha: Date; tipo: string } | null;
+        asamblea: { id: number; fecha: Date | null; tipo: string } | null;
       }
     | null;
 }) {

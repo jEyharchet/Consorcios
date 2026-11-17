@@ -106,7 +106,7 @@ export default async function AsambleasPage() {
     );
   }
 
-  const proximas = asambleas.filter((asamblea) => asamblea.fecha >= new Date()).length;
+  const proximas = asambleas.filter((asamblea) => asamblea.fecha !== null && asamblea.fecha >= new Date()).length;
 
   return (
     <main className="mx-auto w-full max-w-7xl px-6 py-10">
@@ -187,10 +187,10 @@ export default async function AsambleasPage() {
                   asambleas.map((asamblea) => (
                     <tr key={asamblea.id}>
                       <td className="px-3 py-3 text-slate-700">
-                        {formatDate(asamblea.fecha)} - {asamblea.hora}
+                        {formatDate(asamblea.fecha)}{asamblea.hora ? ` - ${asamblea.hora}` : ""}
                       </td>
                       <td className="px-3 py-3 text-slate-700">{asamblea.tipo}</td>
-                      <td className="px-3 py-3 text-slate-700">{asamblea.lugar}</td>
+                      <td className="px-3 py-3 text-slate-700">{asamblea.lugar || "-"}</td>
                       <td className="px-3 py-3 text-slate-700">{asamblea.ordenDia.length}</td>
                       <td className="px-3 py-3">
                         <span className={`inline-flex rounded-full px-2 py-1 text-xs font-medium ${estadoClass(asamblea.estado)}`}>
@@ -198,9 +198,16 @@ export default async function AsambleasPage() {
                         </span>
                       </td>
                       <td className="px-3 py-3 text-slate-700">
-                        <Link href={`/administracion/asambleas/${asamblea.id}`} className="text-blue-600 hover:underline">
-                          Ver y editar
-                        </Link>
+                        <div className="flex flex-wrap gap-x-3 gap-y-1">
+                          {asamblea.estado === "BORRADOR" ? (
+                            <Link href={`/administracion/asambleas/${asamblea.id}/editar`} className="text-blue-600 hover:underline">
+                              Continuar borrador
+                            </Link>
+                          ) : null}
+                          <Link href={`/administracion/asambleas/${asamblea.id}`} className="text-blue-600 hover:underline">
+                            Ver detalle
+                          </Link>
+                        </div>
                       </td>
                     </tr>
                   ))
