@@ -1,9 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
 
 import { ASAMBLEA_TIPO } from "@/lib/administracion-shared";
-import { buildAsambleaConvocatoriaPreviewHtml } from "@/lib/asamblea-convocatoria-preview";
+import { buildAsambleaConvocatoriaBlocks } from "@/lib/asamblea-convocatoria-preview";
+
+import ConvocatoriaPaginada from "./ConvocatoriaPaginada";
 
 type OrdenDiaDraft = {
   id: string;
@@ -19,11 +21,25 @@ type Props = {
 
 type AsambleaTipo = (typeof ASAMBLEA_TIPO)[keyof typeof ASAMBLEA_TIPO];
 
-function createOrdenDiaDraft(index: number): OrdenDiaDraft {
+let draftSequence = 0;
+
+function createOrdenDiaDraft(titulo = ""): OrdenDiaDraft {
+  draftSequence += 1;
   return {
-    id: `orden-${index}-${Date.now()}`,
-    titulo: "",
+    id: `orden-${draftSequence}-${Date.now()}`,
+    titulo,
   };
+}
+
+function autoSize(element: HTMLTextAreaElement | null) {
+  if (!element) return;
+  element.style.height = "auto";
+  element.style.height = `${element.scrollHeight}px`;
+}
+
+// Quita la numeración o viñeta de cada línea al pegar una lista ("1. ...", "2) ...", "- ...").
+function limpiarLinea(linea: string) {
+  return linea.replace(/^\s*(\d+\s*[.)-]|[-•*])\s*/, "").trim();
 }
 
 export default function NuevaAsambleaEditor({
@@ -37,14 +53,16 @@ export default function NuevaAsambleaEditor({
   const [hora, setHora] = useState("");
   const [lugar, setLugar] = useState("");
   const [observaciones, setObservaciones] = useState("");
-  const [ordenDelDia, setOrdenDelDia] = useState<OrdenDiaDraft[]>([
-    createOrdenDiaDraft(1),
-    createOrdenDiaDraft(2),
+  const [ordenDelDia, setOrdenDelDia] = useState<OrdenDiaDraft[]>(() => [
+    createOrdenDiaDraft(),
+    createOrdenDiaDraft(),
   ]);
+  const inputRefs = useRef(new Map<string, HTMLTextAreaElement>());
+  const [focusId, setFocusId] = useState<string | null>(null);
 
-  const previewHtml = useMemo(
+  const bloques = useMemo(
     () =>
-      buildAsambleaConvocatoriaPreviewHtml({
+      buildAsambleaConvocatoriaBlocks({
         consorcioNombre,
         consorcioNombreLegal,
         tipo,
@@ -57,23 +75,96 @@ export default function NuevaAsambleaEditor({
     [consorcioNombre, consorcioNombreLegal, tipo, fecha, hora, lugar, observaciones, ordenDelDia],
   );
 
+  const puntosCargados = ordenDelDia.filter((item) => item.titulo.trim().length > 0).length;
+
+  useEffect(() => {
+    if (!focusId) return;
+    const element = inputRefs.current.get(focusId);
+    if (element) {
+      element.focus();
+      const end = element.value.length;
+      element.setSelectionRange(end, end);
+    }
+    setFocusId(null);
+  }, [focusId, ordenDelDia]);
+
   function updateOrdenDia(id: string, value: string) {
     setOrdenDelDia((current) =>
       current.map((item) => (item.id === id ? { ...item, titulo: value } : item)),
     );
   }
 
+  function insertOrdenDia(afterIndex: number, titulos: string[] = [""]) {
+    const nuevos = titulos.map((titulo) => createOrdenDiaDraft(titulo));
+    setOrdenDelDia((current) => [
+      ...current.slice(0, afterIndex + 1),
+      ...nuevos,
+      ...current.slice(afterIndex + 1),
+    ]);
+    setFocusId(nuevos[nuevos.length - 1].id);
+  }
+
   function addOrdenDia() {
-    setOrdenDelDia((current) => [...current, createOrdenDiaDraft(current.length + 1)]);
+    insertOrdenDia(ordenDelDia.length - 1);
   }
 
   function removeOrdenDia(id: string) {
-    setOrdenDelDia((current) => (current.length > 1 ? current.filter((item) => item.id !== id) : current));
+    const index = ordenDelDia.findIndex((item) => item.id === id);
+    if (ordenDelDia.length <= 1 || index < 0) return;
+    const vecino = ordenDelDia[index - 1] ?? ordenDelDia[index + 1];
+    setOrdenDelDia((current) => current.filter((item) => item.id !== id));
+    setFocusId(vecino?.id ?? null);
+  }
+
+  function moveOrdenDia(index: number, delta: -1 | 1) {
+    const target = index + delta;
+    if (target < 0 || target >= ordenDelDia.length) return;
+    setOrdenDelDia((current) => {
+      const next = [...current];
+      [next[index], next[target]] = [next[target], next[index]];
+      return next;
+    });
+  }
+
+  function handleOrdenKeyDown(event: KeyboardEvent<HTMLTextAreaElement>, index: number, item: OrdenDiaDraft) {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      insertOrdenDia(index);
+      return;
+    }
+
+    if (event.key === "Backspace" && item.titulo.length === 0 && ordenDelDia.length > 1) {
+      event.preventDefault();
+      removeOrdenDia(item.id);
+      return;
+    }
+
+    if (event.altKey && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
+      event.preventDefault();
+      moveOrdenDia(index, event.key === "ArrowUp" ? -1 : 1);
+      setFocusId(item.id);
+    }
+  }
+
+  // Pegar una lista (un punto por línea) la reparte en varios puntos.
+  function handleOrdenPaste(event: ClipboardEvent<HTMLTextAreaElement>, index: number, item: OrdenDiaDraft) {
+    const lineas = event.clipboardData
+      .getData("text")
+      .split(/\r?\n/)
+      .map(limpiarLinea)
+      .filter((linea) => linea.length > 0);
+
+    if (lineas.length <= 1) return;
+
+    event.preventDefault();
+    const [primera, ...resto] = lineas;
+    updateOrdenDia(item.id, item.titulo.trim() ? `${item.titulo.trim()} ${primera}` : primera);
+    insertOrdenDia(index, resto);
   }
 
   return (
     <div className="grid gap-6 xl:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]">
-      <form action={action} className="space-y-5 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+      <form action={action} className="space-y-5 self-start rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         <input type="hidden" name="consorcioId" value={consorcioId} />
 
         <div className="grid gap-4 sm:grid-cols-2">
@@ -140,52 +231,85 @@ export default function NuevaAsambleaEditor({
           </div>
         </div>
 
-        <section className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <h2 className="text-sm font-semibold text-slate-900">Orden del dia</h2>
-              <p className="mt-1 text-xs text-slate-500">Estos puntos se reflejan en la previsualizacion y se guardan al crear la asamblea.</p>
-            </div>
-            <button
-              type="button"
-              onClick={addOrdenDia}
-              className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-white"
-            >
-              Agregar punto
-            </button>
-          </div>
+        <section className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+          <h2 className="text-sm font-semibold text-slate-900">
+            Orden del día <span className="font-normal text-slate-500">({puntosCargados})</span>
+          </h2>
+          <p className="mt-1 text-xs text-slate-500">
+            Enter agrega un punto debajo · Alt+↑/↓ reordena · pegar una lista crea un punto por línea.
+          </p>
 
-          <div className="space-y-3">
+          <ol className="mt-3 divide-y divide-slate-100 rounded-md border border-slate-200 bg-white">
             {ordenDelDia.map((item, index) => (
-              <div key={item.id} className="rounded-lg border border-slate-200 bg-white p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <p className="text-sm font-medium text-slate-900">Punto {index + 1}</p>
-                  {ordenDelDia.length > 1 ? (
-                    <button
-                      type="button"
-                      onClick={() => removeOrdenDia(item.id)}
-                      className="text-sm text-red-600 hover:underline"
-                    >
-                      Quitar
-                    </button>
-                  ) : null}
+              <li key={item.id} className="group flex items-start gap-1 px-2 py-1.5 focus-within:bg-blue-50/40">
+                <span className="w-6 shrink-0 pt-1.5 text-right text-sm font-semibold tabular-nums text-slate-500">
+                  {index + 1}.
+                </span>
+                <textarea
+                  ref={(element) => {
+                    if (element) {
+                      inputRefs.current.set(item.id, element);
+                      autoSize(element);
+                    } else {
+                      inputRefs.current.delete(item.id);
+                    }
+                  }}
+                  rows={1}
+                  value={item.titulo}
+                  aria-label={`Punto ${index + 1}`}
+                  placeholder="Título del punto"
+                  onChange={(event) => {
+                    updateOrdenDia(item.id, event.target.value.replace(/\r?\n/g, " "));
+                    autoSize(event.target);
+                  }}
+                  onKeyDown={(event) => handleOrdenKeyDown(event, index, item)}
+                  onPaste={(event) => handleOrdenPaste(event, index, item)}
+                  className="min-w-0 flex-1 resize-none overflow-hidden rounded border border-transparent bg-transparent px-2 py-1 text-sm leading-5 text-slate-900 hover:border-slate-200 focus:border-slate-300 focus:bg-white focus:outline-none"
+                />
+                <div className="flex shrink-0 items-center pt-0.5 opacity-40 transition group-focus-within:opacity-100 group-hover:opacity-100">
+                  <button
+                    type="button"
+                    onClick={() => moveOrdenDia(index, -1)}
+                    disabled={index === 0}
+                    title="Subir"
+                    aria-label={`Subir punto ${index + 1}`}
+                    className="rounded px-1.5 py-1 text-xs text-slate-600 hover:bg-slate-100 disabled:invisible"
+                  >
+                    ↑
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => moveOrdenDia(index, 1)}
+                    disabled={index === ordenDelDia.length - 1}
+                    title="Bajar"
+                    aria-label={`Bajar punto ${index + 1}`}
+                    className="rounded px-1.5 py-1 text-xs text-slate-600 hover:bg-slate-100 disabled:invisible"
+                  >
+                    ↓
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => removeOrdenDia(item.id)}
+                    disabled={ordenDelDia.length <= 1}
+                    title="Quitar"
+                    aria-label={`Quitar punto ${index + 1}`}
+                    className="rounded px-1.5 py-1 text-sm text-red-600 hover:bg-red-50 disabled:invisible"
+                  >
+                    ×
+                  </button>
                 </div>
-
-                <div className="mt-3 space-y-3">
-                  <div className="space-y-1">
-                    <label className="text-xs font-medium text-slate-600">Titulo</label>
-                    <input
-                      value={item.titulo}
-                      onChange={(event) => updateOrdenDia(item.id, event.target.value)}
-                      className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-                    />
-                  </div>
-                </div>
-
                 <input type="hidden" name="ordenTitulo" value={item.titulo} />
-              </div>
+              </li>
             ))}
-          </div>
+          </ol>
+
+          <button
+            type="button"
+            onClick={addOrdenDia}
+            className="mt-2 w-full rounded-md border border-dashed border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-600 hover:border-slate-400 hover:bg-white"
+          >
+            + Agregar punto
+          </button>
         </section>
 
         <div className="space-y-1">
@@ -200,6 +324,7 @@ export default function NuevaAsambleaEditor({
             onChange={(event) => setObservaciones(event.target.value)}
             className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
           />
+          <p className="text-xs text-slate-500">Una línea en blanco separa párrafos; cada párrafo puede pasar a otra hoja sin cortarse.</p>
         </div>
 
         <button type="submit" className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800">
@@ -207,23 +332,14 @@ export default function NuevaAsambleaEditor({
         </button>
       </form>
 
-      <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
-        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
-          <div>
-            <h2 className="text-base font-semibold text-slate-900">Previsualizacion del documento</h2>
-            <p className="mt-1 text-sm text-slate-500">Vista en vivo del HTML base que luego podra reutilizarse para generar el PDF.</p>
-          </div>
+      <section className="self-start rounded-xl border border-slate-200 bg-white shadow-sm xl:sticky xl:top-4">
+        <div className="border-b border-slate-200 px-5 py-4">
+          <h2 className="text-base font-semibold text-slate-900">Previsualización del documento</h2>
+          <p className="mt-1 text-sm text-slate-500">Hojas A4 con los mismos márgenes y saltos de página que el PDF.</p>
         </div>
 
-        <div className="max-h-[calc(100vh-220px)] overflow-auto bg-slate-100 p-6">
-          <div className="flex justify-center">
-            <div className="w-full max-w-[794px]">
-              <div
-                className="mx-auto aspect-[210/297] w-full overflow-hidden rounded-[10px] border border-slate-300 bg-white shadow-md"
-                dangerouslySetInnerHTML={{ __html: previewHtml }}
-              />
-            </div>
-          </div>
+        <div className="max-h-[calc(100vh-150px)] overflow-y-auto bg-slate-100 p-5">
+          <ConvocatoriaPaginada bloques={bloques} />
         </div>
       </section>
     </div>

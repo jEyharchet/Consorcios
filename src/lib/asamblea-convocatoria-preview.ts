@@ -17,6 +17,25 @@ export type AsambleaConvocatoriaPreviewData = {
   firmaRol?: string;
 };
 
+/**
+ * Hoja A4 en px CSS (96 dpi): 210 × 297 mm. Los márgenes se usan igual en la
+ * previsualización y en el `@page` / `page.pdf()` del PDF, para que ambos
+ * corten las hojas en el mismo lugar.
+ */
+export const CONVOCATORIA_PAGINA = {
+  anchoPx: 794,
+  altoPx: 1123,
+  margenVerticalPx: 56,
+  margenHorizontalPx: 60,
+} as const;
+
+export const CONVOCATORIA_CONTENIDO_ANCHO_PX =
+  CONVOCATORIA_PAGINA.anchoPx - CONVOCATORIA_PAGINA.margenHorizontalPx * 2;
+export const CONVOCATORIA_CONTENIDO_ALTO_PX =
+  CONVOCATORIA_PAGINA.altoPx - CONVOCATORIA_PAGINA.margenVerticalPx * 2;
+
+export const CONVOCATORIA_FONT_FAMILY = "Arial, Helvetica, sans-serif";
+
 function escapeHtml(value: string) {
   return value
     .replaceAll("&", "&amp;")
@@ -24,10 +43,6 @@ function escapeHtml(value: string) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
-}
-
-function toParagraphs(value: string) {
-  return escapeHtml(value).replace(/\n/g, "<br />");
 }
 
 function formatFecha(value: string) {
@@ -50,124 +65,198 @@ function buildTipoLabel(tipo: string) {
   return `PRIMERA ASAMBLEA ${normalized}`;
 }
 
-export function buildAsambleaConvocatoriaPreviewHtml(data: AsambleaConvocatoriaPreviewData) {
-  const logo = data.logoUrl?.trim() || "/branding/logo-gray-v2.png";
-  const items = data.ordenDelDia.filter((item) => item.titulo.trim().length > 0);
+/**
+ * Cada bloque es una unidad que no se parte entre hojas (`break-inside: avoid`).
+ * Se usa `padding-bottom` en lugar de márgenes para que la altura de cada bloque
+ * medida en la previsualización sea exactamente la que ocupa en el PDF.
+ */
+function block(content: string, spacingPx: number) {
+  return `<div style="display:flow-root;break-inside:avoid;page-break-inside:avoid;padding-bottom:${spacingPx}px;">${content}</div>`;
+}
 
-  const ordenDelDiaHtml =
-    items.length > 0
-      ? items
-          .map(
-            (item) => `
-              <li style="margin-bottom:10px;color:#0f172a;line-height:1.45;">
-                ${escapeHtml(item.titulo.trim())}
-              </li>
-            `,
-          )
-          .join("")
-      : `<li style="color:#64748b;">Orden del dia pendiente de definicion.</li>`;
+const sectionTitleStyle =
+  "margin:0 0 10px 0;font-size:13px;font-weight:700;letter-spacing:0.08em;color:#334155;";
 
-  const observacionesHtml = data.observaciones?.trim()
-    ? `
-        <div style="margin:20px 0 0 0;">
-          <div style="margin:0 0 8px 0;font-size:12px;font-weight:700;letter-spacing:0.08em;color:#334155;">OBSERVACIONES</div>
-          <div style="font-size:13px;line-height:1.65;color:#334155;">
-            ${toParagraphs(data.observaciones.trim())}
+function ordenItemHtml(numero: number, titulo: string) {
+  return `
+    <div style="display:flex;gap:8px;font-size:14px;line-height:1.45;color:#0f172a;">
+      <div style="flex:0 0 24px;text-align:right;font-weight:700;color:#334155;">${numero}.</div>
+      <div style="flex:1;min-width:0;">${escapeHtml(titulo)}</div>
+    </div>
+  `;
+}
+
+function firmaHtml(data: AsambleaConvocatoriaPreviewData) {
+  if (data.firmaUrl || data.firmaAclaracion?.trim() || data.firmaRol?.trim()) {
+    return `
+      <div style="display:flex;justify-content:flex-end;">
+        <div style="width:360px;text-align:center;">
+          ${
+            data.firmaUrl
+              ? `<img src="${escapeHtml(data.firmaUrl)}" alt="Firma del administrador" style="display:block;max-width:300px;max-height:110px;width:auto;height:auto;object-fit:contain;margin:0 auto 10px;" />`
+              : ""
+          }
+          <div style="width:260px;margin:0 auto;border-top:1px solid #94a3b8;"></div>
+          <div style="margin-top:12px;font-size:13px;font-weight:700;color:#334155;">
+            ${escapeHtml(data.firmaAclaracion?.trim() || "Aclaración")}
+          </div>
+          <div style="margin-top:2px;font-size:12px;color:#64748b;">
+            ${escapeHtml(data.firmaRol?.trim() || "Administrador")}
           </div>
         </div>
-      `
-    : "";
-
-  const firmaHtml =
-    data.firmaUrl || data.firmaAclaracion?.trim() || data.firmaRol?.trim()
-      ? `
-          <div style="display:flex;justify-content:flex-end;">
-            <div style="width:420px;text-align:center;">
-              <div style="display:flex;min-height:0;align-items:flex-end;justify-content:center;">
-                ${
-                  data.firmaUrl
-                    ? `<img src="${escapeHtml(data.firmaUrl)}" alt="Firma del administrador" style="display:block;max-width:320px;max-height:120px;width:auto;height:auto;object-fit:contain;margin:0 auto 10px;" />`
-                    : ``
-                }
-              </div>
-              <div style="width:260px;margin:0 auto;border-top:1px solid #94a3b8;"></div>
-              <div style="margin-top:12px;font-size:13px;font-weight:700;color:#334155;">
-                ${escapeHtml(data.firmaAclaracion?.trim() || "Aclaracion")}
-              </div>
-              <div style="margin-top:2px;font-size:12px;color:#64748b;">
-                ${escapeHtml(data.firmaRol?.trim() || "Administrador")}
-              </div>
-            </div>
-          </div>
-        `
-      : `
-          <div style="display:flex;justify-content:flex-end;">
-            <div style="width:420px;text-align:center;">
-              <div style="height:28px;"></div>
-              <div style="width:260px;margin:0 auto;border-top:1px solid #94a3b8;"></div>
-              <div style="margin-top:12px;font-size:13px;color:#475569;">Firma</div>
-              <div style="margin-top:2px;font-size:13px;color:#475569;">Aclaracion</div>
-            </div>
-          </div>
-        `;
+      </div>
+    `;
+  }
 
   return `
-    <div style="box-sizing:border-box;font-family:Arial,sans-serif;background:#fff;color:#0f172a;padding:48px 52px 58px;">
-      <div style="box-sizing:border-box;border:1px solid #cbd5e1;border-radius:8px;padding:28px 30px 36px;">
-        <header style="border-bottom:1px solid #dbe3ec;padding-bottom:16px;margin-bottom:22px;">
-          <div style="display:flex;align-items:center;gap:18px;">
-            <div style="width:154px;display:flex;align-items:center;justify-content:center;flex:0 0 154px;">
-              <img src="${escapeHtml(logo)}" alt="AmiConsorcio" style="display:block;width:142px;height:auto;" />
-            </div>
-            <div style="width:1px;align-self:stretch;background:#dbe3ec;"></div>
-            <div style="flex:1;display:flex;flex-direction:column;justify-content:center;">
-              <div style="font-size:24px;font-weight:700;letter-spacing:0.04em;color:#111827;">CONVOCATORIA A ASAMBLEA</div>
-              <div style="margin-top:8px;font-size:13px;font-weight:700;letter-spacing:0.08em;color:#475569;">
-                CONSORCIO DE PROPIETARIOS - ${escapeHtml(data.consorcioNombre)}
-              </div>
-            </div>
-          </div>
-        </header>
-
-        <section style="font-size:14px;line-height:1.72;color:#1f2937;">
-          <p style="margin:0 0 18px 0;">
-            Por la presente se convoca a los propietarios del ${escapeHtml(data.consorcioNombreLegal)}, a la ${escapeHtml(buildTipoLabel(data.tipo))}, que se celebrara conforme al Reglamento de Propiedad y Administracion.
-          </p>
-
-          <div style="margin:18px 0 24px;border:1px solid #dbe3ec;border-radius:10px;background:#f8fafc;padding:12px 16px;">
-            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:24px;flex-wrap:wrap;font-size:13px;line-height:1.35;">
-              <div style="min-width:150px;flex:1 1 180px;">
-                <div style="font-weight:700;color:#475569;">Fecha:</div>
-                <div style="margin-top:4px;">${escapeHtml(formatFecha(data.fecha))}</div>
-              </div>
-              <div style="min-width:100px;flex:0 1 120px;">
-                <div style="font-weight:700;color:#475569;">Hora:</div>
-                <div style="margin-top:4px;">${escapeHtml(data.hora || "A completar")}</div>
-              </div>
-              <div style="min-width:180px;flex:1 1 220px;">
-                <div style="font-weight:700;color:#475569;">Lugar:</div>
-                <div style="margin-top:4px;">${escapeHtml(data.lugar || "A completar")}</div>
-              </div>
-            </div>
-          </div>
-
-          <div style="margin:0 0 12px 0;font-size:13px;font-weight:700;letter-spacing:0.08em;color:#334155;">ORDEN DEL DIA</div>
-          <ol style="margin:0 0 24px 20px;padding:0;">
-            ${ordenDelDiaHtml}
-          </ol>
-
-          ${observacionesHtml}
-
-          <p style="margin:20px 0 0 0;">
-            Se deja constancia que la presente convocatoria se realiza conforme a lo dispuesto en el Reglamento de Propiedad y Administracion,
-            cursandose en forma escrita y con la antelacion alli prevista.
-          </p>
-        </section>
-
-        <div style="margin-top:28px;padding-top:0;">
-          ${firmaHtml}
-        </div>
+    <div style="display:flex;justify-content:flex-end;">
+      <div style="width:360px;text-align:center;">
+        <div style="height:48px;"></div>
+        <div style="width:260px;margin:0 auto;border-top:1px solid #94a3b8;"></div>
+        <div style="margin-top:12px;font-size:13px;color:#475569;">Firma</div>
+        <div style="margin-top:2px;font-size:13px;color:#475569;">Aclaración</div>
       </div>
     </div>
   `;
+}
+
+/**
+ * Devuelve el documento como una lista de bloques indivisibles, en orden.
+ * La previsualización los mide y los reparte en hojas A4; el PDF los concatena
+ * y deja que Chromium pagine respetando `break-inside: avoid`.
+ */
+export function buildAsambleaConvocatoriaBlocks(data: AsambleaConvocatoriaPreviewData): string[] {
+  const logo = data.logoUrl?.trim() || "/branding/logo-gray-v2.png";
+  const items = data.ordenDelDia.map((item) => item.titulo.trim()).filter((titulo) => titulo.length > 0);
+  const blocks: string[] = [];
+
+  blocks.push(
+    block(
+      `
+        <div style="display:flex;align-items:center;gap:18px;border-bottom:1px solid #dbe3ec;padding-bottom:16px;">
+          <div style="width:150px;flex:0 0 150px;display:flex;align-items:center;justify-content:center;">
+            <img src="${escapeHtml(logo)}" alt="AmiConsorcio" style="display:block;width:140px;height:auto;" />
+          </div>
+          <div style="width:1px;align-self:stretch;background:#dbe3ec;"></div>
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:24px;font-weight:700;letter-spacing:0.04em;line-height:1.2;color:#111827;">CONVOCATORIA A ASAMBLEA</div>
+            <div style="margin-top:8px;font-size:13px;font-weight:700;letter-spacing:0.08em;color:#475569;">
+              CONSORCIO DE PROPIETARIOS - ${escapeHtml(data.consorcioNombre)}
+            </div>
+          </div>
+        </div>
+      `,
+      22,
+    ),
+  );
+
+  blocks.push(
+    block(
+      `<p style="margin:0;font-size:14px;line-height:1.7;color:#1f2937;">
+        Por la presente se convoca a los propietarios del ${escapeHtml(data.consorcioNombreLegal)}, a la ${escapeHtml(buildTipoLabel(data.tipo))}, que se celebrará conforme al Reglamento de Propiedad y Administración.
+      </p>`,
+      18,
+    ),
+  );
+
+  blocks.push(
+    block(
+      `
+        <div style="border:1px solid #dbe3ec;border-radius:10px;background:#f8fafc;padding:12px 16px;">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:24px;font-size:13px;line-height:1.35;color:#0f172a;">
+            <div style="flex:1 1 0;min-width:0;">
+              <div style="font-weight:700;color:#475569;">Fecha:</div>
+              <div style="margin-top:4px;">${escapeHtml(formatFecha(data.fecha))}</div>
+            </div>
+            <div style="flex:0 0 90px;">
+              <div style="font-weight:700;color:#475569;">Hora:</div>
+              <div style="margin-top:4px;">${escapeHtml(data.hora || "A completar")}</div>
+            </div>
+            <div style="flex:1 1 0;min-width:0;">
+              <div style="font-weight:700;color:#475569;">Lugar:</div>
+              <div style="margin-top:4px;">${escapeHtml(data.lugar || "A completar")}</div>
+            </div>
+          </div>
+        </div>
+      `,
+      24,
+    ),
+  );
+
+  // El título de la sección viaja con el primer punto para no quedar solo al pie de una hoja.
+  if (items.length === 0) {
+    blocks.push(
+      block(
+        `<div style="${sectionTitleStyle}">ORDEN DEL DÍA</div>
+         <div style="font-size:14px;color:#64748b;">Orden del día pendiente de definición.</div>`,
+        24,
+      ),
+    );
+  } else {
+    items.forEach((titulo, index) => {
+      const isLast = index === items.length - 1;
+      const titleHtml = index === 0 ? `<div style="${sectionTitleStyle}">ORDEN DEL DÍA</div>` : "";
+      blocks.push(block(`${titleHtml}${ordenItemHtml(index + 1, titulo)}`, isLast ? 24 : 10));
+    });
+  }
+
+  const parrafosObservaciones = (data.observaciones ?? "")
+    .split(/\n\s*\n/)
+    .map((parrafo) => parrafo.trim())
+    .filter((parrafo) => parrafo.length > 0);
+
+  parrafosObservaciones.forEach((parrafo, index) => {
+    const isLast = index === parrafosObservaciones.length - 1;
+    const titleHtml = index === 0 ? `<div style="${sectionTitleStyle}">OBSERVACIONES</div>` : "";
+    blocks.push(
+      block(
+        `${titleHtml}<div style="font-size:13px;line-height:1.65;color:#334155;">${escapeHtml(parrafo).replace(/\n/g, "<br />")}</div>`,
+        isLast ? 22 : 10,
+      ),
+    );
+  });
+
+  blocks.push(
+    block(
+      `<p style="margin:0;font-size:14px;line-height:1.7;color:#1f2937;">
+        Se deja constancia que la presente convocatoria se realiza conforme a lo dispuesto en el Reglamento de Propiedad y Administración, cursándose en forma escrita y con la antelación allí prevista.
+      </p>`,
+      40,
+    ),
+  );
+
+  blocks.push(block(firmaHtml(data), 0));
+
+  return blocks;
+}
+
+/** Contenido continuo para el PDF: Chromium lo pagina con los márgenes de `@page`. */
+export function buildAsambleaConvocatoriaPreviewHtml(data: AsambleaConvocatoriaPreviewData) {
+  return `<div style="box-sizing:border-box;font-family:${CONVOCATORIA_FONT_FAMILY};color:#0f172a;">${buildAsambleaConvocatoriaBlocks(data).join("")}</div>`;
+}
+
+/**
+ * Reparte bloques en hojas sin partir ninguno (mismo criterio que `break-inside: avoid`).
+ * Un bloque más alto que una hoja ocupa una hoja propia.
+ */
+export function paginarBloques(alturas: number[], altoDisponible: number): number[][] {
+  const paginas: number[][] = [];
+  let actual: number[] = [];
+  let usado = 0;
+
+  alturas.forEach((altura, index) => {
+    if (actual.length > 0 && usado + altura > altoDisponible) {
+      paginas.push(actual);
+      actual = [];
+      usado = 0;
+    }
+    actual.push(index);
+    usado += altura;
+  });
+
+  if (actual.length > 0) {
+    paginas.push(actual);
+  }
+
+  return paginas;
 }

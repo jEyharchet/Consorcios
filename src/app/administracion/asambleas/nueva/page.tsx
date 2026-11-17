@@ -115,12 +115,12 @@ export default async function NuevaAsambleaPage({
         estado: ASAMBLEA_ESTADO.BORRADOR,
         ordenDia: {
           create: ordenTitulos
+            .filter((titulo) => titulo.length > 0)
             .map((titulo, index) => ({
               orden: index + 1,
               titulo,
               descripcion: null,
-            }))
-            .filter((item) => item.titulo.length > 0),
+            })),
         },
       },
       select: { id: true },

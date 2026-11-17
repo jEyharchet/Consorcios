@@ -9,6 +9,8 @@
 
 ## Historial de decisiones
 
+- 2026-11-17: Nueva asamblea: orden del día como lista compacta (Enter agrega, Alt+↑/↓ reordena, pegar una lista crea un punto por línea) y vista previa sticky con hojas A4 reales (`ConvocatoriaPaginada.tsx`). La convocatoria se arma en bloques indivisibles (`buildAsambleaConvocatoriaBlocks`); la vista previa los mide y pagina con `paginarBloques`, y el PDF usa los mismos márgenes (`CONVOCATORIA_PAGINA`, 56/60 px) en `@page` y `page.pdf()`. Se quitó el recuadro exterior del documento y se corrigieron tildes. Verificado con Puppeteer: 10 puntos de Jara 166 = 1 hoja; caso largo = 2 hojas en ambos. El alta ya no deja huecos en `orden` si hay puntos vacíos.
+
 - 2026-11-17: Edición de pagos de gastos (`/gastos/[id]/pagos/[pagoId]/editar`, `editarPagoGasto` en `src/lib/pagos-gastos.ts`, ADMIN/OPERADOR): fecha, importe, medio/cuenta y observación. Mismo destino: se actualiza el movimiento y se desplaza la cadena de saldos posteriores (por id) y el saldo actual; otro destino: se revierte en el anterior y se carga al final del nuevo. Rechaza saldos negativos, pagos que superen el gasto y fechas en ejercicios `CERRADO`. Sin registro de auditoría del valor anterior. Cobros de expensas siguen sin edición.
 
 - 2026-11-17: Hoja de cierre para el Libro de Administración (`/api/ejercicios/[id]/libro-administracion`, botón «Hoja para el libro» en la simulación): una página A4 con marcas de corte de 200 × 290 mm, firma a mano. La normativa PBA no define el contenido del libro; criterio en `docs/cierre-anual.md` (sección «Libro de Administración»).

@@ -7,7 +7,7 @@ import { sendEmail } from "./email";
 import { buildEmailSummary, EMAIL_ESTADO, type EmailSummary } from "./email-tracking";
 import { buildReplyToAddress, createEmailReplyKey } from "./email-replies";
 import { buildAdministradorFirmaPath } from "./asamblea-firma";
-import { buildAsambleaConvocatoriaPreviewHtml } from "./asamblea-convocatoria-preview";
+import { buildAsambleaConvocatoriaPreviewHtml, CONVOCATORIA_PAGINA } from "./asamblea-convocatoria-preview";
 import { prisma } from "./prisma";
 import { launchPdfBrowser } from "./pdf-browser";
 import { ADMIN_EMAIL_TIPO_ENVIO, ASAMBLEA_ESTADO, ASAMBLEA_TIPO } from "./administracion-shared";
@@ -651,7 +651,7 @@ function buildConvocatoriaPdfHtml(asamblea: NonNullable<AsambleaConvocatoriaReco
         <meta charset="utf-8" />
         <title>Convocatoria a asamblea</title>
         <style>
-          @page { size: A4; margin: 0; }
+          @page { size: A4; margin: ${CONVOCATORIA_PAGINA.margenVerticalPx}px ${CONVOCATORIA_PAGINA.margenHorizontalPx}px; }
           html, body { margin: 0; padding: 0; background: #ffffff; }
           body { font-family: Arial, sans-serif; }
         </style>
@@ -765,10 +765,19 @@ async function renderConvocatoriaPdfBuffer(asamblea: NonNullable<AsambleaConvoca
       waitUntil: "domcontentloaded",
     });
 
+    const margenVertical = `${CONVOCATORIA_PAGINA.margenVerticalPx}px`;
+    const margenHorizontal = `${CONVOCATORIA_PAGINA.margenHorizontalPx}px`;
+
     return Buffer.from(
       await page.pdf({
         format: "A4",
         printBackground: true,
+        margin: {
+          top: margenVertical,
+          bottom: margenVertical,
+          left: margenHorizontal,
+          right: margenHorizontal,
+        },
       }),
     );
   } finally {
