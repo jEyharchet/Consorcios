@@ -53,8 +53,8 @@ export function parseAjusteFirma(valor: FormDataEntryValue | null, rango: { min:
 export const CONVOCATORIA_PAGINA = {
   anchoPx: 794,
   altoPx: 1123,
-  margenVerticalPx: 56,
-  margenHorizontalPx: 60,
+  margenVerticalPx: 40,
+  margenHorizontalPx: 48,
 } as const;
 
 export const CONVOCATORIA_CONTENIDO_ANCHO_PX =
@@ -62,7 +62,23 @@ export const CONVOCATORIA_CONTENIDO_ANCHO_PX =
 export const CONVOCATORIA_CONTENIDO_ALTO_PX =
   CONVOCATORIA_PAGINA.altoPx - CONVOCATORIA_PAGINA.margenVerticalPx * 2;
 
-export const CONVOCATORIA_FONT_FAMILY = "Arial, Helvetica, sans-serif";
+/**
+ * El Chromium del servidor (@sparticuz/chromium) solo trae Open Sans: si el documento pide
+ * Arial, el PDF cae en Open Sans (más ancha) y pagina distinto que la vista previa.
+ * Por eso el documento usa Open Sans en ambos: la del sistema en el servidor y la de
+ * `/fonts` (copiada del mismo paquete) en el navegador.
+ */
+export const CONVOCATORIA_FONT_FAMILY = "'Convocatoria Open Sans', 'Open Sans', Arial, sans-serif";
+
+export function buildConvocatoriaFontFaceCss(baseUrl = "") {
+  const cara = (archivo: string, local: string, weight: number, style: string) =>
+    `@font-face{font-family:'Convocatoria Open Sans';src:local('${local}'),local('${archivo.replace(".ttf", "")}'),url('${baseUrl}/fonts/${archivo}') format('truetype');font-weight:${weight};font-style:${style};}`;
+  return [
+    cara("OpenSans-Regular.ttf", "Open Sans Regular", 400, "normal"),
+    cara("OpenSans-Bold.ttf", "Open Sans Bold", 700, "normal"),
+    cara("OpenSans-Italic.ttf", "Open Sans Italic", 400, "italic"),
+  ].join("");
+}
 
 function escapeHtml(value: string) {
   return value

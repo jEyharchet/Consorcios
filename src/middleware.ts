@@ -77,8 +77,9 @@ function isTrafficGuardExemptPath(pathname: string) {
     INTERNAL_LIQUIDACION_JOB_RUN_ROUTE.test(pathname) ||
     pathname.startsWith("/_next/static/") ||
     pathname.startsWith("/_next/image/") ||
-    // Logos públicos: los pide el Chromium que genera los PDFs desde la función (gru1, IP de Brasil).
+    // Logos y fuentes públicos: los pide el Chromium que genera los PDFs desde la función (gru1, IP de Brasil).
     pathname.startsWith("/branding/") ||
+    pathname.startsWith("/fonts/") ||
     pathname === "/favicon.ico" ||
     pathname === "/robots.txt" ||
     pathname === "/sitemap.xml"
@@ -115,6 +116,7 @@ function isPublicPath(pathname: string) {
     pathname.startsWith("/_next") ||
     pathname === "/chromium-pack.tar" ||
     pathname.startsWith("/branding") ||
+    pathname.startsWith("/fonts/") ||
     pathname.startsWith("/uploads") ||
     pathname === "/robots.txt" ||
     pathname === "/sitemap.xml" ||

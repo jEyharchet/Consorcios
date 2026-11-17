@@ -7,11 +7,13 @@ import {
   CONVOCATORIA_CONTENIDO_ANCHO_PX,
   CONVOCATORIA_FONT_FAMILY,
   CONVOCATORIA_PAGINA,
+  buildConvocatoriaFontFaceCss,
   paginarBloques,
 } from "@/lib/asamblea-convocatoria-preview";
 
 // Margen de seguridad: la fuente del navegador y la del Chromium del PDF pueden diferir apenas.
 const HOLGURA_PX = 6;
+const FONT_FACE_CSS = buildConvocatoriaFontFaceCss();
 
 type Props = {
   bloques: string[];
@@ -39,6 +41,8 @@ export default function ConvocatoriaPaginada({ bloques, onFirmaSola }: Props) {
     };
 
     medir();
+    // La fuente del documento se descarga aparte: volver a medir cuando esté lista.
+    document.fonts?.ready.then(medir).catch(() => undefined);
 
     // Las imágenes (logo, firma) cambian la altura al terminar de cargar.
     const observer = new ResizeObserver(medir);
@@ -69,6 +73,7 @@ export default function ConvocatoriaPaginada({ bloques, onFirmaSola }: Props) {
 
   return (
     <div ref={contenedorRef} className="relative w-full">
+      <style>{FONT_FACE_CSS}</style>
       <div
         ref={medidorRef}
         aria-hidden

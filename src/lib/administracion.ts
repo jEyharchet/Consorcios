@@ -7,7 +7,11 @@ import { sendEmail } from "./email";
 import { buildEmailSummary, EMAIL_ESTADO, type EmailSummary } from "./email-tracking";
 import { buildReplyToAddress, createEmailReplyKey } from "./email-replies";
 import { buildAdministradorFirmaPath } from "./asamblea-firma";
-import { buildAsambleaConvocatoriaPreviewHtml, CONVOCATORIA_PAGINA } from "./asamblea-convocatoria-preview";
+import {
+  buildAsambleaConvocatoriaPreviewHtml,
+  buildConvocatoriaFontFaceCss,
+  CONVOCATORIA_PAGINA,
+} from "./asamblea-convocatoria-preview";
 import { prisma } from "./prisma";
 import { launchPdfBrowser } from "./pdf-browser";
 import { ADMIN_EMAIL_TIPO_ENVIO, ASAMBLEA_ESTADO, ASAMBLEA_TIPO } from "./administracion-shared";
@@ -715,6 +719,7 @@ function buildConvocatoriaPdfHtml(asamblea: NonNullable<AsambleaConvocatoriaReco
         <title>Convocatoria a asamblea</title>
         <style>
           @page { size: A4; margin: ${CONVOCATORIA_PAGINA.margenVerticalPx}px ${CONVOCATORIA_PAGINA.margenHorizontalPx}px; }
+          ${buildConvocatoriaFontFaceCss(getPublicAppUrl())}
           html, body { margin: 0; padding: 0; background: #ffffff; }
           body { font-family: Arial, sans-serif; }
         </style>
