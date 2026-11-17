@@ -9,6 +9,8 @@
 
 ## Historial de decisiones
 
+- 2026-11-17: Hoja de cierre para el Libro de Administración (`/api/ejercicios/[id]/libro-administracion`, botón «Hoja para el libro» en la simulación): una página A4 con marcas de corte de 200 × 290 mm, firma a mano. La normativa PBA no define el contenido del libro; criterio en `docs/cierre-anual.md` (sección «Libro de Administración»).
+
 - 2026-11-17: Rendición y simulación muestran la «Composición del saldo»: saldo neto = fondo de reserva + intereses (cobrados y en traslados) + redondeos (+ otras diferencias, que deberían dar 0); y de saldo neto a caja y bancos (− expensas a cobrar + gastos a pagar). Jara 166: 241.379,19 = 235.516,50 + 4.495,05 + 1.366,62 + 1,02; caja y bancos 142.029,39 porque el fondo financió 92.000 de gastos de septiembre cobrados en octubre.
 - 2026-11-17: Rendición de cuentas en PDF generada al momento desde la simulación (`/api/ejercicios/[id]/rendicion`). Comprobantes del ejercicio 1 de Jara 166 completos en producción (#30 y #31 comparten la factura de 610.000 de la escribana).
 - 2026-11-17: Traslado de deuda: la expensa original pasa a `TRASLADADA` (saldo descontado) al finalizar la liquidación que la incluye; el cálculo de deuda y el estado de cuenta de PDFs lo contemplan (`src/lib/expensa-traslado.ts`). Gasto con `comprobanteFaltanteMotivo` y bloque de comprobante en la edición (aunque esté pagado). Límite de comprobantes 4 MB + `serverActions.bodySizeLimit` 4.5mb. Migraciones `20261117090000` (traslados), `20261117100000` (motivo) y `20261117110000` (transferencia Jara 166 del 10/04 a 48.000; saldo banco −0,01) aplicadas en `dev` y producción; deploy `65ea2c7` Ready. Motivos de falta de comprobante cargados en producción: 17 gastos de Galimberti, 9 de luz y el #20.

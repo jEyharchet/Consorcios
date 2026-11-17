@@ -2,6 +2,7 @@ import { simularCierreEjercicio } from "./cierre-simulacion";
 import { getAdministradorVigente } from "./consorcio-administradores";
 import { launchPdfBrowser } from "./pdf-browser";
 import { prisma } from "./prisma";
+import { buildLibroAdministracionHtml } from "./libro-administracion-html";
 import { buildRendicionPdfHtml, type DatosRendicion } from "./rendicion-pdf-html";
 
 /** Junta los datos de la rendición de un ejercicio. Solo lectura. */
@@ -76,6 +77,19 @@ export async function generarRendicionPdf(datos: DatosRendicion) {
       headerTemplate: "<span></span>",
       footerTemplate: `<div style="width:100%;font-size:7.5pt;color:#64748b;padding:0 14mm;display:flex;justify-content:space-between;font-family:Arial,sans-serif"><span>${pie}</span><span>Página <span class="pageNumber"></span> de <span class="totalPages"></span></span></div>`,
     });
+  } finally {
+    await browser.close();
+  }
+}
+
+/** Hoja de una página para pegar en el Libro de Administración (A4, sin pie). */
+export async function generarHojaLibroAdministracionPdf(datos: DatosRendicion) {
+  const html = buildLibroAdministracionHtml(datos);
+  const browser = await launchPdfBrowser();
+  try {
+    const page = await browser.newPage();
+    await page.setContent(html, { waitUntil: "load" });
+    return await page.pdf({ format: "A4", printBackground: true, preferCSSPageSize: true, pageRanges: "1" });
   } finally {
     await browser.close();
   }

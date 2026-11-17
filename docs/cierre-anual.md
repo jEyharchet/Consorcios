@@ -43,6 +43,14 @@ Fuentes: [Ley 14.701](https://normas.gba.gob.ar/documentos/VmKmqtlx.html), [Decr
 
 La declaración anual del administrador ante RPAC tiene su propio trámite y calendario. Confirmar un ejercicio no equivale a presentarla. No se verificó aún el plazo específico de la presentación del año 2026.
 
+### Libro de Administración
+
+Ni la Ley 14.701 (art. 8 inc. d: libros de administración, actas y registro de firmas) ni el Decreto 1734/2022 definen el contenido, la frecuencia o el formato del Libro de Administración. El [procedimiento de rúbrica del RPAC](https://drive.mjus.gba.gob.ar/docs/dppj/rpac/procedimiento-de-rubrica.pdf) solo regula la rúbrica: acta notarial ante escribano de la Provincia, que verifica la matrícula del administrador y la correlatividad de los libros. No se encontró norma sobre libros digitales u hojas pegadas; confirmarlo con el escribano.
+
+Criterio adoptado: la rendición debe concordar con los libros (art. 859 CCyC), así que en el libro se asienta el cierre del ejercicio en una hoja: movimiento de fondos por mes con saldo, saldos por cuenta, saldo neto y su composición, totales de gastos y liquidaciones, respaldo de los gastos (con comprobante y sin comprobante, por motivo) y constancia de la asamblea que trata la rendición. El detalle por unidad, el índice de comprobantes y las observaciones de la simulación quedan en la rendición archivada. Las fechas del ejercicio y la aprobación de la rendición se asientan en el Libro de Actas.
+
+La hoja se genera en `/api/ejercicios/[id]/libro-administracion` (`src/lib/libro-administracion-html.ts`): A4 a tamaño real, con marcas de corte del área útil del libro de Jara 166 (200 × 290 mm, constantes `HOJA_LIBRO_ANCHO_MM` / `HOJA_LIBRO_ALTO_MM`). La firma va a mano. Si la simulación tiene observaciones ALTA o MEDIA, la hoja sale con la leyenda «BORRADOR».
+
 ## Diseño propuesto: simulación
 
 1. Tomar las fechas del `Ejercicio` del consorcio, con su fundamento. Aplicar límites de fecha uniformes (`rangoConsultaEjercicio`).

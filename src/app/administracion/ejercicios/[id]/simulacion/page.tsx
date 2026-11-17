@@ -81,6 +81,15 @@ export default async function SimulacionCierrePage({ params }: { params: { id: s
           >
             Rendición en PDF
           </a>
+          <a
+            href={`/api/ejercicios/${ejercicio.id}/libro-administracion`}
+            target="_blank"
+            rel="noreferrer"
+            title="Hoja de una página para pegar en el Libro de Administración (área útil 200 × 290 mm)"
+            className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            Hoja para el libro
+          </a>
           <Link
             href={`/administracion/ejercicios/${ejercicio.id}`}
             className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
