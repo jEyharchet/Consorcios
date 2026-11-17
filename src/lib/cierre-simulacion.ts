@@ -13,6 +13,7 @@
 //   liquidados.
 
 import { formatFechaCalendario, rangoConsultaEjercicio } from "./ejercicios";
+import { interesTrasladado } from "./expensa-traslado";
 import { tieneComprobante } from "./gasto-comprobante";
 import { prisma } from "./prisma";
 
@@ -82,6 +83,7 @@ export async function simularCierrePeriodo(ejercicio: EjercicioSimulable, consor
     expensas,
     deudasTrasladadas,
     ejercicioAnterior,
+    redondeosPorLiquidacion,
   ] = await Promise.all([
     prisma.consorcio.findUnique({ where: { id: consorcioId }, select: { id: true, nombre: true } }),
     prisma.consorcioCuentaBancaria.findMany({
@@ -191,6 +193,11 @@ export async function simularCierrePeriodo(ejercicio: EjercicioSimulable, consor
     prisma.ejercicio.findFirst({
       where: { consorcioId, fechaFin: { lt: ejercicio.fechaInicio }, id: { not: ejercicio.id } },
       select: { id: true },
+    }),
+    prisma.liquidacionProrrateoUnidad.groupBy({
+      by: ["liquidacionId"],
+      where: { liquidacion: { consorcioId } },
+      _sum: { redondeo: true },
     }),
   ]);
 
@@ -669,12 +676,49 @@ export async function simularCierrePeriodo(ejercicio: EjercicioSimulable, consor
     .map((f) => ({ ...f, emitido: redondear(f.emitido), cobrado: redondear(f.cobrado), saldo: redondear(f.saldo) }))
     .sort((a, b) => a.unidad.localeCompare(b.unidad, "es", { numeric: true }));
 
+  const creditosTotal = redondear(creditos.reduce((a, c) => a + c.capital, 0));
+  const deudaProveedoresTotal = redondear(deudasProveedores.reduce((a, d) => a + d.pendiente, 0));
+
   const orden = { ALTA: 0, MEDIA: 1, INFO: 2 } as const;
   inconsistencias.sort((a, b) => orden[a.gravedad] - orden[b.gravedad]);
 
   const fondosFinal = fondos.every((f) => f.finalCalculado !== null)
     ? redondear(fondos.reduce((a, f) => a + (f.finalCalculado ?? 0), 0))
     : null;
+
+  // Composición del saldo neto (caja y bancos + expensas a cobrar − gastos a
+  // pagar): qué lo forma y cómo se pasa de él a caja y bancos al cierre.
+  const idsLiquidacionesEjercicio = new Set(liquidacionesEjercicio.map((l) => l.id));
+  const interesesEnTraslados = redondear(
+    deudasTrasladadas
+      .filter((d) => idsLiquidacionesEjercicio.has(d.liquidacion.id))
+      .reduce((a, d) => a + interesTrasladado(d), 0),
+  );
+  const redondeos = redondear(
+    redondeosPorLiquidacion
+      .filter((r) => idsLiquidacionesEjercicio.has(r.liquidacionId))
+      .reduce((a, r) => a + (r._sum.redondeo ?? 0), 0),
+  );
+  const composicion =
+    fondosFinal === null
+      ? null
+      : (() => {
+          const inicial = 0; // apertura conocida: solo CERO_CONFIRMADO por ahora
+          const saldoNeto = redondear(fondosFinal + creditosTotal - deudaProveedoresTotal);
+          const explicado = inicial + fondoReservaLiquidado + totales.cobranzasInteres + interesesEnTraslados + redondeos;
+          return {
+            inicial,
+            fondoReserva: fondoReservaLiquidado,
+            interesesCobrados: totales.cobranzasInteres,
+            interesesEnTraslados,
+            redondeos,
+            otrasDiferencias: redondear(saldoNeto - explicado),
+            saldoNeto,
+            creditos: creditosTotal,
+            deudas: deudaProveedoresTotal,
+            fondosFinal,
+          };
+        })();
 
   return {
     generadoAt: new Date(),
@@ -685,19 +729,20 @@ export async function simularCierrePeriodo(ejercicio: EjercicioSimulable, consor
     fondos,
     fondosInicial: aperturaConocida ? 0 : null,
     fondosFinal,
+    composicion,
     porMes,
     totales,
     gastosPorRubro,
     gastosDevengados: redondear(gastosPorRubro.reduce((a, r) => a + r.devengado, 0)),
     deudasProveedores,
-    deudaProveedoresTotal: redondear(deudasProveedores.reduce((a, d) => a + d.pendiente, 0)),
+    deudaProveedoresTotal,
     liquidaciones: liquidacionesEjercicio,
     emitidoTotal: redondear(liquidacionesEjercicio.reduce((a, l) => a + l.emitido, 0)),
     cargosNuevosTotal: redondear(liquidacionesEjercicio.reduce((a, l) => a + l.cargosNuevos, 0)),
     deudaTrasladadaTotal: redondear(liquidacionesEjercicio.reduce((a, l) => a + l.deudaTrasladada, 0)),
     fondoReservaLiquidado,
     creditos,
-    creditosTotal: redondear(creditos.reduce((a, c) => a + c.capital, 0)),
+    creditosTotal,
     gastosDetalle,
     resumenUnidades,
     inconsistencias,

@@ -100,6 +100,32 @@ export function buildRendicionPdfHtml(datos: DatosRendicion) {
     ],
   );
 
+  // Composición del saldo
+  const comp = s.composicion;
+  const composicion = comp
+    ? `<div class="dos"><div>${tabla(
+        ["Qué forma el saldo neto", ["Importe", "num"]],
+        [
+          ...(comp.inicial ? [["Saldo neto al inicio del ejercicio", $(comp.inicial)]] : []),
+          ["Fondo de reserva liquidado en el ejercicio", $(comp.fondoReserva)],
+          ["(+) Intereses por mora cobrados", $(comp.interesesCobrados)],
+          ...(comp.interesesEnTraslados ? [["(+) Intereses incluidos en deudas trasladadas", $(comp.interesesEnTraslados)]] : []),
+          ["(+) Redondeos de las liquidaciones", $(comp.redondeos)],
+          ...(Math.abs(comp.otrasDiferencias) >= 0.01 ? [["(±) Otras diferencias", $(comp.otrasDiferencias)]] : []),
+        ],
+        ["<strong>Saldo neto del consorcio</strong>", `<strong>${$(comp.saldoNeto)}</strong>`],
+      )}</div><div>${tabla(
+        ["Del saldo neto a caja y bancos", ["Importe", "num"]],
+        [
+          ["Saldo neto del consorcio", $(comp.saldoNeto)],
+          ["(−) Expensas emitidas pendientes de cobro", $(-comp.creditos)],
+          ["(+) Gastos pendientes de pago", $(comp.deudas)],
+        ],
+        ["<strong>Caja y bancos al cierre</strong>", `<strong>${$(comp.fondosFinal)}</strong>`],
+      )}</div></div>
+      <p class="muted small">Los gastos del ejercicio se cubren con las expensas ordinarias y extraordinarias liquidadas; el saldo que queda corresponde al fondo de reserva, los intereses cobrados y los redondeos. Caja y bancos al cierre es menor cuando hay expensas emitidas pendientes de cobro cuyos gastos ya se pagaron (por ejemplo, la liquidación del último mes, que se emite y cobra después del cierre): mientras tanto, esos gastos se financian con los fondos del consorcio.</p>`
+    : `<p class="muted">No se puede calcular sin los saldos de apertura.</p>`;
+
   // 2. Caja y bancos
   const fondos = tabla(
     ["Cuenta", ["Inicial", "num"], ["Cobranzas", "num"], ["Pagos", "num"], ["Ajustes", "num"], ["Final", "num"]],
@@ -269,9 +295,9 @@ export function buildRendicionPdfHtml(datos: DatosRendicion) {
   table.detalle tr.total td { border-top: 1.5px solid #0f172a; border-bottom: none; }
   td.nowrap, table.detalle td:nth-child(3) { white-space: nowrap; }
   ol.notas { padding-left: 18px; margin: 4px 0; } ol.notas li { margin: 3px 0; }
-  .firma { margin: 36px 0 0 auto; width: 240px; text-align: center; break-inside: avoid; }
-  .firma img { max-height: 70px; max-width: 220px; }
-  .espacio-firma { height: 60px; }
+  .firma { margin: 14px 0 0 auto; width: 240px; text-align: center; break-inside: avoid; }
+  .firma img { max-height: 56px; max-width: 220px; }
+  .espacio-firma { height: 44px; }
   .linea-firma { border-top: 1px solid #0f172a; padding-top: 4px; }
 </style>
 </head>
@@ -299,28 +325,31 @@ export function buildRendicionPdfHtml(datos: DatosRendicion) {
   <h2>1. Resumen del ejercicio</h2>
   <div class="dos"><div>${resumen}</div><div>${situacion}</div></div>
 
-  <h2>2. Caja y bancos</h2>
+  <h2>2. Composición del saldo</h2>
+  ${composicion}
+
+  <h2>3. Caja y bancos</h2>
   ${fondos}
 
-  <h2>3. Ingresos y egresos por mes</h2>
+  <h2>4. Ingresos y egresos por mes</h2>
   ${porMes}
 
-  <h2>4. Gastos por rubro</h2>
+  <h2>5. Gastos por rubro</h2>
   ${rubros}
 
-  <h2>5. Liquidaciones emitidas</h2>
+  <h2>6. Liquidaciones emitidas</h2>
   ${liquidaciones}
 
-  <h2>6. Estado por unidad</h2>
+  <h2>7. Estado por unidad</h2>
   ${unidades}
 
-  <h2>7. Gastos pendientes de pago al cierre</h2>
+  <h2>8. Gastos pendientes de pago al cierre</h2>
   ${deudas}
 
-  <h2>8. Detalle de gastos e índice de comprobantes</h2>
+  <h2>9. Detalle de gastos e índice de comprobantes</h2>
   ${detalle}
 
-  <h2>9. Notas</h2>
+  <h2>10. Notas</h2>
   <ol class="notas">${notas.map((n) => `<li>${esc(n)}</li>`).join("")}</ol>
 
   ${firma}

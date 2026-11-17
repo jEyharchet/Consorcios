@@ -33,6 +33,15 @@ const thNum = "py-2 pl-4 text-right font-medium";
 const td = "py-2.5 pr-4 text-slate-700";
 const tdNum = "py-2.5 pl-4 text-right tabular-nums text-slate-700";
 
+function FilaComposicion({ label, valor, total }: { label: string; valor: string; total?: boolean }) {
+  return (
+    <tr className={total ? "border-t-2 border-slate-200 font-semibold text-slate-900" : undefined}>
+      <td className="py-2 pr-4 text-slate-700">{label}</td>
+      <td className="py-2 pl-4 text-right tabular-nums text-slate-700">{valor}</td>
+    </tr>
+  );
+}
+
 export default async function SimulacionCierrePage({ params }: { params: { id: string } }) {
   const { access, activeConsorcioId } = await getActiveConsorcioContext();
   redirectToOnboardingIfNoConsorcios(access);
@@ -165,6 +174,43 @@ export default async function SimulacionCierrePage({ params }: { params: { id: s
           </div>
         )}
       </section>
+
+      {s.composicion ? (
+        <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h2 className="text-lg font-semibold text-slate-900">Composición del saldo</h2>
+          <p className="mt-1 text-sm text-slate-500">
+            Qué forma el saldo neto del consorcio y por qué caja y bancos al cierre puede ser menor: los gastos ya pagados
+            de expensas que todavía no se cobraron se financian con los fondos del consorcio.
+          </p>
+          <div className="mt-5 grid gap-6 lg:grid-cols-2">
+            <table className="w-full text-sm">
+              <tbody className="divide-y divide-slate-100">
+                <FilaComposicion label="Fondo de reserva liquidado" valor={$(s.composicion.fondoReserva)} />
+                <FilaComposicion label="(+) Intereses por mora cobrados" valor={$(s.composicion.interesesCobrados)} />
+                {s.composicion.interesesEnTraslados ? (
+                  <FilaComposicion
+                    label="(+) Intereses en deudas trasladadas"
+                    valor={$(s.composicion.interesesEnTraslados)}
+                  />
+                ) : null}
+                <FilaComposicion label="(+) Redondeos de las liquidaciones" valor={$(s.composicion.redondeos)} />
+                {Math.abs(s.composicion.otrasDiferencias) >= 0.01 ? (
+                  <FilaComposicion label="(±) Otras diferencias" valor={$(s.composicion.otrasDiferencias)} />
+                ) : null}
+                <FilaComposicion label="Saldo neto del consorcio" valor={$(s.composicion.saldoNeto)} total />
+              </tbody>
+            </table>
+            <table className="w-full text-sm">
+              <tbody className="divide-y divide-slate-100">
+                <FilaComposicion label="Saldo neto del consorcio" valor={$(s.composicion.saldoNeto)} />
+                <FilaComposicion label="(−) Expensas pendientes de cobro" valor={$(-s.composicion.creditos)} />
+                <FilaComposicion label="(+) Gastos pendientes de pago" valor={$(s.composicion.deudas)} />
+                <FilaComposicion label="Caja y bancos al cierre" valor={$(s.composicion.fondosFinal)} total />
+              </tbody>
+            </table>
+          </div>
+        </section>
+      ) : null}
 
       <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <h2 className="text-lg font-semibold text-slate-900">Caja y bancos</h2>
