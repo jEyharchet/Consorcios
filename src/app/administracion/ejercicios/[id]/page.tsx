@@ -366,12 +366,20 @@ export default async function EjercicioDetallePage({
         </fieldset>
       </form>
 
-      <section className="mt-6 rounded-2xl border border-dashed border-slate-300 bg-white p-6">
-        <h2 className="text-lg font-semibold text-slate-900">Simulación del cierre</h2>
-        <p className="mt-1 text-sm text-slate-500">
-          Próximamente: ingresos y egresos del período, deudas al corte, conciliación de fondos y faltantes, sin
-          modificar datos.
-        </p>
+      <section className="mt-6 flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-slate-900">Simulación del cierre</h2>
+          <p className="mt-1 text-sm text-slate-500">
+            Caja y bancos, ingresos y egresos, gastos, liquidaciones, créditos y deudas al cierre, con las observaciones
+            a revisar. No modifica datos y se puede repetir.
+          </p>
+        </div>
+        <Link
+          href={`/administracion/ejercicios/${ejercicio.id}/simulacion`}
+          className="shrink-0 rounded-lg bg-slate-900 px-5 py-2.5 text-center text-sm font-medium text-white transition hover:bg-slate-800"
+        >
+          Ver simulación
+        </Link>
       </section>
 
       {eliminable ? (

@@ -21,6 +21,10 @@ function badgeClass(estado: string) {
     return "bg-emerald-100 text-emerald-800";
   }
 
+  if (estado === "TRASLADADA") {
+    return "bg-sky-100 text-sky-800";
+  }
+
   if (estado === "PARCIAL") {
     return "bg-amber-100 text-amber-800";
   }
@@ -59,6 +63,16 @@ export default async function ExpensaDetallePage({
     { label: "Interes acumulado al dia", value: formatCurrency(snapshot.interesPendiente) },
     { label: "Total adeudado", value: formatCurrency(snapshot.totalAdeudado) },
     { label: "Total pagado", value: formatCurrency(snapshot.totalPagado) },
+    ...(snapshot.capitalTrasladado + snapshot.interesTrasladado > 0
+      ? [
+          {
+            label: "Trasladado a otra liquidacion",
+            value: `${formatCurrency(snapshot.capitalTrasladado + snapshot.interesTrasladado)} (${snapshot.trasladadaA
+              .map((t) => t.periodo)
+              .join(", ")})`,
+          },
+        ]
+      : []),
   ];
 
   return (

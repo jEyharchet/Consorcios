@@ -195,8 +195,20 @@ export default async function GastoDetallePage({
                   ) : null}
                 </div>
               ) : (
-                <p>Sin comprobante cargado.</p>
+                <div className="space-y-2">
+                  <p>Sin comprobante cargado.</p>
+                  {gasto.comprobanteFaltanteMotivo ? (
+                    <p className="rounded-md bg-slate-50 px-3 py-2 text-slate-700">
+                      Motivo: {gasto.comprobanteFaltanteMotivo}
+                    </p>
+                  ) : null}
+                </div>
               )}
+              {canEditByRole ? (
+                <Link href={`/gastos/${gasto.id}/editar`} className="mt-3 inline-block text-blue-600 hover:underline">
+                  {gasto.comprobanteContenido ? "Reemplazar comprobante" : "Agregar comprobante"}
+                </Link>
+              ) : null}
             </div>
           </div>
         </aside>

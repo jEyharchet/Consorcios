@@ -296,6 +296,8 @@ export default async function RegistrarPagoPage({
       ? "La fecha de pago es obligatoria."
       : errorCode === "monto_invalido"
         ? "El importe a registrar debe ser mayor a 0."
+        : errorCode === "expensa_trasladada"
+          ? "La deuda de esta expensa se traslado a una liquidacion posterior: registrar el cobro en esa expensa."
         : errorCode === "expensa_pagada"
           ? "La expensa ya no tiene deuda pendiente para cobrar."
           : errorCode === "monto_excede_total_adeudado"

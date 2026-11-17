@@ -380,6 +380,9 @@ model Gasto {
   comprobanteMimeType       String?
   comprobanteNombreOriginal String?
   comprobanteSubidoAt       DateTime?
+  // Por qué no hay comprobante (p. ej. proveedor que por acuerdo no lo emite,
+  // proporción de medidor interno, compensación aprobada por el consejo).
+  comprobanteFaltanteMotivo String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

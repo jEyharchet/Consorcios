@@ -54,6 +54,23 @@ La declaración anual del administrador ante RPAC tiene su propio trámite y cal
 7. Mostrar faltantes e inconsistencias con acceso al registro de origen. Los datos desconocidos no deben convertirse en cero ni en ausencia de contingencias.
 8. Poder repetir la simulación sin modificar saldos, emitir expensas, enviar comunicaciones ni cerrar meses.
 
+### Implementación de la simulación (16/11/2026)
+
+`src/lib/cierre-simulacion.ts` (solo lectura) y pantalla `/administracion/ejercicios/[id]/simulacion`. Prueba en modo lectura: `npx tsx scripts/test-cierre-simulacion.ts <consorcioId> <inicio> <fin> [apertura]`.
+
+- Lo percibido (cobros, pagos y movimientos de fondos) se toma por fecha efectiva; lo devengado (gastos y liquidaciones), por período «AAAA-MM» dentro del ejercicio. Así la liquidación del último mes, emitida después del cierre, queda en el ejercicio.
+- Caja y bancos: saldo inicial según la apertura (solo `CERO_CONFIRMADO` es conocido por ahora) más cobranzas, pagos y ajustes manuales del período. Se compara con el `saldoPosterior` del último movimiento **cargado** (mayor id) con fecha hasta el cierre: ese saldo sigue el orden de carga, no el cronológico.
+- Créditos al cierre: capital de expensas con período hasta el cierre menos capital cobrado hasta el cierre, descontando el capital trasladado a otra liquidación (criterios TOTAL/CAPITAL/PARCIAL). No incluye intereses no liquidados.
+- Liquidaciones: el total emitido se separa en cargos nuevos y deuda de meses anteriores incluida otra vez (mismo criterio que el paso 3 del wizard).
+- Observaciones detectadas: apertura sin detalle, cobros y pagos sin movimiento de fondos (y si los compensa un ajuste manual del mismo importe), ajustes manuales, transferencias caja/banco del mismo día que no cierran, deuda trasladada que sigue pendiente en la expensa original, gastos sin comprobante, liquidaciones sin finalizar, meses sin liquidación, actividad anterior al inicio sin ejercicio previo, cuentas inactivas con actividad y fondos que no concilian.
+- Pendiente: detalle de apertura por cuenta (para `INFORMADA`), identificación del fondo de reserva en lo cobrado y sus aplicaciones, intereses devengados no liquidados, exportación a PDF para la rendición.
+
+Traslado de deuda (corregido el 17/11/2026, `src/lib/expensa-traslado.ts`): al finalizar una liquidación que incluye deuda de expensas anteriores (`LiquidacionDeuda`), la expensa original baja su saldo por el capital trasladado y, si no queda capital, pasa a `TRASLADADA`. El cálculo de deuda de la expensa (`getExpensaCobranzaSnapshot`) trata el traslado como una cancelación con fecha (`fechaCalculoInteres`): deja de generar intereses y no admite cobros. El estado de cuenta de los PDF suma la deuda trasladada solo hasta la liquidación que la incluyó. La migración `20261117090000_cerrar_expensas_trasladadas` corrigió los traslados ya registrados. Limitación conocida: un traslado PARCIAL o solo de INTERES deja capital en la expensa original que el paso 2 no vuelve a ofrecer.
+
+Gastos sin comprobante: el gasto admite `comprobanteFaltanteMotivo` (proveedor que no emite comprobante, medidor interno, compensación aprobada). La simulación los informa como justificados. El comprobante se puede adjuntar o reemplazar desde la edición del gasto aunque esté pagado o liquidado (límite 4 MB, `src/lib/gasto-comprobante.ts`).
+
+Ajustes manuales: los cobros sin movimiento de fondos compensados por un ajuste del mismo total se cuentan como cobranzas; los ajustes del mismo día entre caja y banco que se compensan se informan como transferencias internas.
+
 ## Confirmación posterior a la revisión
 
 - Persistir la versión exacta de resultados, fuentes, parámetros y documentos revisados, con usuario y fecha.

@@ -9,6 +9,7 @@ import { getActiveConsorcioContext } from "../../../lib/consorcio-activo";
 import { getPeriodoVariants, normalizePeriodo } from "../../../lib/periodo";
 import { prisma } from "../../../lib/prisma";
 import { normalizeDate } from "../../../lib/relaciones";
+import { MAX_COMPROBANTE_GASTO_BYTES, MAX_COMPROBANTE_GASTO_LABEL, TIPOS_COMPROBANTE_GASTO } from "../../../lib/gasto-comprobante";
 import SubmitButton from "./SubmitButton";
 
 const TIPOS_EXPENSA = ["ORDINARIA", "EXTRAORDINARIA"] as const;
@@ -23,8 +24,8 @@ const RUBROS = [
   "Seguros",
   "Otros",
 ] as const;
-const MAX_COMPROBANTE_SIZE_BYTES = 5 * 1024 * 1024;
-const ALLOWED_COMPROBANTE_TYPES = ["application/pdf", "image/jpeg", "image/png", "image/webp"] as const;
+const MAX_COMPROBANTE_SIZE_BYTES = MAX_COMPROBANTE_GASTO_BYTES;
+const ALLOWED_COMPROBANTE_TYPES = TIPOS_COMPROBANTE_GASTO;
 
 async function createGastoWithSequenceRecovery(data: {
   consorcioId: number;
@@ -291,7 +292,7 @@ export default async function NuevoGastoPage({
                     : searchParams?.error === "proveedor_invalido"
                       ? "El proveedor debe estar asociado al mismo consorcio y vigente para la fecha del gasto."
                       : searchParams?.error === "comprobante_muy_pesado"
-                        ? "El comprobante no puede superar los 5 MB."
+                        ? `El comprobante no puede superar los ${MAX_COMPROBANTE_GASTO_LABEL}.`
                       : searchParams?.error === "comprobante_tipo_invalido"
                           ? "El comprobante debe ser PDF, JPG, PNG o WEBP."
                         : searchParams?.error === "periodo_bloqueado"
@@ -403,7 +404,7 @@ export default async function NuevoGastoPage({
             accept="application/pdf,image/*"
             className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700"
           />
-          <p className="text-xs text-slate-500">Formatos permitidos: PDF, JPG, PNG o WEBP. Maximo 5 MB.</p>
+          <p className="text-xs text-slate-500">Formatos permitidos: PDF, JPG, PNG o WEBP. Maximo {MAX_COMPROBANTE_GASTO_LABEL}.</p>
         </div>
 
         <SubmitButton />

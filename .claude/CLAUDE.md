@@ -9,6 +9,8 @@
 
 ## Historial de decisiones
 
+- 2026-11-17: Traslado de deuda: la expensa original pasa a `TRASLADADA` (saldo descontado) al finalizar la liquidación que la incluye; el cálculo de deuda y el estado de cuenta de PDFs lo contemplan (`src/lib/expensa-traslado.ts`). Gasto con `comprobanteFaltanteMotivo` y bloque de comprobante en la edición (aunque esté pagado). Límite de comprobantes 4 MB + `serverActions.bodySizeLimit` 4.5mb. Migraciones `20261117090000` (traslados), `20261117100000` (motivo) y `20261117110000` (transferencia Jara 166 del 10/04 a 48.000; saldo banco −0,01) aplicadas en `dev`.
+- 2026-11-16: Simulación del cierre (solo lectura) en `src/lib/cierre-simulacion.ts` y `/administracion/ejercicios/[id]/simulacion`; criterios en `docs/cierre-anual.md`. Hallazgo: trasladar deuda (`LiquidacionDeuda`) no cierra la expensa original, que queda contada dos veces fuera de la simulación. `formatDateTime` de `administracion/shared.ts` ahora fija hora de Argentina (deploy `c2495e4`).
 - 2026-11-16: Ejercicio económico configurable por consorcio: modelo `Ejercicio` con fechas explícitas (`DATE`, inclusive), estado, fundamento, estado de apertura y vencimiento de rendición (fin + 60 días). Migración `20261116120000_ejercicio_consorcio` aplicada en el branch Neon `dev` y en producción (deploy `c1a6e91` verificado Ready). Reglas en `src/lib/ejercicios.ts` (prueba: `scripts/test-ejercicios.ts`). `docs/cierre-anual.md` pasó a ser el diseño general; lo propio de Jara 166 quedó en `docs/cierre-anual-jara-166.md`. Pantalla en Administración → Ejercicios (`/administracion/ejercicios` y `/[id]`), con entrada en el menú lateral; escritura solo para `ADMIN`, lógica en `src/lib/ejercicios-data.ts` (transacciones serializables).
 - 2026-11-16: Fase 1 y 2 del plan de inconsistencias: repo limpio de Supabase, `vercel.json` fija `gru1`, branch Neon `dev` (`ep-empty-truth`) para local/Preview/Development, y 6 secuencias desfasadas corregidas con `setval` en producción y `dev`. `DATABASE_URL` de Production reescrita con la URL pooler conocida (era Secret, ilegible). Deploy de producción verificado (expensas y PDF de liquidación OK).
 - 2026-11-16: Las funciones de Vercel pasaron de `iad1` a `gru1` para quedar en la misma región que la base Neon (`sa-east-1`). La lentitud venía de la consulta cruzada EE.UU.–São Paulo tras volver de Supabase a Neon.
@@ -21,7 +23,9 @@ Ninguno. El plan de inconsistencias Neon/Supabase se cerró el 2026-11-16 (`.cla
 
 ## Pendientes conocidos
 
-- Implementar la simulación del cierre anual (pantalla de ejercicios lista en `/administracion/ejercicios`; falta probarla en producción y cargar el ejercicio 1 de Jara 166).
+- Cierre anual: probar la simulación en producción; luego detalle de apertura por cuenta, fondo de reserva, PDF de rendición y confirmación del cierre.
+- La edición de gastos se bloquea con liquidaciones `EMITIDA`/`CERRADA`, pero las liquidaciones quedan `FINALIZADA`: el bloqueo nunca aplica. Decidir si incluir `FINALIZADA` (el comprobante ya es editable aparte).
+- Traslado PARCIAL o solo de INTERES: el capital que queda en la expensa original no vuelve a ofrecerse en el paso 2.
 - Drift preexistente en `dev`: `PagoGasto.updatedAt` y `RespuestaEmail.updatedAt` tienen `DEFAULT` en la base que el esquema no declara. Inofensivo; resolver con una migración nueva si se quiere alinear.
 - Evaluar `cache()` de React para deduplicar `auth()` / `getAccessContext()` en el layout.
 - Evaluar mover PDFs de liquidación de `/tmp` a almacenamiento persistente.

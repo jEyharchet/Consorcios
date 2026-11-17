@@ -2,6 +2,12 @@
 import { redirect } from "next/navigation";
 
 import { requireConsorcioRole } from "../../../../lib/auth";
+import {
+  MAX_COMPROBANTE_GASTO_LABEL,
+  MENSAJES_COMPROBANTE_GASTO,
+  leerComprobanteGasto,
+  tieneComprobante,
+} from "../../../../lib/gasto-comprobante";
 import { getPeriodoVariants, normalizePeriodo } from "../../../../lib/periodo";
 import { prisma } from "../../../../lib/prisma";
 import { normalizeDate } from "../../../../lib/relaciones";
@@ -24,7 +30,7 @@ export default async function EditarGastoPage({
   searchParams,
 }: {
   params: { id: string };
-  searchParams?: { error?: string };
+  searchParams?: { error?: string; ok?: string };
 }) {
   const id = Number(params.id);
 
@@ -44,6 +50,103 @@ export default async function EditarGastoPage({
   }
 
   await requireConsorcioRole(gasto.consorcioId, ["ADMIN", "OPERADOR"]);
+
+  // Adjuntar o reemplazar el comprobante (o explicar por qué no hay) no cambia
+  // importes: se permite aunque el gasto esté pagado o su liquidación cerrada.
+  async function actualizarComprobante(formData: FormData) {
+    "use server";
+
+    const id = Number(formData.get("id"));
+    const gastoActual = await prisma.gasto.findUnique({ where: { id }, select: { consorcioId: true } });
+
+    if (!gastoActual) {
+      redirect("/gastos");
+    }
+
+    await requireConsorcioRole(gastoActual.consorcioId, ["ADMIN", "OPERADOR"]);
+
+    const lectura = await leerComprobanteGasto(formData.get("comprobante"));
+    if (!lectura.ok) {
+      redirect(`/gastos/${id}/editar?error=${lectura.error}`);
+    }
+
+    const motivo = (formData.get("comprobanteFaltanteMotivo")?.toString() ?? "").trim() || null;
+
+    await prisma.gasto.update({
+      where: { id },
+      data: lectura.comprobante
+        ? { ...lectura.comprobante, comprobanteFaltanteMotivo: null }
+        : { comprobanteFaltanteMotivo: motivo },
+    });
+
+    redirect(`/gastos/${id}/editar?ok=comprobante_guardado`);
+  }
+
+  const conComprobante = tieneComprobante(gasto);
+  const comprobanteError = searchParams?.error ? MENSAJES_COMPROBANTE_GASTO[searchParams.error] ?? null : null;
+  const seccionComprobante = (
+    <form
+      action={actualizarComprobante}
+      encType="multipart/form-data"
+      className="mt-6 space-y-4 rounded-lg border border-slate-200 bg-white p-6"
+    >
+      <input type="hidden" name="id" value={gasto.id} />
+      <div>
+        <h2 className="text-lg font-semibold text-slate-900">Comprobante</h2>
+        <p className="mt-1 text-sm text-slate-500">
+          {conComprobante
+            ? `Adjunto: ${gasto.comprobanteNombreOriginal ?? "comprobante"}. Podés reemplazarlo por otro archivo.`
+            : "Este gasto no tiene comprobante. Podés adjuntarlo aunque el gasto ya esté pagado o liquidado."}
+        </p>
+      </div>
+
+      {searchParams?.ok === "comprobante_guardado" ? (
+        <div className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+          El comprobante se guardó correctamente.
+        </div>
+      ) : null}
+      {comprobanteError ? (
+        <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{comprobanteError}</div>
+      ) : null}
+
+      <div className="space-y-1">
+        <label htmlFor="comprobante" className="text-sm font-medium text-slate-700">
+          {conComprobante ? "Reemplazar archivo" : "Archivo"}
+        </label>
+        <input
+          id="comprobante"
+          name="comprobante"
+          type="file"
+          accept="application/pdf,image/*"
+          className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700"
+        />
+        <p className="text-xs text-slate-500">PDF, JPG, PNG o WEBP. Máximo {MAX_COMPROBANTE_GASTO_LABEL}.</p>
+      </div>
+
+      {!conComprobante ? (
+        <div className="space-y-1">
+          <label htmlFor="comprobanteFaltanteMotivo" className="text-sm font-medium text-slate-700">
+            Motivo por el que no hay comprobante
+          </label>
+          <textarea
+            id="comprobanteFaltanteMotivo"
+            name="comprobanteFaltanteMotivo"
+            rows={2}
+            defaultValue={gasto.comprobanteFaltanteMotivo ?? ""}
+            placeholder="Ej.: por acuerdo con los propietarios no emite comprobante / proporción de medidor interno / compensación aprobada por el consejo"
+            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none ring-blue-500 focus:ring-2"
+          />
+          <p className="text-xs text-slate-500">
+            Queda como respaldo en la rendición. Si adjuntás un archivo, el motivo se borra.
+          </p>
+        </div>
+      ) : null}
+
+      <button type="submit" className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800">
+        Guardar comprobante
+      </button>
+    </form>
+  );
 
   const liquidacionBloqueante = await prisma.liquidacion.findFirst({
     where: {
@@ -65,6 +168,8 @@ export default async function EditarGastoPage({
         <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
           Este gasto no se puede editar porque la liquidacion del periodo esta emitida o cerrada.
         </div>
+
+        {seccionComprobante}
       </main>
     );
   }
@@ -216,6 +321,7 @@ export default async function EditarGastoPage({
                       ? "El monto total del gasto no puede quedar por debajo de lo ya pagado."
                     : null;
 
+
   return (
     <main className="mx-auto w-full max-w-3xl px-6 py-10">
       <header className="mb-6 space-y-2">
@@ -253,6 +359,8 @@ export default async function EditarGastoPage({
 
         <button type="submit" className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800">Guardar</button>
       </form>
+
+      {seccionComprobante}
     </main>
   );
 }

@@ -2,6 +2,12 @@ import { Buffer } from "node:buffer";
 import { Prisma } from "@prisma/client";
 
 import { calcularInteresCapitalizadoPorTasas, type LiquidacionTasa } from "./liquidacion-deudas";
+import {
+  ESTADOS_LIQUIDACION_CON_TRASLADO,
+  ESTADO_EXPENSA_TRASLADADA,
+  capitalTrasladado,
+  interesTrasladado,
+} from "./expensa-traslado";
 import { type MedioPagoExpensa, isMedioPagoExpensa } from "./fondos";
 import { prisma } from "./prisma";
 
@@ -46,6 +52,14 @@ type ExpensaWithCobranzaData = {
     registradoPorUserId: string | null;
     registradoPorUser: { id: string; email: string | null; name: string | null } | null;
   }>;
+  deudasIncluidas: Array<{
+    criterio: string;
+    capitalOriginal: number;
+    interesCalculado: number;
+    importeLiquidado: number;
+    fechaCalculoInteres: Date;
+    liquidacion: { id: number; periodo: string; estado: string };
+  }>;
 };
 
 export type ExpensaCobranzaSnapshot = {
@@ -59,6 +73,10 @@ export type ExpensaCobranzaSnapshot = {
   totalPagado: number;
   totalPagadoCapital: number;
   totalPagadoInteres: number;
+  /** Capital e interés que pasaron a cobrarse en liquidaciones posteriores. */
+  capitalTrasladado: number;
+  interesTrasladado: number;
+  trasladadaA: Array<{ liquidacionId: number; periodo: string }>;
   fechaCalculo: Date;
   fechaVencimientoBase: Date;
   consorcio: { id: number; nombre: string };
@@ -170,6 +188,18 @@ async function getExpensaWithCobranzaData(db: DbClient, expensaId: number): Prom
           },
         },
       },
+      deudasIncluidas: {
+        where: { liquidacion: { estado: { in: ESTADOS_LIQUIDACION_CON_TRASLADO } } },
+        orderBy: [{ fechaCalculoInteres: "asc" }, { id: "asc" }],
+        select: {
+          criterio: true,
+          capitalOriginal: true,
+          interesCalculado: true,
+          importeLiquidado: true,
+          fechaCalculoInteres: true,
+          liquidacion: { select: { id: true, periodo: true, estado: true } },
+        },
+      },
     },
   });
 }
@@ -215,9 +245,22 @@ export async function getExpensaCobranzaSnapshot(
   let totalPagadoCapital = 0;
   let totalPagadoInteres = 0;
   let fechaBaseInteres = fechaVencimientoBase;
+  let totalCapitalTrasladado = 0;
+  let totalInteresTrasladado = 0;
 
-  for (const pago of expensa.pagos) {
-    if (pago.fechaPago > fechaCalculo) {
+  // Pagos y traslados a liquidaciones posteriores, en orden cronológico. Un
+  // traslado funciona como una cancelación: esa deuda pasa a cobrarse en la
+  // expensa de la liquidación que la incluyó.
+  type Evento =
+    | { tipo: "PAGO"; fecha: Date; pago: ExpensaWithCobranzaData["pagos"][number] }
+    | { tipo: "TRASLADO"; fecha: Date; deuda: ExpensaWithCobranzaData["deudasIncluidas"][number] };
+  const eventos: Evento[] = [
+    ...expensa.pagos.map((pago) => ({ tipo: "PAGO" as const, fecha: pago.fechaPago, pago })),
+    ...expensa.deudasIncluidas.map((deuda) => ({ tipo: "TRASLADO" as const, fecha: deuda.fechaCalculoInteres, deuda })),
+  ].sort((a, b) => a.fecha.getTime() - b.fecha.getTime());
+
+  for (const evento of eventos) {
+    if (evento.fecha > fechaCalculo) {
       break;
     }
 
@@ -226,10 +269,23 @@ export async function getExpensaCobranzaSnapshot(
         calcularInteresIncremental({
           capitalPendiente,
           fechaDesde: fechaBaseInteres,
-          fechaHasta: pago.fechaPago,
+          fechaHasta: evento.fecha,
           tasasHistoricas,
         }),
     );
+
+    if (evento.tipo === "TRASLADO") {
+      const capital = Math.min(capitalPendiente, capitalTrasladado(evento.deuda));
+      const interes = Math.min(interesPendiente, interesTrasladado(evento.deuda));
+      capitalPendiente = roundMoney(capitalPendiente - capital);
+      interesPendiente = roundMoney(interesPendiente - interes);
+      totalCapitalTrasladado = roundMoney(totalCapitalTrasladado + capital);
+      totalInteresTrasladado = roundMoney(totalInteresTrasladado + interes);
+      fechaBaseInteres = evento.fecha;
+      continue;
+    }
+
+    const pago = evento.pago;
 
     const montoInteres = roundMoney(Math.max(0, pago.montoInteres ?? 0));
     const inferredCapital = pago.montoCapital ?? Math.min(pago.monto, capitalPendiente);
@@ -254,9 +310,14 @@ export async function getExpensaCobranzaSnapshot(
   interesPendiente = roundMoney(interesPendiente + interesGeneradoEnFecha);
   const totalAdeudado = roundMoney(capitalPendiente + interesPendiente);
 
+  const trasladada = totalCapitalTrasladado + totalInteresTrasladado > EPSILON;
+
   return {
     expensaId: expensa.id,
-    estado: resolveEstadoResultante(totalPagado, totalAdeudado),
+    estado:
+      trasladada && totalAdeudado <= EPSILON
+        ? ESTADO_EXPENSA_TRASLADADA
+        : resolveEstadoResultante(totalPagado, totalAdeudado),
     capitalOriginal: roundMoney(expensa.monto),
     capitalPendiente,
     interesPendiente,
@@ -265,6 +326,9 @@ export async function getExpensaCobranzaSnapshot(
     totalPagado,
     totalPagadoCapital,
     totalPagadoInteres,
+    capitalTrasladado: totalCapitalTrasladado,
+    interesTrasladado: totalInteresTrasladado,
+    trasladadaA: expensa.deudasIncluidas.map((d) => ({ liquidacionId: d.liquidacion.id, periodo: d.liquidacion.periodo })),
     fechaCalculo,
     fechaVencimientoBase,
     consorcio: expensa.liquidacion.consorcio,
@@ -282,6 +346,10 @@ export function estimatePagoExpensa(snapshot: ExpensaCobranzaSnapshot, monto: nu
 
   if (normalizedMonto <= 0) {
     throw new CobranzaError("monto_invalido");
+  }
+
+  if (snapshot.estado === ESTADO_EXPENSA_TRASLADADA) {
+    throw new CobranzaError("expensa_trasladada");
   }
 
   if (snapshot.totalAdeudado <= EPSILON) {

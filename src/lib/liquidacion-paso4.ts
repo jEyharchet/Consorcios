@@ -23,6 +23,7 @@ import {
 } from "./liquidacion-gastos-historicos";
 import { getAdministradorVigente } from "./consorcio-administradores";
 import { buildEstadoCuentaDisplayByUnidad } from "./liquidacion-estado-cuenta-display";
+import { aplicarTrasladosDeLiquidacion } from "./expensa-traslado";
 import { buildGastoPagoSummary } from "./pagos-gastos";
 import {
   getRelacionesDestinatariasBoleta,
@@ -723,6 +724,9 @@ export async function generarExpensasDefinitivasDesdePaso3(
         liquidacionId: liquidacion.id,
         expensas: expensasData,
       });
+
+      // La deuda incluida de expensas anteriores deja de adeudarse en la expensa original.
+      await aplicarTrasladosDeLiquidacion(tx, liquidacion.id);
 
       const total = liquidacion.prorrateos.reduce((acc, row) => acc + row.total, 0);
 

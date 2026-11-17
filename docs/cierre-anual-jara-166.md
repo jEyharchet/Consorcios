@@ -39,6 +39,18 @@ Fuente: `J:/Mi unidad/Actas/Acta 20260302 firmada.pdf`. PDF escaneado de cuatro 
 - Punto 7, página 3: designación de Oscar Aller y Julio Cameranesi como miembros del consejo, con aceptación unánime.
 - Punto 6, página 3: pago del 1 al 10 y evaluación de un segundo vencimiento con recargo hasta el 20. No interpretar esa evaluación como tasa de interés aprobada.
 
+## Primera simulación (datos de `dev`, copia de producción, 16/11/2026)
+
+- Banco Provincia al 30/09/2026: calculado 142.029,40, igual al registrado. Caja: 0.
+- Gastos devengados 2026-02 a 2026-09: 1.922.626,86; pagados al cierre 1.902.769,66; pendiente 19.857,20 (luz de septiembre).
+- Créditos al cierre: 119.207 (liquidación de septiembre, emitida el 02/10).
+- Observaciones y cómo se resolvieron (17/11/2026):
+  - Diez cobros de la expensa 2026-02 (09 y 12/03/2026) sin movimiento de fondos: cargas iniciales pagadas por transferencia; suman 277.655 e ingresaron al banco por el ajuste manual del 13/03 «Pago de expensas previo al módulo de tesorería». La simulación los cuenta como cobranzas.
+  - Expensa 2026-02 de UF 01 (17.345) trasladada completa a la liquidación 2026-03 (el propietario pagó con más de un mes de atraso): quedó `TRASLADADA`. Los estados de cuenta de UF 01 emitidos desde 2026-04 mostraban un saldo anterior inflado en 17.345 (el total a pagar era correcto); se corrigen al regenerarlos.
+  - Transferencia banco → caja del 10/04/2026: el banco registraba 47.999,99 por la conversión desde Float; el importe real es 48.000. Corregido con la migración `20261117110000_corregir_transferencia_banco_20260410` (saldos posteriores −0,01; saldo del banco 152.506,99 al 16/11/2026; al 30/09/2026, 142.029,39).
+  - Gastos sin comprobante: los de María Fernanda Galimberti Bentancur (por acuerdo con los propietarios no emite comprobante) y los de luz de espacios comunes (proporción de un medidor medida internamente) se justifican con motivo. El #20 (poda de césped, 2026-04) fue una compensación aprobada por el consejo de administración a un propietario que pagó sin comprobante. Para el resto hay comprobantes, a adjuntar desde la edición del gasto. El gasto #40 (2026-08) estaba en el rubro «Sueldos y Cargas Sociales» por error; el usuario lo corrigió a «Gastos de Limpieza».
+  - Octubre 2025 a enero 2026 sin liquidaciones: explicar en notas (inicio del uso del sistema / primer ejercicio).
+
 ## Información pendiente de Jara 166
 
 - Formalización del cambio respecto del reglamento original (diciembre → septiembre): no verificada con esta lectura; no bloquea el desarrollo de la simulación con el período indicado.

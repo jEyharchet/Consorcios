@@ -41,8 +41,9 @@ export default function ExpensasTable({ rows }: ExpensasTableProps) {
       ) : (
         <div className="divide-y divide-slate-100">
           {rows.map((row) => {
-            const actionHref = row.estado === "PAGADA" || !row.canRegisterPayment ? `/expensas/${row.id}` : `/expensas/${row.id}/pago`;
-            const actionLabel = row.estado === "PAGADA" || !row.canRegisterPayment ? "Ver" : "Registrar pago";
+            const soloVer = row.estado === "PAGADA" || row.estado === "TRASLADADA" || !row.canRegisterPayment;
+            const actionHref = soloVer ? `/expensas/${row.id}` : `/expensas/${row.id}/pago`;
+            const actionLabel = soloVer ? "Ver" : "Registrar pago";
 
             return (
               <div key={row.id} className="group relative">

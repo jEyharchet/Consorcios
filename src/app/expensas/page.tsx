@@ -51,6 +51,10 @@ function resolveVisualStatus(params: {
   fechaVencimiento: Date | null;
   today: Date;
 }): ExpensaEstadoVisual {
+  if (params.estado === "TRASLADADA") {
+    return "TRASLADADA";
+  }
+
   if (params.saldo <= 0.009 || params.estado === "PAGADA") {
     return "PAGADA";
   }
@@ -161,7 +165,7 @@ export default async function ExpensasPage({
         consorcioId: activeConsorcioId,
         periodo: selectedPeriodo || undefined,
       },
-      ...(selectedEstado === "PAGADA" ? { saldo: { lte: 0.009 } } : {}),
+      ...(selectedEstado === "PAGADA" ? { saldo: { lte: 0.009 }, estado: { not: "TRASLADADA" } } : {}),
       ...(selectedEstado === "PENDIENTE" ? { saldo: { gt: 0.009 } } : {}),
       ...(rawSearch ? { AND: buildSearchConditions(rawSearch, today) } : {}),
     },
@@ -210,7 +214,7 @@ export default async function ExpensasPage({
     canRegisterPayment: canRegisterPayments,
   }));
 
-  const pendientesCount = rows.filter((row) => row.estado !== "PAGADA").length;
+  const pendientesCount = rows.filter((row) => row.estado !== "PAGADA" && row.estado !== "TRASLADADA").length;
   const pagadasCount = rows.filter((row) => row.estado === "PAGADA").length;
   const deudaTotal = expensas.reduce((acc, item) => acc + item.saldo, 0);
   const periodoLabel = selectedPeriodo || "Sin periodo";

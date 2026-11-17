@@ -1,4 +1,4 @@
-export type ExpensaEstadoVisual = "PAGADA" | "PENDIENTE" | "VENCIDA";
+export type ExpensaEstadoVisual = "PAGADA" | "PENDIENTE" | "VENCIDA" | "TRASLADADA";
 
 type ExpensaEstadoBadgeProps = {
   estado: ExpensaEstadoVisual;
@@ -8,12 +8,14 @@ const ESTADO_STYLES: Record<ExpensaEstadoVisual, string> = {
   PAGADA: "bg-emerald-100 text-emerald-800 ring-emerald-600/20",
   PENDIENTE: "bg-amber-100 text-amber-800 ring-amber-600/20",
   VENCIDA: "bg-rose-100 text-rose-800 ring-rose-600/20",
+  TRASLADADA: "bg-sky-100 text-sky-800 ring-sky-600/20",
 };
 
 const ESTADO_LABELS: Record<ExpensaEstadoVisual, string> = {
   PAGADA: "Pagada",
   PENDIENTE: "Pendiente",
   VENCIDA: "Vencida",
+  TRASLADADA: "Trasladada",
 };
 
 export default function ExpensaEstadoBadge({ estado }: ExpensaEstadoBadgeProps) {

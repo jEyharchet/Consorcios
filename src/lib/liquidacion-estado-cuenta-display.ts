@@ -1,3 +1,4 @@
+import { ESTADOS_LIQUIDACION_CON_TRASLADO, capitalTrasladado } from "./expensa-traslado";
 import { normalizePeriodo } from "./periodo";
 import { prisma } from "./prisma";
 
@@ -53,6 +54,16 @@ export async function buildEstadoCuentaDisplayByUnidad(params: {
           periodo: true,
         },
       },
+      deudasIncluidas: {
+        where: { liquidacion: { estado: { in: ESTADOS_LIQUIDACION_CON_TRASLADO } } },
+        select: {
+          criterio: true,
+          capitalOriginal: true,
+          interesCalculado: true,
+          importeLiquidado: true,
+          liquidacion: { select: { periodo: true } },
+        },
+      },
     },
   });
 
@@ -85,7 +96,19 @@ export async function buildEstadoCuentaDisplayByUnidad(params: {
       return acc;
     }, 0);
 
-    const saldoAnteriorReconstruido = Math.max(0, expensa.saldo + pagosDesdeInicioPeriodo);
+    // El saldo de la expensa ya descuenta la deuda trasladada a liquidaciones
+    // posteriores. Para reconstruir el saldo al inicio de este período se suma
+    // la trasladada en este período o después (todavía se adeudaba aquí).
+    const trasladadoDesdeEstePeriodo = expensa.deudasIncluidas.reduce((acc, deuda) => {
+      const periodoTraslado = normalizePeriodo(deuda.liquidacion.periodo);
+      if (periodoActual && periodoTraslado && periodoTraslado >= periodoActual) {
+        return acc + capitalTrasladado(deuda);
+      }
+
+      return acc;
+    }, 0);
+
+    const saldoAnteriorReconstruido = Math.max(0, expensa.saldo + pagosDesdeInicioPeriodo + trasladadoDesdeEstePeriodo);
 
     if (saldoAnteriorReconstruido <= 0 && pagosDurantePeriodo <= 0) {
       continue;
