@@ -37,27 +37,6 @@ export async function guardarNotasAction(formData: FormData) {
   );
 }
 
-export async function confirmarCierreAction(formData: FormData) {
-  const { ejercicioId, consorcioId } = leerIds(formData);
-  const access = await requireConsorcioRole(consorcioId, ["ADMIN"]);
-
-  const resultado = await confirmarCierreEjercicio({
-    ejercicioId,
-    consorcioId,
-    userId: access.user.id,
-    huellaRevisada: formData.get("huella")?.toString() ?? "",
-    aceptaObservaciones: formData.get("aceptaObservaciones") === "1",
-  });
-
-  if (!resultado.ok) redirect(ruta(ejercicioId, { error: resultado.errores.join("|") }));
-  redirect(
-    ruta(ejercicioId, {
-      ok: `Cierre confirmado (versión ${resultado.version}). La rendición y la hoja del libro quedaron guardadas.`,
-      aviso: resultado.avisos.join("|"),
-    }),
-  );
-}
-
 export async function cancelarConfirmacionAction(formData: FormData) {
   const { ejercicioId, consorcioId } = leerIds(formData);
   await requireConsorcioRole(consorcioId, ["ADMIN"]);
@@ -93,29 +72,82 @@ export async function reabrirEjercicioAction(formData: FormData) {
   );
 }
 
-export async function enviarRendicionAction(formData: FormData) {
+export type ResultadoEnvio = { ok: true; mensaje: string } | { ok: false; error: string };
+
+function mensajeErrorEnvio(error: unknown) {
+  const codigo = error instanceof Error ? error.message : "";
+  if (codigo === "administrador_sin_email") return "No hay un email de administrador vigente para enviar la prueba.";
+  if (codigo === "rendicion_sin_cierre") return "La rendición se envía a los propietarios con el ejercicio cerrado.";
+  return "No se pudo enviar la rendición.";
+}
+
+/** Prueba solo para la administración. No cierra el ejercicio. */
+export async function enviarPruebaRendicionAction(formData: FormData): Promise<ResultadoEnvio> {
   const { ejercicioId, consorcioId } = leerIds(formData);
   await requireConsorcioRole(consorcioId, ["ADMIN"]);
-  const prueba = formData.get("modo") === "prueba";
-
-  let mensaje: string;
   try {
     const resumen = await enviarRendicionEjercicio({
       ejercicioId,
       consorcioId,
-      prueba,
+      prueba: true,
       mensaje: formData.get("mensaje")?.toString() ?? null,
     });
-    mensaje = `${prueba ? "Prueba enviada a la administración." : "Rendición enviada a los propietarios."} ${formatEmailSummary(resumen)}`;
+    return { ok: true, mensaje: `Prueba enviada a la administración. ${formatEmailSummary(resumen)}` };
   } catch (error) {
-    const codigo = error instanceof Error ? error.message : "";
-    const texto =
-      codigo === "administrador_sin_email"
-        ? "No hay un email de administrador vigente para enviar la prueba."
-        : codigo === "rendicion_sin_cierre"
-          ? "La rendición solo se envía con el cierre confirmado."
-          : "No se pudo enviar la rendición.";
-    redirect(ruta(ejercicioId, { error: texto }));
+    return { ok: false, error: mensajeErrorEnvio(error) };
   }
-  redirect(ruta(ejercicioId, { ok: mensaje }));
+}
+
+/**
+ * Cierra el ejercicio (confirma la versión con la rendición y la hoja del
+ * libro) y envía la rendición a los propietarios. Si el envío falla, el
+ * ejercicio queda cerrado y se puede reenviar.
+ */
+export async function cerrarYEnviarRendicionAction(formData: FormData): Promise<ResultadoEnvio> {
+  const { ejercicioId, consorcioId } = leerIds(formData);
+  const access = await requireConsorcioRole(consorcioId, ["ADMIN"]);
+
+  const cierre = await confirmarCierreEjercicio({
+    ejercicioId,
+    consorcioId,
+    userId: access.user.id,
+    huellaRevisada: formData.get("huella")?.toString() ?? "",
+    aceptaObservaciones: formData.get("aceptaObservaciones") === "1",
+  });
+  if (!cierre.ok) return { ok: false, error: cierre.errores.join(" ") };
+
+  try {
+    const resumen = await enviarRendicionEjercicio({
+      ejercicioId,
+      consorcioId,
+      prueba: false,
+      mensaje: formData.get("mensaje")?.toString() ?? null,
+    });
+    return {
+      ok: true,
+      mensaje: [`Ejercicio cerrado (versión ${cierre.version}) y rendición enviada.`, formatEmailSummary(resumen), ...cierre.avisos].join(" "),
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      error: `El ejercicio quedó cerrado (versión ${cierre.version}), pero el envío falló: ${mensajeErrorEnvio(error)} Usá «Reenviar a los propietarios».`,
+    };
+  }
+}
+
+/** Reenvío de la versión vigente a los propietarios (ejercicio ya cerrado). */
+export async function reenviarRendicionAction(formData: FormData): Promise<ResultadoEnvio> {
+  const { ejercicioId, consorcioId } = leerIds(formData);
+  await requireConsorcioRole(consorcioId, ["ADMIN"]);
+  try {
+    const resumen = await enviarRendicionEjercicio({
+      ejercicioId,
+      consorcioId,
+      prueba: false,
+      mensaje: formData.get("mensaje")?.toString() ?? null,
+    });
+    return { ok: true, mensaje: `Rendición reenviada a los propietarios. ${formatEmailSummary(resumen)}` };
+  } catch (error) {
+    return { ok: false, error: mensajeErrorEnvio(error) };
+  }
 }

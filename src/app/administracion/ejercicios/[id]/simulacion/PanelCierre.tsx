@@ -1,13 +1,8 @@
 import ConfirmSubmitButton from "../../../../liquidaciones/_components/ConfirmSubmitButton";
 import { formatDateTime } from "../../../shared";
 import { MAX_NOTAS_RENDICION } from "../../../../../lib/cierre-confirmacion";
-import {
-  cancelarConfirmacionAction,
-  confirmarCierreAction,
-  enviarRendicionAction,
-  guardarNotasAction,
-  reabrirEjercicioAction,
-} from "./actions";
+import { cancelarConfirmacionAction, guardarNotasAction, reabrirEjercicioAction } from "./actions";
+import RendicionEnvio from "./RendicionEnvio";
 
 export type VersionCierre = {
   version: number;
@@ -45,7 +40,6 @@ type Props = {
 };
 
 const boton = "rounded-lg px-4 py-2 text-sm font-medium transition";
-const botonPrimario = `${boton} bg-slate-900 text-white hover:bg-slate-800`;
 const botonSecundario = `${boton} border border-slate-300 text-slate-700 hover:bg-slate-50`;
 const area =
   "mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-300 disabled:bg-slate-50";
@@ -132,75 +126,24 @@ export default function PanelCierre(props: Props) {
         </div>
       ) : null}
 
-      {abierto && esAdmin ? (
-        <form action={confirmarCierreAction} className="rounded-2xl border border-slate-300 bg-white p-6 shadow-sm">
-          <Ocultos ejercicioId={ejercicioId} consorcioId={consorcioId} />
-          <input type="hidden" name="huella" value={props.huella ?? ""} />
-          <h2 className="text-lg font-semibold text-slate-900">Confirmar el cierre</h2>
-          <p className="mt-1 text-sm text-slate-500">
-            Guarda esta simulación, la rendición (con el anexo de comprobantes) y la hoja del libro como versión{" "}
-            {props.versiones.length + 1}. Desde ese momento no se pueden modificar gastos, pagos, cobros ni
-            liquidaciones del ejercicio, y la apertura del ejercicio siguiente toma los saldos al cierre. Para corregir
-            algo después, hay que reabrir el ejercicio (queda registrado con el motivo).
-          </p>
-
-          {props.bloqueantes.length > 0 ? (
-            <div className="mt-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-              <p className="font-medium">Todavía no se puede confirmar:</p>
-              <ul className="mt-1 list-disc space-y-1 pl-5">
-                {props.bloqueantes.map((b) => (
-                  <li key={b}>{b}</li>
-                ))}
-              </ul>
-            </div>
-          ) : (
-            <>
-              {props.aVerificar.length > 0 ? (
-                <label className="mt-4 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                  <input type="checkbox" name="aceptaObservaciones" value="1" required className="mt-0.5" />
-                  <span>
-                    Revisé las observaciones a verificar ({props.aVerificar.join("; ")}) y confirmo el cierre igual.
-                  </span>
-                </label>
-              ) : null}
-              <div className="mt-4 flex justify-end">
-                <ConfirmSubmitButton
-                  className={botonPrimario}
-                  label="Confirmar cierre"
-                  confirmMessage={`¿Confirmar el cierre del ejercicio N.º ${props.numero}? Los datos del ejercicio quedan bloqueados. Generar los documentos puede tardar un minuto.`}
-                />
-              </div>
-            </>
-          )}
-        </form>
+      {esAdmin && (abierto || (estado === "CERRADO" && vigente)) ? (
+        <RendicionEnvio
+          ejercicioId={ejercicioId}
+          consorcioId={consorcioId}
+          numero={props.numero}
+          cerrado={!abierto}
+          huella={props.huella}
+          aVerificar={props.aVerificar}
+          bloqueantes={props.bloqueantes}
+          presentada={Boolean(vigente?.presentadaAt)}
+        />
       ) : null}
 
       {estado === "CERRADO" && esAdmin && vigente ? (
         <div className="grid gap-4 lg:grid-cols-2">
           <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-            <h2 className="text-lg font-semibold text-slate-900">Enviar la rendición</h2>
-            <p className="mt-1 text-sm text-slate-500">
-              Se envía el PDF de la versión {vigente.version} (con {vigente.comprobantesAnexados} comprobantes anexados)
-              a los responsables vigentes de cada unidad, como las convocatorias. Probalo primero con el envío a la
-              administración.
-            </p>
-            <form action={enviarRendicionAction} className="mt-4 space-y-3">
-              <Ocultos ejercicioId={ejercicioId} consorcioId={consorcioId} />
-              <textarea
-                name="mensaje"
-                rows={3}
-                placeholder="Mensaje opcional (por ejemplo, la fecha de la asamblea en la que se trata)"
-                className={area}
-              />
-              <div className="flex flex-wrap justify-end gap-2">
-                <button type="submit" name="modo" value="prueba" className={botonSecundario}>
-                  Enviar prueba a la administración
-                </button>
-                <button type="submit" name="modo" value="todos" className={botonPrimario}>
-                  Enviar a los propietarios
-                </button>
-              </div>
-            </form>
+            <h2 className="text-lg font-semibold text-slate-900">Envíos de la versión {vigente.version}</h2>
+            {props.envios.length === 0 ? <p className="mt-2 text-sm text-slate-500">Sin envíos todavía.</p> : null}
             {props.envios.length > 0 ? (
               <ul className="mt-4 max-h-56 divide-y divide-slate-100 overflow-y-auto border-t border-slate-100 text-xs">
                 {props.envios.map((e) => (
@@ -220,7 +163,7 @@ export default function PanelCierre(props: Props) {
             <summary className="cursor-pointer text-lg font-semibold text-red-700">Reabrir el ejercicio</summary>
             <p className="mt-2 text-sm text-slate-600">
               Para corregir datos del ejercicio. La versión {vigente.version} se conserva como «reabierta» junto con el
-              motivo, y al terminar hay que confirmar el cierre de nuevo (se genera la versión {props.versiones.length + 1}).
+              motivo. Al terminar, se vuelve a cerrar con «Cerrar el ejercicio y enviar a los propietarios» (versión {props.versiones.length + 1}).
               Si la rendición ya se envió, conviene informar a los propietarios la nueva versión.
             </p>
             <form action={reabrirEjercicioAction} className="mt-4 space-y-3">

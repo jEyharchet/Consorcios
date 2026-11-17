@@ -13,6 +13,7 @@ import {
   CONVOCATORIA_PAGINA,
 } from "./asamblea-convocatoria-preview";
 import { prisma } from "./prisma";
+import { generarRendicionPdf, obtenerDatosRendicion } from "./rendicion";
 import { launchPdfBrowser } from "./pdf-browser";
 import { ADMIN_EMAIL_TIPO_ENVIO, ASAMBLEA_ESTADO, ASAMBLEA_TIPO } from "./administracion-shared";
 import {
@@ -38,6 +39,8 @@ type ResponsableRelacion = {
 
 type UnidadDestinataria = {
   unidadId: number | null;
+  /** Unidades incluidas cuando un mismo email agrupa varias. */
+  unidadIds?: number[];
   unidadLabel: string;
   responsablesLabel: string;
   emails: string[];
@@ -312,36 +315,59 @@ export async function getResponsablesConvocatoriaElegibles(consorcioId: number):
   });
 }
 
+/**
+ * Agrupa los destinatarios para que cada dirección reciba un solo email: quien
+ * es responsable de varias unidades (p. ej. una UF y una UA) recibe un único
+ * mensaje que menciona todas. Las direcciones con exactamente las mismas
+ * unidades van juntas en el mismo mensaje. Las unidades sin email quedan una
+ * por unidad, para registrarlas como sin destinatario.
+ */
 function mergeDestinatariosPorUnidad(destinatarios: UnidadDestinataria[]) {
-  const grouped = new Map<string, UnidadDestinataria>();
+  type Unidad = { clave: string; unidadId: number | null; label: string };
+  const sinEmail = new Map<string, UnidadDestinataria>();
+  const porEmail = new Map<string, { unidades: Map<string, Unidad>; responsables: Set<string> }>();
 
   for (const destinatario of destinatarios) {
-    const groupKey =
+    const clave =
       destinatario.unidadId === null
         ? `null:${destinatario.unidadLabel}:${destinatario.responsablesLabel}`
         : String(destinatario.unidadId);
-    const current = grouped.get(groupKey);
 
-    if (!current) {
-      grouped.set(groupKey, {
-        ...destinatario,
-        emails: Array.from(new Set(destinatario.emails)),
-      });
+    if (destinatario.emails.length === 0) {
+      if (!sinEmail.has(clave)) sinEmail.set(clave, { ...destinatario, emails: [] });
       continue;
     }
 
-    grouped.set(groupKey, {
-      unidadId: destinatario.unidadId,
-      unidadLabel: current.unidadLabel || destinatario.unidadLabel,
-      responsablesLabel:
-        current.responsablesLabel === destinatario.responsablesLabel
-          ? current.responsablesLabel
-          : [current.responsablesLabel, destinatario.responsablesLabel].filter(Boolean).join(" / "),
-      emails: Array.from(new Set([...current.emails, ...destinatario.emails])),
-    });
+    for (const email of Array.from(new Set(destinatario.emails))) {
+      const entrada = porEmail.get(email) ?? { unidades: new Map<string, Unidad>(), responsables: new Set<string>() };
+      entrada.unidades.set(clave, { clave, unidadId: destinatario.unidadId, label: destinatario.unidadLabel });
+      if (destinatario.responsablesLabel) entrada.responsables.add(destinatario.responsablesLabel);
+      porEmail.set(email, entrada);
+    }
   }
 
-  return Array.from(grouped.values());
+  const grupos = new Map<string, { emails: string[]; unidades: Unidad[]; responsables: Set<string> }>();
+  porEmail.forEach((entrada, email) => {
+    const unidades = Array.from(entrada.unidades.values());
+    const clave = unidades.map((u) => u.clave).join("|");
+    const grupo = grupos.get(clave) ?? { emails: [], unidades, responsables: new Set<string>() };
+    grupo.emails.push(email);
+    entrada.responsables.forEach((r) => grupo.responsables.add(r));
+    grupos.set(clave, grupo);
+  });
+
+  const conEmail = Array.from(grupos.values()).map((grupo): UnidadDestinataria => {
+    const ids = grupo.unidades.map((u) => u.unidadId).filter((id): id is number => id !== null);
+    return {
+      unidadId: grupo.unidades.length === 1 ? grupo.unidades[0].unidadId : null,
+      unidadIds: ids,
+      unidadLabel: grupo.unidades.map((u) => u.label).join(" / "),
+      responsablesLabel: Array.from(grupo.responsables).join(" / "),
+      emails: grupo.emails,
+    };
+  });
+
+  return [...conEmail, ...Array.from(sinEmail.values())];
 }
 
 function buildDestinatariosSelectivos(
@@ -451,6 +477,8 @@ async function registrarYEnviar(params: {
         cierreEjercicioId: params.cierreEjercicioId ?? null,
         tipoEnvio: params.tipoEnvio,
         unidadId: destinatario.unidadId ?? null,
+        unidadIdsCsv: destinatario.unidadIds && destinatario.unidadIds.length > 1 ? destinatario.unidadIds.join(",") : null,
+        unidadesIncluidas: destinatario.unidadIds && destinatario.unidadIds.length > 1 ? destinatario.unidadLabel : null,
         destinatario: destinatario.emails.join(", "),
         asunto,
         cuerpo,
@@ -1309,10 +1337,12 @@ export async function enviarSimulacionCancelacionAsamblea(params: {
 }
 
 /**
- * Envía la rendición de cuentas confirmada (PDF guardado, con el anexo de
- * comprobantes). En modo prueba va solo a los administradores vigentes; si no,
- * a los responsables vigentes de cada unidad, y el primer envío registra la
- * fecha de presentación de la rendición.
+ * Envía la rendición de cuentas.
+ * - Prueba: solo a los administradores vigentes. Con el ejercicio abierto va el
+ *   borrador generado en el momento (no cierra nada); cerrado, la versión guardada.
+ * - Propietarios: exige el cierre confirmado y envía el PDF guardado (con el
+ *   anexo de comprobantes) a los responsables vigentes, un email por dirección.
+ *   El primer envío registra la fecha de presentación.
  */
 export async function enviarRendicionEjercicio(params: {
   ejercicioId: number;
@@ -1320,30 +1350,36 @@ export async function enviarRendicionEjercicio(params: {
   prueba: boolean;
   mensaje?: string | null;
 }): Promise<EmailSummary> {
-  const cierre = await prisma.cierreEjercicio.findFirst({
-    where: { ejercicioId: params.ejercicioId, estado: "VIGENTE", ejercicio: { consorcioId: params.consorcioId } },
+  const ejercicio = await prisma.ejercicio.findFirst({
+    where: { id: params.ejercicioId, consorcioId: params.consorcioId },
     select: {
-      id: true,
-      version: true,
-      presentadaAt: true,
-      rendicionPdf: true,
-      ejercicio: {
-        select: {
-          numero: true,
-          fechaInicio: true,
-          fechaFin: true,
-          estado: true,
-          consorcio: { select: { id: true, nombre: true } },
-        },
+      numero: true,
+      fechaInicio: true,
+      fechaFin: true,
+      estado: true,
+      consorcio: { select: { nombre: true } },
+      cierres: {
+        where: { estado: "VIGENTE" },
+        select: { id: true, version: true, presentadaAt: true, rendicionPdf: true },
       },
     },
   });
+  if (!ejercicio) throw new Error("ejercicio_inexistente");
 
-  if (!cierre || cierre.ejercicio.estado !== "CERRADO") {
+  const cierre = ejercicio.estado === "CERRADO" ? (ejercicio.cierres[0] ?? null) : null;
+  if (!params.prueba && !cierre) {
     throw new Error("rendicion_sin_cierre");
   }
 
-  const { ejercicio } = cierre;
+  let pdf: Buffer;
+  if (cierre) {
+    pdf = Buffer.from(cierre.rendicionPdf);
+  } else {
+    const rendicion = await obtenerDatosRendicion(params.ejercicioId, params.consorcioId);
+    if (!rendicion) throw new Error("ejercicio_inexistente");
+    pdf = await generarRendicionPdf(rendicion.datos, rendicion.archivos);
+  }
+
   const periodo = `${formatDate(ejercicio.fechaInicio)} al ${formatDate(ejercicio.fechaFin)}`;
   const mensaje = params.mensaje?.trim();
   const cuerpo = [
@@ -1361,12 +1397,14 @@ export async function enviarRendicionEjercicio(params: {
     throw new Error("administrador_sin_email");
   }
 
-  const nombreArchivo = `rendicion-ejercicio-${ejercicio.numero}-v${cierre.version}.pdf`;
+  const nombreArchivo = cierre
+    ? `rendicion-ejercicio-${ejercicio.numero}-v${cierre.version}.pdf`
+    : `rendicion-ejercicio-${ejercicio.numero}-borrador.pdf`;
 
   return registrarYEnviar({
     consorcioId: params.consorcioId,
     consorcioNombre: ejercicio.consorcio.nombre,
-    cierreEjercicioId: cierre.id,
+    cierreEjercicioId: cierre?.id,
     tipoEnvio: params.prueba ? ADMIN_EMAIL_TIPO_ENVIO.RENDICION_PRUEBA_ADMIN : ADMIN_EMAIL_TIPO_ENVIO.RENDICION_EJERCICIO,
     asuntoTemplate: `${params.prueba ? "[Prueba] " : ""}Rendición de cuentas del ejercicio N.º ${ejercicio.numero} - {{consorcio}}`,
     cuerpoTemplate: cuerpo,
@@ -1375,15 +1413,16 @@ export async function enviarRendicionEjercicio(params: {
     detailLines: [
       `Consorcio: ${ejercicio.consorcio.nombre}`,
       `Ejercicio N.º ${ejercicio.numero}: ${periodo}`,
-      `Versión de la rendición: ${cierre.version}`,
+      cierre ? `Versión de la rendición: ${cierre.version}` : "Borrador: el ejercicio todavía no está cerrado",
       ...(params.prueba ? ["Tipo de envío: prueba, solo para la administración"] : []),
     ],
-    attachments: [{ content: Buffer.from(cierre.rendicionPdf), filename: nombreArchivo, contentType: "application/pdf" }],
-    afterSuccess: params.prueba || cierre.presentadaAt
-      ? undefined
-      : async () => {
-          await prisma.cierreEjercicio.update({ where: { id: cierre.id }, data: { presentadaAt: new Date() } });
-        },
+    attachments: [{ content: pdf, filename: nombreArchivo, contentType: "application/pdf" }],
+    afterSuccess:
+      params.prueba || !cierre || cierre.presentadaAt
+        ? undefined
+        : async () => {
+            await prisma.cierreEjercicio.update({ where: { id: cierre.id }, data: { presentadaAt: new Date() } });
+          },
   });
 }
 
@@ -1405,4 +1444,9 @@ async function getDestinatariosAdministracion(consorcioId: number): Promise<Unid
       emails,
     },
   ];
+}
+
+/** Destinatarios de un envío masivo ya agrupados (un email por dirección). Solo lectura. */
+export async function previsualizarDestinatariosConsorcio(consorcioId: number) {
+  return mergeDestinatariosPorUnidad(await getDestinatariosConsorcio(consorcioId));
 }
