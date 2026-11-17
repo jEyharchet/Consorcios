@@ -23,8 +23,11 @@ export function formatDateInput(value: Date) {
   return value.toISOString().slice(0, 10);
 }
 
+// Para momentos reales (createdAt, receivedAt, votadoAt...). Fija la hora de
+// Argentina porque Vercel corre en UTC. No usar para fechas sin hora.
 export function formatDateTime(value: Date) {
   return new Intl.DateTimeFormat("es-AR", {
+    timeZone: "America/Argentina/Buenos_Aires",
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
