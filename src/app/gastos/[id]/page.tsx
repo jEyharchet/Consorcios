@@ -137,7 +137,17 @@ export default async function GastoDetallePage({
                         <p className="font-medium text-slate-900">{formatDateAR(pago.fechaPago)}</p>
                         <p className="mt-1 text-slate-600">{pago.medioPago}</p>
                       </div>
-                      <p className="font-medium text-slate-900">{formatCurrency(pago.monto)}</p>
+                      <div className="flex items-center gap-3">
+                        <p className="font-medium text-slate-900">{formatCurrency(pago.monto)}</p>
+                        {canEditByRole ? (
+                          <Link
+                            href={`/gastos/${gasto.id}/pagos/${pago.id}/editar`}
+                            className="rounded-md border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                          >
+                            Editar
+                          </Link>
+                        ) : null}
+                      </div>
                     </div>
                     <p className="mt-2 text-slate-600">
                       Origen del fondo:{" "}

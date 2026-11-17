@@ -1,6 +1,6 @@
 import { Prisma } from "@prisma/client";
 
-import { formatCuentaBancariaDestino, isMedioPagoExpensa, type MedioPagoExpensa } from "./fondos";
+import { type CuentaBancariaDestino, formatCuentaBancariaDestino, isMedioPagoExpensa, type MedioPagoExpensa } from "./fondos";
 import { prisma } from "./prisma";
 
 type DbClient = typeof prisma | Prisma.TransactionClient;
@@ -261,4 +261,294 @@ export async function registrarPagoGasto(params: {
 
     return pagoGasto;
   });
+}
+
+// ------------------------------------------------------------ Edición de pagos
+
+type DestinoFondo = { tipo: "CAJA" } | { tipo: "CUENTA_BANCARIA"; cuentaId: number };
+
+function mismoDestino(a: DestinoFondo, b: DestinoFondo) {
+  if (a.tipo === "CAJA" || b.tipo === "CAJA") return a.tipo === b.tipo;
+  return a.cuentaId === b.cuentaId;
+}
+
+/**
+ * Suma `delta` a los saldos anterior/posterior de los movimientos cargados
+ * después de `desdeId` en el mismo destino, y al saldo actual del destino.
+ * La cadena de saldos de Tesorería sigue el orden de carga (id), no la fecha.
+ */
+async function desplazarSaldos(
+  tx: Prisma.TransactionClient,
+  consorcioId: number,
+  destino: DestinoFondo,
+  desdeId: number,
+  delta: number,
+) {
+  if (Math.abs(delta) < EPSILON) return;
+
+  if (destino.tipo === "CAJA") {
+    await tx.$executeRaw`
+      UPDATE "MovimientoFondo"
+      SET "saldoAnterior" = ROUND(("saldoAnterior" + ${delta})::numeric, 2)::float8,
+          "saldoPosterior" = ROUND(("saldoPosterior" + ${delta})::numeric, 2)::float8
+      WHERE "consorcioId" = ${consorcioId} AND "tipoDestino" = 'CAJA' AND id > ${desdeId}`;
+    await tx.$executeRaw`
+      UPDATE "Consorcio" SET "saldoCajaActual" = ROUND(("saldoCajaActual" + ${delta})::numeric, 2)::float8
+      WHERE id = ${consorcioId}`;
+  } else {
+    await tx.$executeRaw`
+      UPDATE "MovimientoFondo"
+      SET "saldoAnterior" = ROUND(("saldoAnterior" + ${delta})::numeric, 2)::float8,
+          "saldoPosterior" = ROUND(("saldoPosterior" + ${delta})::numeric, 2)::float8
+      WHERE "consorcioId" = ${consorcioId} AND "tipoDestino" = 'CUENTA_BANCARIA'
+        AND "consorcioCuentaBancariaId" = ${destino.cuentaId} AND id > ${desdeId}`;
+    await tx.$executeRaw`
+      UPDATE "ConsorcioCuentaBancaria" SET "saldoActual" = ROUND(("saldoActual" + ${delta})::numeric, 2)::float8
+      WHERE id = ${destino.cuentaId}`;
+  }
+}
+
+/** Ningún saldo del destino puede quedar negativo después de la edición. */
+async function verificarSaldosNoNegativos(tx: Prisma.TransactionClient, consorcioId: number, destino: DestinoFondo) {
+  const movimientoNegativo = await tx.movimientoFondo.findFirst({
+    where: {
+      consorcioId,
+      tipoDestino: destino.tipo,
+      ...(destino.tipo === "CUENTA_BANCARIA" ? { consorcioCuentaBancariaId: destino.cuentaId } : {}),
+      saldoPosterior: { lt: -0.005 },
+    },
+    select: { id: true },
+  });
+
+  const saldoActual =
+    destino.tipo === "CAJA"
+      ? ((
+          await tx.consorcio.findUnique({
+            where: { id: consorcioId },
+            select: { saldoCajaActual: true },
+          })
+        )?.saldoCajaActual ?? 0)
+      : ((
+          await tx.consorcioCuentaBancaria.findUnique({
+            where: { id: destino.cuentaId },
+            select: { saldoActual: true },
+          })
+        )?.saldoActual ?? 0);
+
+  if (movimientoNegativo || saldoActual < -0.005) {
+    throw new PagoGastoError("saldo_insuficiente");
+  }
+}
+
+async function ejercicioCerradoEn(tx: Prisma.TransactionClient, consorcioId: number, fecha: Date) {
+  // Las fechas de pago se guardan a las 00:00Z (Vercel) o 03:00Z (local) del día; los ejercicios son DATE.
+  const dia = new Date(Date.UTC(fecha.getUTCFullYear(), fecha.getUTCMonth(), fecha.getUTCDate()));
+  return tx.ejercicio.findFirst({
+    where: {
+      consorcioId,
+      estado: "CERRADO",
+      fechaInicio: { lte: dia },
+      fechaFin: { gte: dia },
+    },
+    select: { numero: true },
+  });
+}
+
+/**
+ * Edita fecha, importe, medio/cuenta y observación de un pago de gasto, y
+ * corrige Tesorería:
+ * - mismo destino: se actualiza el movimiento y se desplazan los saldos de los
+ *   movimientos cargados después (por la diferencia de importe);
+ * - otro destino: se revierte el movimiento en el destino anterior y se carga
+ *   uno nuevo al final de la cadena del destino nuevo.
+ * Un cambio solo de fecha no altera saldos. No se permite si la fecha anterior
+ * o la nueva caen en un ejercicio cerrado.
+ */
+export async function editarPagoGasto(params: {
+  pagoGastoId: number;
+  consorcioId: number;
+  fechaPago: Date;
+  monto: number;
+  medioPago: string;
+  consorcioCuentaBancariaId?: number | null;
+  observacion?: string | null;
+}) {
+  if (!isMedioPagoExpensa(params.medioPago)) {
+    throw new PagoGastoError("medio_pago_invalido");
+  }
+  const medioPago: MedioPagoExpensa = params.medioPago;
+  const monto = roundMoney(params.monto);
+  if (!Number.isFinite(monto) || monto <= 0) {
+    throw new PagoGastoError("monto_invalido");
+  }
+  return prisma.$transaction((tx) => editarPagoGastoEnTransaccion(tx, params, medioPago, monto), {
+    isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+  });
+}
+
+/** Cuerpo de `editarPagoGasto`; exportado para probarlo dentro de una transacción que se revierte. */
+export async function editarPagoGastoEnTransaccion(
+  tx: Prisma.TransactionClient,
+  params: Parameters<typeof editarPagoGasto>[0],
+  medioPago: MedioPagoExpensa,
+  monto: number,
+) {
+  const observacion = params.observacion?.trim() || null;
+  const pago = await tx.pagoGasto.findUnique({
+    where: { id: params.pagoGastoId },
+    include: {
+      movimientoFondo: true,
+      gasto: {
+        select: { id: true, concepto: true, periodo: true, monto: true },
+      },
+    },
+  });
+
+  if (!pago || pago.consorcioId !== params.consorcioId) {
+    throw new PagoGastoError("pago_inexistente");
+  }
+
+  for (const fecha of [pago.fechaPago, params.fechaPago]) {
+    const cerrado = await ejercicioCerradoEn(tx, pago.consorcioId, fecha);
+    if (cerrado) {
+      throw new PagoGastoError("ejercicio_cerrado", `Ejercicio N.º ${cerrado.numero} cerrado`);
+    }
+  }
+
+  const otrosPagos = await tx.pagoGasto.aggregate({
+    where: { gastoId: pago.gastoId, id: { not: pago.id } },
+    _sum: { monto: true },
+  });
+  if (roundMoney((otrosPagos._sum.monto ?? 0) + monto) - pago.gasto.monto > EPSILON) {
+    throw new PagoGastoError("monto_excede_saldo_pendiente");
+  }
+
+  // Destino nuevo. La cuenta actual del pago se acepta aunque esté inactiva.
+  let destinoNuevo: DestinoFondo = { tipo: "CAJA" };
+  let cuentaNueva: CuentaBancariaDestino | null = null;
+  if (medioPago === "TRANSFERENCIA") {
+    const cuentaId = params.consorcioCuentaBancariaId ?? null;
+    if (!cuentaId) {
+      throw new PagoGastoError("cuenta_bancaria_requerida");
+    }
+    cuentaNueva = await tx.consorcioCuentaBancaria.findFirst({
+      where: {
+        id: cuentaId,
+        consorcioId: pago.consorcioId,
+        ...(cuentaId === pago.consorcioCuentaBancariaId ? {} : { activa: true }),
+      },
+      select: {
+        id: true,
+        banco: true,
+        tipoCuenta: true,
+        titular: true,
+        numeroCuenta: true,
+        cbu: true,
+        alias: true,
+        saldoActual: true,
+      },
+    });
+    if (!cuentaNueva) {
+      throw new PagoGastoError("cuenta_bancaria_requerida");
+    }
+    destinoNuevo = { tipo: "CUENTA_BANCARIA", cuentaId: cuentaNueva.id };
+  }
+
+  const descripcion =
+    observacion ||
+    `Pago de gasto ${pago.gasto.concepto} (${pago.gasto.periodo})${cuentaNueva ? ` desde ${formatCuentaBancariaDestino(cuentaNueva)}` : ""}`;
+
+  const actualizado = await tx.pagoGasto.update({
+    where: { id: pago.id },
+    data: {
+      fechaPago: params.fechaPago,
+      monto,
+      medioPago,
+      consorcioCuentaBancariaId: cuentaNueva?.id ?? null,
+      observacion,
+    },
+  });
+
+  const mov = pago.movimientoFondo;
+  if (!mov) {
+    // Pago sin movimiento de Tesorería (carga previa): no se generan saldos nuevos.
+    return actualizado;
+  }
+
+  const destinoAnterior: DestinoFondo =
+    mov.tipoDestino === "CAJA" || mov.consorcioCuentaBancariaId === null
+      ? { tipo: "CAJA" }
+      : {
+          tipo: "CUENTA_BANCARIA",
+          cuentaId: mov.consorcioCuentaBancariaId,
+        };
+
+  if (mismoDestino(destinoAnterior, destinoNuevo)) {
+    // El pago resta: más importe baja los saldos posteriores.
+    const delta = roundMoney(mov.monto - monto);
+    await tx.movimientoFondo.update({
+      where: { id: mov.id },
+      data: {
+        fechaMovimiento: params.fechaPago,
+        monto,
+        descripcion,
+        saldoPosterior: roundMoney(mov.saldoAnterior - monto),
+      },
+    });
+    await desplazarSaldos(tx, pago.consorcioId, destinoAnterior, mov.id, delta);
+    await verificarSaldosNoNegativos(tx, pago.consorcioId, destinoAnterior);
+    return actualizado;
+  }
+
+  // Cambio de caja/cuenta: revertir en el destino anterior y cargar en el nuevo.
+  await tx.movimientoFondo.delete({ where: { id: mov.id } });
+  await desplazarSaldos(tx, pago.consorcioId, destinoAnterior, mov.id, mov.monto);
+
+  const saldoAnterior = roundMoney(
+    destinoNuevo.tipo === "CAJA"
+      ? (
+          await tx.consorcio.findUniqueOrThrow({
+            where: { id: pago.consorcioId },
+            select: { saldoCajaActual: true },
+          })
+        ).saldoCajaActual
+      : (
+          await tx.consorcioCuentaBancaria.findUniqueOrThrow({
+            where: { id: destinoNuevo.cuentaId },
+            select: { saldoActual: true },
+          })
+        ).saldoActual,
+  );
+  const saldoPosterior = roundMoney(saldoAnterior - monto);
+  if (saldoPosterior < 0) {
+    throw new PagoGastoError("saldo_insuficiente");
+  }
+  if (destinoNuevo.tipo === "CAJA") {
+    await tx.consorcio.update({
+      where: { id: pago.consorcioId },
+      data: { saldoCajaActual: saldoPosterior },
+    });
+  } else {
+    await tx.consorcioCuentaBancaria.update({
+      where: { id: destinoNuevo.cuentaId },
+      data: { saldoActual: saldoPosterior },
+    });
+  }
+  await tx.movimientoFondo.create({
+    data: {
+      consorcioId: pago.consorcioId,
+      pagoGastoId: pago.id,
+      consorcioCuentaBancariaId: cuentaNueva?.id ?? null,
+      fechaMovimiento: params.fechaPago,
+      tipoOrigen: "PAGO_GASTO",
+      tipoDestino: destinoNuevo.tipo,
+      naturaleza: "DISMINUCION",
+      descripcion,
+      monto,
+      saldoAnterior,
+      saldoPosterior,
+    },
+  });
+  await verificarSaldosNoNegativos(tx, pago.consorcioId, destinoAnterior);
+  return actualizado;
 }
