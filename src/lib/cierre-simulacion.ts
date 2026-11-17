@@ -37,8 +37,16 @@ export type Inconsistencia = {
   gravedad: "ALTA" | "MEDIA" | "INFO";
   titulo: string;
   detalle: string;
+  /** Texto formal para las notas de la rendición (solo observaciones informativas). */
+  nota?: string;
   items: Array<{ texto: string; href?: string; monto?: number }>;
 };
+
+const monedaAR = new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 2 });
+const pesos = (valor: number) => monedaAR.format(valor);
+const fechaAR = (fecha: Date) => formatFechaCalendario(fecha).split("-").reverse().join("/");
+const MESES_CORTOS = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+const mesAR = (aaaamm: string) => `${MESES_CORTOS[Number(aaaamm.slice(5, 7)) - 1]} ${aaaamm.slice(0, 4)}`;
 
 export type EjercicioSimulable = {
   id: number;
@@ -108,7 +116,9 @@ export async function simularCierrePeriodo(ejercicio: EjercicioSimulable, consor
         montoInteres: true,
         medioPago: true,
         movimientoFondo: { select: { id: true } },
-        expensa: { select: { unidad: { select: { identificador: true } }, liquidacion: { select: { periodo: true } } } },
+        expensa: {
+          select: { unidadId: true, unidad: { select: { identificador: true } }, liquidacion: { select: { periodo: true } } },
+        },
       },
     }),
     prisma.pagoGasto.findMany({
@@ -404,10 +414,15 @@ export async function simularCierrePeriodo(ejercicio: EjercicioSimulable, consor
       gravedad: compensacion ? "INFO" : "ALTA",
       titulo: compensacion ? "Cobranzas ingresadas por ajuste manual" : "Cobranzas sin movimiento de fondos",
       detalle: compensacion
-        ? `Suman ${totalSinMovimiento} y coinciden con el ajuste manual del ${formatFechaCalendario(
+        ? `Suman ${pesos(totalSinMovimiento)} y coinciden con el ajuste manual del ${fechaAR(
             compensacion.fechaMovimiento,
           )} («${compensacion.descripcion ?? "sin descripción"}»), que registró su ingreso. En caja y bancos ese ajuste se cuenta como cobranza.`
-        : `Suman ${totalSinMovimiento}. Están registrados en la expensa pero no impactaron en caja ni bancos. Verificar si se compensaron con un ajuste manual.`,
+        : `Suman ${pesos(totalSinMovimiento)}. Están registrados en la expensa pero no impactaron en caja ni bancos. Verificar si se compensaron con un ajuste manual.`,
+      nota: compensacion
+        ? `Las cobranzas registradas antes de habilitar el módulo de tesorería (${cobrosSinMovimiento.length} pagos, ${pesos(
+            totalSinMovimiento,
+          )}) ingresaron al banco mediante el registro del ${fechaAR(compensacion.fechaMovimiento)} y se exponen como cobranzas.`
+        : undefined,
       items: cobrosSinMovimiento.map((p) => ({
         texto: `${formatFechaCalendario(p.fechaPago)} · ${p.expensa.unidad.identificador} · expensa ${p.expensa.liquidacion.periodo}`,
         href: `/expensas/${p.expensaId}`,
@@ -474,6 +489,9 @@ export async function simularCierrePeriodo(ejercicio: EjercicioSimulable, consor
       gravedad: "INFO",
       titulo: "Transferencias entre caja y banco",
       detalle: "Ajustes del mismo día que se compensan entre caja y banco: no afectan el total de fondos.",
+      nota: `Los movimientos entre caja y banco (${transferenciasOk
+        .map(([dia]) => fechaAR(new Date(`${dia}T00:00:00Z`)))
+        .join(", ")}) son transferencias internas y no constituyen ingresos ni egresos.`,
       items: transferenciasOk.flatMap(([, lista]) => lista.map(itemAjuste)),
     });
   }
@@ -535,6 +553,7 @@ export async function simularCierrePeriodo(ejercicio: EjercicioSimulable, consor
       gravedad: "INFO",
       titulo: "Gastos sin comprobante, con motivo registrado",
       detalle: "Se informan en la rendición con el motivo indicado.",
+      nota: `${gastosJustificados.length} gastos no tienen comprobante; el motivo de cada uno se indica en el detalle de gastos.`,
       items: gastosJustificados.map((g) => ({
         texto: `${g.periodo} · ${g.concepto}${g.proveedor ? ` · ${g.proveedor.nombre}` : ""} — ${g.comprobanteFaltanteMotivo}`,
         href: `/gastos/${g.id}`,
@@ -562,6 +581,7 @@ export async function simularCierrePeriodo(ejercicio: EjercicioSimulable, consor
       gravedad: "INFO",
       titulo: "Meses del ejercicio sin liquidación",
       detalle: "Puede ser correcto (por ejemplo, antes de empezar a usar el sistema), pero conviene dejarlo explicado en las notas.",
+      nota: `No se emitieron liquidaciones de expensas para ${mesesSinLiquidacion.map(mesAR).join(", ")}.`,
       items: mesesSinLiquidacion.map((m) => ({ texto: m })),
     });
   }
@@ -607,11 +627,47 @@ export async function simularCierrePeriodo(ejercicio: EjercicioSimulable, consor
       detalle:
         "El saldo inicial más los movimientos del ejercicio no da el saldo que registra el último movimiento al cierre. Suele deberse a movimientos cargados fuera de orden cronológico o a actividad previa.",
       items: diferenciasFondos.map((f) => ({
-        texto: `${f.nombre}: calculado ${f.finalCalculado} / registrado ${f.saldoSegunRegistros}`,
+        texto: `${f.nombre}: calculado ${pesos(f.finalCalculado ?? 0)} / registrado ${pesos(f.saldoSegunRegistros)}`,
         monto: redondear((f.finalCalculado ?? 0) - f.saldoSegunRegistros),
       })),
     });
   }
+
+  // ------------------------------------------------ Detalle para la rendición
+  const gastosDetalle = gastosEjercicio
+    .map((g) => ({
+      id: g.id,
+      fecha: g.fecha,
+      periodo: normalizarPeriodo(g.periodo) ?? g.periodo,
+      concepto: g.concepto,
+      proveedor: g.proveedor?.nombre ?? null,
+      tipoExpensa: g.tipoExpensa,
+      rubro: g.rubroExpensa,
+      monto: redondear(g.monto),
+      pagado: redondear(Math.min(g.monto, pagadoPorGasto.get(g.id) ?? 0)),
+      comprobante: tieneComprobante(g) ? (g.comprobanteNombreOriginal ?? "Adjunto") : null,
+      motivoSinComprobante: g.comprobanteFaltanteMotivo?.trim() || null,
+    }))
+    .sort((a, b) => a.periodo.localeCompare(b.periodo) || a.fecha.getTime() - b.fecha.getTime() || a.id - b.id);
+
+  // Por unidad: lo emitido en las liquidaciones del ejercicio, lo cobrado en el
+  // ejercicio y el capital pendiente al cierre.
+  const resumenPorUnidad = new Map<number, { unidad: string; emitido: number; cobrado: number; saldo: number }>();
+  const filaUnidad = (unidadId: number, unidad: string) => {
+    const fila = resumenPorUnidad.get(unidadId) ?? { unidad, emitido: 0, cobrado: 0, saldo: 0 };
+    resumenPorUnidad.set(unidadId, fila);
+    return fila;
+  };
+  for (const e of expensas) {
+    if (enEjercicio(normalizarPeriodo(e.liquidacion.periodo))) filaUnidad(e.unidadId, e.unidad.identificador).emitido += e.monto;
+  }
+  for (const p of cobrosPeriodo) filaUnidad(p.expensa.unidadId, p.expensa.unidad.identificador).cobrado += p.monto;
+  creditosPorUnidad.forEach((c, unidadId) => {
+    filaUnidad(unidadId, c.unidad).saldo += c.capital;
+  });
+  const resumenUnidades = Array.from(resumenPorUnidad.values())
+    .map((f) => ({ ...f, emitido: redondear(f.emitido), cobrado: redondear(f.cobrado), saldo: redondear(f.saldo) }))
+    .sort((a, b) => a.unidad.localeCompare(b.unidad, "es", { numeric: true }));
 
   const orden = { ALTA: 0, MEDIA: 1, INFO: 2 } as const;
   inconsistencias.sort((a, b) => orden[a.gravedad] - orden[b.gravedad]);
@@ -642,6 +698,8 @@ export async function simularCierrePeriodo(ejercicio: EjercicioSimulable, consor
     fondoReservaLiquidado,
     creditos,
     creditosTotal: redondear(creditos.reduce((a, c) => a + c.capital, 0)),
+    gastosDetalle,
+    resumenUnidades,
     inconsistencias,
   };
 }
