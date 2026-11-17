@@ -59,14 +59,52 @@ model Ejercicio {
   // Por defecto fechaFin + 60 días (art. 2067 inc. e CCyC); editable.
   vencimientoRendicion        DateTime  @db.Date
   observaciones               String?
+  // Notas del administrador que se agregan a la rendición (borrador mientras está abierto).
+  notasRendicion              String?
+  // Detalle de los saldos de apertura (ver AperturaDetalle en src/lib/cierre-confirmacion.ts).
+  // Se completa al confirmar el cierre del ejercicio anterior.
+  aperturaDetalle             Json?
   createdByUserId             String?
   createdAt                   DateTime  @default(now())
   updatedAt                   DateTime  @updatedAt
 
-  consorcio Consorcio @relation(fields: [consorcioId], references: [id], onDelete: Cascade)
+  consorcio Consorcio         @relation(fields: [consorcioId], references: [id], onDelete: Cascade)
+  cierres   CierreEjercicio[]
 
   @@unique([consorcioId, numero])
   @@index([consorcioId, fechaInicio])
+}
+
+// Versión confirmada del cierre de un ejercicio: resultados y documentos tal
+// como se presentaron. No se modifica: una reapertura marca la versión como
+// REABIERTA y la nueva confirmación crea otra versión.
+model CierreEjercicio {
+  id                   Int       @id @default(autoincrement())
+  ejercicioId          Int
+  version              Int
+  // VIGENTE | REABIERTO
+  estado               String    @default("VIGENTE")
+  confirmadoAt         DateTime  @default(now())
+  confirmadoPorUserId  String?
+  notas                String?
+  // Simulación del cierre serializada y su huella (sha256).
+  resultados           Json
+  huella               String
+  rendicionPdf         Bytes
+  hojaLibroPdf         Bytes
+  comprobantesAnexados Int       @default(0)
+  reabiertoAt          DateTime?
+  reabiertoPorUserId   String?
+  motivoReapertura     String?
+  // Primer envío de la rendición a los propietarios.
+  presentadaAt         DateTime?
+  createdAt            DateTime  @default(now())
+
+  ejercicio   Ejercicio    @relation(fields: [ejercicioId], references: [id], onDelete: Restrict)
+  enviosEmail EnvioEmail[]
+
+  @@unique([ejercicioId, version])
+  @@index([ejercicioId, estado])
 }
 
 model ConsorcioConfiguracion {
@@ -655,6 +693,7 @@ model EnvioEmail {
   tipoEnvio          String
   liquidacionId      Int?
   asambleaId         Int?
+  cierreEjercicioId  Int?
   unidadId           Int?
   grupoEnvioKey      String?
   intento            Int       @default(1)
@@ -677,6 +716,7 @@ model EnvioEmail {
   consorcio                Consorcio                @relation(fields: [consorcioId], references: [id], onDelete: Cascade)
   liquidacion              Liquidacion?             @relation(fields: [liquidacionId], references: [id], onDelete: Cascade)
   asamblea                 Asamblea?                @relation(fields: [asambleaId], references: [id], onDelete: Cascade)
+  cierreEjercicio          CierreEjercicio?         @relation(fields: [cierreEjercicioId], references: [id], onDelete: SetNull)
   unidad                   Unidad?                  @relation(fields: [unidadId], references: [id], onDelete: SetNull)
   respuestasEmail          RespuestaEmail[]
   respuestasEmailSalientes RespuestaEmailSaliente[]
@@ -684,6 +724,7 @@ model EnvioEmail {
   @@index([consorcioId])
   @@index([liquidacionId])
   @@index([asambleaId])
+  @@index([cierreEjercicioId])
   @@index([unidadId])
   @@index([providerMessageId])
   @@index([consorcioId, tipoEnvio, createdAt])

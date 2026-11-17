@@ -6,6 +6,7 @@ import LiquidacionPaso1Form from "../../_components/LiquidacionPaso1Form";
 import { getActiveConsorcioContext } from "../../../../lib/consorcio-activo";
 import { requireConsorcioRole } from "../../../../lib/auth";
 import { getCurrentPeriodo, getPeriodoVariants, normalizePeriodo } from "../../../../lib/periodo";
+import { EJERCICIO_CERRADO_MENSAJE, ejercicioCerradoPorPeriodo } from "../../../../lib/ejercicio-bloqueo";
 import { prisma } from "../../../../lib/prisma";
 
 function periodoToDate(periodo: string) {
@@ -175,6 +176,10 @@ export default async function LiquidacionWizardPaso1NuevaPage({
       redirect("/liquidaciones/wizard/paso-1?error=tasa_invalida");
     }
 
+    if (await ejercicioCerradoPorPeriodo(activeConsorcioId, mesRendicionValue)) {
+      redirect(`/liquidaciones/wizard/paso-1?periodo=${mesRendicionValue}&error=ejercicio_cerrado`);
+    }
+
     try {
       const liquidacion = await prisma.liquidacion.create({
         data: {
@@ -209,6 +214,8 @@ export default async function LiquidacionWizardPaso1NuevaPage({
         ? "La fecha de vencimiento es obligatoria."
         : searchParams?.error === "tasa_invalida"
           ? "La tasa de interes mensual no es valida."
+          : searchParams?.error === "ejercicio_cerrado"
+            ? `El periodo corresponde a un ejercicio cerrado. ${EJERCICIO_CERRADO_MENSAJE}`
           : searchParams?.error === "duplicada"
             ? "Ya existe una liquidacion para ese mes de rendicion en este consorcio."
             : null;

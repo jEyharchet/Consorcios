@@ -1,3 +1,4 @@
+import { textoOrigenApertura } from "./apertura";
 import type { SimulacionCierre } from "./cierre-simulacion";
 import { formatFechaCalendarioAR } from "./ejercicios";
 
@@ -22,7 +23,29 @@ export type DatosRendicion = {
   } | null;
   vencimientoRendicion: Date;
   emitidaAt: Date;
+  /** Notas libres del administrador (párrafos separados por una línea en blanco). */
+  notasAdministrador: string | null;
+  /** Versión confirmada del cierre; null mientras es un borrador. */
+  version: { numero: number; confirmadoAt: Date; confirmadoPor: string | null; huella: string } | null;
+  /** Comprobantes anexados al final del PDF, uno por archivo distinto. */
+  anexo: AnexoIndice[];
 };
+
+export type AnexoIndice = {
+  codigo: string;
+  gastoIds: number[];
+  nombre: string;
+  /** null si el archivo no se pudo incorporar al PDF. */
+  incorporado: boolean;
+};
+
+/** Párrafos de un texto libre: separados por líneas en blanco. */
+export function parrafosNotas(texto: string | null | undefined) {
+  return (texto ?? "")
+    .split(/\r?\n\s*\r?\n/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+}
 
 function esc(valor: string | null | undefined) {
   return (valor ?? "")
@@ -74,6 +97,8 @@ export function buildRendicionPdfHtml(datos: DatosRendicion) {
   const pendientes = s.inconsistencias.filter((i) => i.gravedad !== "INFO");
   const informativas = s.inconsistencias.filter((i) => i.gravedad === "INFO");
   const ubicacion = [c.direccion, c.ciudad, c.provincia].filter(Boolean).join(", ");
+  const anexoPorGasto = new Map<number, AnexoIndice>();
+  for (const a of datos.anexo) for (const id of a.gastoIds) anexoPorGasto.set(id, a);
 
   // 1. Resumen
   const resumen = tabla(
@@ -177,7 +202,7 @@ export function buildRendicionPdfHtml(datos: DatosRendicion) {
       esc(g.rubro),
       `${$(g.monto)}${g.pagado < g.monto ? `<br><span class="muted">pagado ${$(g.pagado)}</span>` : ""}`,
       g.comprobante
-        ? `<span class="ok">Adjunto</span><br><span class="muted small">${esc(g.comprobante)}</span>`
+        ? `<span class="ok">${anexoPorGasto.has(g.id) ? `Anexo ${esc(anexoPorGasto.get(g.id)?.codigo)}` : "Adjunto"}</span><br><span class="muted small">${esc(g.comprobante)}</span>`
         : g.motivoSinComprobante
           ? `<span class="muted">Sin comprobante: ${esc(g.motivoSinComprobante)}</span>`
           : `<span class="warn">Falta comprobante</span>`,
@@ -243,7 +268,11 @@ export function buildRendicionPdfHtml(datos: DatosRendicion) {
     `Saldos de apertura: ${
       ejercicio.aperturaEstado === "CERO_CONFIRMADO"
         ? "cero en caja, bancos, créditos y deudas, según declaración del administrador."
-        : "pendientes de detalle; el saldo final de caja y bancos no se informa."
+        : s.apertura
+          ? `${textoOrigenApertura(s.apertura)}: caja y bancos ${$(s.fondosInicial)}, expensas pendientes de cobro ${$(
+              s.apertura.creditosTotal,
+            )} y gastos pendientes de pago ${$(s.apertura.deudasTotal)} (saldo neto ${$(s.apertura.saldoNeto)}).`
+          : "pendientes de detalle; el saldo final de caja y bancos no se informa."
     }`,
     "Cobranzas y pagos se imputan por fecha efectiva dentro del ejercicio. Gastos y liquidaciones se imputan por período (mes), aunque la liquidación del último mes se emita después del cierre.",
     "Las expensas pendientes al cierre se informan por su capital, sin intereses no liquidados. La deuda de un mes incluida en una liquidación posterior se cuenta una sola vez.",
@@ -251,6 +280,28 @@ export function buildRendicionPdfHtml(datos: DatosRendicion) {
     "El fondo de reserva liquidado se integra en los fondos del consorcio; su cobro y aplicación no se registran por separado.",
     ...informativas.map((i) => i.nota ?? `${i.titulo}: ${i.detalle}`),
   ];
+
+  const notasAdmin = parrafosNotas(datos.notasAdministrador);
+
+  const anexo =
+    datos.anexo.length === 0
+      ? ""
+      : `<h2>11. Anexo de comprobantes</h2>
+  <p class="muted small">Los comprobantes se agregan a continuación, en este orden. Un comprobante que respalda más de un gasto (por ejemplo, una factura pagada en cuotas) se incluye una sola vez.</p>
+  ${tabla(
+    ["Anexo", "Gastos N.º", "Archivo"],
+    datos.anexo.map((a) => [
+      `<strong>${esc(a.codigo)}</strong>`,
+      a.gastoIds.join(", "),
+      `${esc(a.nombre)}${a.incorporado ? "" : ' <span class="warn">(no se pudo incorporar: consultarlo en el sistema)</span>'}`,
+    ]),
+  )}`;
+
+  const version = datos.version
+    ? `<div><b>Versión:</b> N.º ${datos.version.numero}, confirmada el ${fechaHoraAR(datos.version.confirmadoAt)}${
+        datos.version.confirmadoPor ? ` por ${esc(datos.version.confirmadoPor)}` : ""
+      }</div><div><b>Huella:</b> <span class="small">${esc(datos.version.huella.slice(0, 16))}</span></div>`
+    : `<div><b>Estado:</b> borrador sin confirmar</div><div></div>`;
 
   const firma = datos.administrador
     ? `<div class="firma">
@@ -295,6 +346,8 @@ export function buildRendicionPdfHtml(datos: DatosRendicion) {
   table.detalle tr.total td { border-top: 1.5px solid #0f172a; border-bottom: none; }
   td.nowrap, table.detalle td:nth-child(3) { white-space: nowrap; }
   ol.notas { padding-left: 18px; margin: 4px 0; } ol.notas li { margin: 3px 0; }
+  h3 { font-size: 10pt; margin: 12px 0 4px; break-after: avoid; }
+  p.nota-admin { margin: 4px 0; line-height: 1.45; }
   .firma { margin: 14px 0 0 auto; width: 240px; text-align: center; break-inside: avoid; }
   .firma img { max-height: 56px; max-width: 220px; }
   .espacio-firma { height: 44px; }
@@ -312,6 +365,7 @@ export function buildRendicionPdfHtml(datos: DatosRendicion) {
       <div><b>CUIT:</b> ${esc(c.cuit ?? "—")}</div>
       <div><b>Emitida:</b> ${fechaHoraAR(datos.emitidaAt)}</div>
       <div><b>Vencimiento de la rendición:</b> ${formatFechaCalendarioAR(datos.vencimientoRendicion)}</div>
+      ${version}
     </div>
     <p class="muted small" style="margin-top:8px">Rendición documentada en los términos del art. 2067 inc. e del Código Civil y Comercial. Información elaborada a partir de los registros del sistema; no constituye estados contables auditados.</p>
   </header>
@@ -351,8 +405,15 @@ export function buildRendicionPdfHtml(datos: DatosRendicion) {
 
   <h2>10. Notas</h2>
   <ol class="notas">${notas.map((n) => `<li>${esc(n)}</li>`).join("")}</ol>
+  ${
+    notasAdmin.length > 0
+      ? `<h3>Notas del administrador</h3>${notasAdmin.map((p) => `<p class="nota-admin">${esc(p).replace(/\r?\n/g, "<br>")}</p>`).join("")}`
+      : ""
+  }
 
   ${firma}
+
+  ${anexo}
 </body>
 </html>`;
 }

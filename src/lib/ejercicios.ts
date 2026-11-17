@@ -164,7 +164,7 @@ export function validarEjercicio(
   const otros = existentes.filter((e) => candidato.id === undefined || e.id !== candidato.id);
   const original = candidato.id !== undefined ? existentes.find((e) => e.id === candidato.id) : undefined;
 
-  if (original?.estado === "CERRADO") {
+  if (original?.estado && original.estado !== "ABIERTO") {
     errores.push("El ejercicio está cerrado: no se pueden modificar sus fechas. Registrar una rectificación.");
   }
 

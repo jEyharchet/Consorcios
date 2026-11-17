@@ -9,6 +9,7 @@ import {
   tieneComprobante,
 } from "../../../../lib/gasto-comprobante";
 import { getPeriodoVariants, normalizePeriodo } from "../../../../lib/periodo";
+import { EJERCICIO_CERRADO_MENSAJE, ejercicioCerradoPorPeriodo } from "../../../../lib/ejercicio-bloqueo";
 import { prisma } from "../../../../lib/prisma";
 import { normalizeDate } from "../../../../lib/relaciones";
 
@@ -57,13 +58,18 @@ export default async function EditarGastoPage({
     "use server";
 
     const id = Number(formData.get("id"));
-    const gastoActual = await prisma.gasto.findUnique({ where: { id }, select: { consorcioId: true } });
+    const gastoActual = await prisma.gasto.findUnique({ where: { id }, select: { consorcioId: true, periodo: true } });
 
     if (!gastoActual) {
       redirect("/gastos");
     }
 
     await requireConsorcioRole(gastoActual.consorcioId, ["ADMIN", "OPERADOR"]);
+
+    // El comprobante forma parte de la rendición confirmada: con el ejercicio cerrado no se cambia.
+    if (await ejercicioCerradoPorPeriodo(gastoActual.consorcioId, gastoActual.periodo)) {
+      redirect(`/gastos/${id}/editar?error=ejercicio_cerrado`);
+    }
 
     const lectura = await leerComprobanteGasto(formData.get("comprobante"));
     if (!lectura.ok) {
@@ -147,6 +153,27 @@ export default async function EditarGastoPage({
       </button>
     </form>
   );
+
+  const ejercicioCerrado = await ejercicioCerradoPorPeriodo(gasto.consorcioId, gasto.periodo);
+  if (ejercicioCerrado) {
+    return (
+      <main className="mx-auto w-full max-w-3xl px-6 py-10">
+        <header className="mb-6 space-y-2">
+          <Link href={`/gastos/${gasto.id}`} className="text-blue-600 hover:underline">Volver</Link>
+          <h1 className="text-2xl font-semibold">Editar gasto</h1>
+        </header>
+
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          El período {gasto.periodo} corresponde al ejercicio N.º {ejercicioCerrado.numero}, que está cerrado: el gasto y
+          su comprobante no se pueden modificar. Para corregirlo, reabrí el ejercicio desde{" "}
+          <Link href={`/administracion/ejercicios/${ejercicioCerrado.id}`} className="underline">
+            Administración → Ejercicios
+          </Link>
+          .
+        </div>
+      </main>
+    );
+  }
 
   const liquidacionBloqueante = await prisma.liquidacion.findFirst({
     where: {
@@ -237,6 +264,13 @@ export default async function EditarGastoPage({
       redirect(`/gastos/${id}/editar?error=monto_menor_a_pagado`);
     }
 
+    if (
+      (await ejercicioCerradoPorPeriodo(gastoActual.consorcioId, gastoActual.periodo)) ||
+      (await ejercicioCerradoPorPeriodo(gastoActual.consorcioId, periodo))
+    ) {
+      redirect(`/gastos/${id}/editar?error=ejercicio_cerrado`);
+    }
+
     const liquidacionBloqueante = await prisma.liquidacion.findFirst({
       where: {
         consorcioId: gastoActual.consorcioId,
@@ -319,6 +353,8 @@ export default async function EditarGastoPage({
                     ? "El gasto no se puede editar porque la liquidacion del periodo esta emitida o cerrada."
                     : searchParams?.error === "monto_menor_a_pagado"
                       ? "El monto total del gasto no puede quedar por debajo de lo ya pagado."
+                    : searchParams?.error === "ejercicio_cerrado"
+                      ? EJERCICIO_CERRADO_MENSAJE
                     : null;
 
 

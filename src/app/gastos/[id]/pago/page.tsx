@@ -201,6 +201,8 @@ export default async function PagoGastoPage({
               ? "El monto no puede superar el saldo pendiente del gasto."
               : searchParams?.error === "saldo_insuficiente"
                 ? "No hay saldo suficiente en la caja o cuenta seleccionada."
+                : searchParams?.error === "ejercicio_cerrado"
+                  ? "La fecha del pago cae en un ejercicio cerrado. Usá una fecha posterior al cierre o reabrí el ejercicio."
                 : searchParams?.error === "transferencia_sin_cuentas_activas"
                   ? "No hay cuentas bancarias activas disponibles para registrar una transferencia."
                   : searchParams?.error === "cuenta_bancaria_requerida"

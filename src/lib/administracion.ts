@@ -402,6 +402,7 @@ async function registrarYEnviar(params: {
   destinatarios: UnidadDestinataria[];
   groupStrategy?: "unidad" | "none";
   asambleaId?: number;
+  cierreEjercicioId?: number;
   detailLines?: string[];
   attachments?: EmailAttachment[];
   afterSuccess?: () => Promise<void>;
@@ -427,6 +428,7 @@ async function registrarYEnviar(params: {
         data: {
           consorcioId: params.consorcioId,
           asambleaId: params.asambleaId ?? null,
+          cierreEjercicioId: params.cierreEjercicioId ?? null,
           tipoEnvio: params.tipoEnvio,
           unidadId: destinatario.unidadId ?? null,
           destinatario: null,
@@ -446,6 +448,7 @@ async function registrarYEnviar(params: {
       data: {
         consorcioId: params.consorcioId,
         asambleaId: params.asambleaId ?? null,
+        cierreEjercicioId: params.cierreEjercicioId ?? null,
         tipoEnvio: params.tipoEnvio,
         unidadId: destinatario.unidadId ?? null,
         destinatario: destinatario.emails.join(", "),
@@ -1303,4 +1306,103 @@ export async function enviarSimulacionCancelacionAsamblea(params: {
 
     throw error;
   }
+}
+
+/**
+ * Envía la rendición de cuentas confirmada (PDF guardado, con el anexo de
+ * comprobantes). En modo prueba va solo a los administradores vigentes; si no,
+ * a los responsables vigentes de cada unidad, y el primer envío registra la
+ * fecha de presentación de la rendición.
+ */
+export async function enviarRendicionEjercicio(params: {
+  ejercicioId: number;
+  consorcioId: number;
+  prueba: boolean;
+  mensaje?: string | null;
+}): Promise<EmailSummary> {
+  const cierre = await prisma.cierreEjercicio.findFirst({
+    where: { ejercicioId: params.ejercicioId, estado: "VIGENTE", ejercicio: { consorcioId: params.consorcioId } },
+    select: {
+      id: true,
+      version: true,
+      presentadaAt: true,
+      rendicionPdf: true,
+      ejercicio: {
+        select: {
+          numero: true,
+          fechaInicio: true,
+          fechaFin: true,
+          estado: true,
+          consorcio: { select: { id: true, nombre: true } },
+        },
+      },
+    },
+  });
+
+  if (!cierre || cierre.ejercicio.estado !== "CERRADO") {
+    throw new Error("rendicion_sin_cierre");
+  }
+
+  const { ejercicio } = cierre;
+  const periodo = `${formatDate(ejercicio.fechaInicio)} al ${formatDate(ejercicio.fechaFin)}`;
+  const mensaje = params.mensaje?.trim();
+  const cuerpo = [
+    "Estimado/a {{responsable}}:",
+    `Adjuntamos la rendición de cuentas del ejercicio N.º ${ejercicio.numero} del consorcio {{consorcio}} (${periodo}), con el anexo de comprobantes de los gastos.`,
+    ...(mensaje ? [mensaje] : []),
+    "Ante cualquier consulta, pueden responder este correo.",
+  ].join("\n\n");
+
+  const destinatarios: UnidadDestinataria[] = params.prueba
+    ? await getDestinatariosAdministracion(params.consorcioId)
+    : await getDestinatariosConsorcio(params.consorcioId);
+
+  if (params.prueba && destinatarios.length === 0) {
+    throw new Error("administrador_sin_email");
+  }
+
+  const nombreArchivo = `rendicion-ejercicio-${ejercicio.numero}-v${cierre.version}.pdf`;
+
+  return registrarYEnviar({
+    consorcioId: params.consorcioId,
+    consorcioNombre: ejercicio.consorcio.nombre,
+    cierreEjercicioId: cierre.id,
+    tipoEnvio: params.prueba ? ADMIN_EMAIL_TIPO_ENVIO.RENDICION_PRUEBA_ADMIN : ADMIN_EMAIL_TIPO_ENVIO.RENDICION_EJERCICIO,
+    asuntoTemplate: `${params.prueba ? "[Prueba] " : ""}Rendición de cuentas del ejercicio N.º ${ejercicio.numero} - {{consorcio}}`,
+    cuerpoTemplate: cuerpo,
+    destinatarios,
+    groupStrategy: params.prueba ? "none" : "unidad",
+    detailLines: [
+      `Consorcio: ${ejercicio.consorcio.nombre}`,
+      `Ejercicio N.º ${ejercicio.numero}: ${periodo}`,
+      `Versión de la rendición: ${cierre.version}`,
+      ...(params.prueba ? ["Tipo de envío: prueba, solo para la administración"] : []),
+    ],
+    attachments: [{ content: Buffer.from(cierre.rendicionPdf), filename: nombreArchivo, contentType: "application/pdf" }],
+    afterSuccess: params.prueba || cierre.presentadaAt
+      ? undefined
+      : async () => {
+          await prisma.cierreEjercicio.update({ where: { id: cierre.id }, data: { presentadaAt: new Date() } });
+        },
+  });
+}
+
+async function getDestinatariosAdministracion(consorcioId: number): Promise<UnidadDestinataria[]> {
+  const hoy = new Date();
+  const administradores = await prisma.consorcioAdministrador.findMany({
+    where: { consorcioId, desde: { lte: hoy }, OR: [{ hasta: null }, { hasta: { gte: hoy } }] },
+    select: { persona: { select: { nombre: true, apellido: true, email: true } } },
+  });
+  const emails = Array.from(
+    new Set(administradores.map((a) => normalizeEmail(a.persona.email)).filter((e): e is string => Boolean(e))),
+  );
+  if (emails.length === 0) return [];
+  return [
+    {
+      unidadId: null,
+      unidadLabel: "Administración",
+      responsablesLabel: administradores.map((a) => `${a.persona.nombre} ${a.persona.apellido}`.trim()).join(" / "),
+      emails,
+    },
+  ];
 }

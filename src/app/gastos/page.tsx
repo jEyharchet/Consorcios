@@ -8,6 +8,7 @@ import { redirectToOnboardingIfNoConsorcios } from "../../lib/onboarding";
 import { buildGastoPagoSummary, type GastoPagoEstado } from "../../lib/pagos-gastos";
 import { prisma } from "../../lib/prisma";
 import { getPeriodoVariants, normalizePeriodo } from "../../lib/periodo";
+import { EJERCICIO_CERRADO_MENSAJE, ejercicioCerradoPorPeriodo } from "../../lib/ejercicio-bloqueo";
 import { formatDateAR } from "../../lib/relaciones";
 
 const TIPOS_EXPENSA = ["ORDINARIA", "EXTRAORDINARIA"] as const;
@@ -72,6 +73,7 @@ export default async function GastosPage({
       select: {
         id: true,
         consorcioId: true,
+        periodo: true,
         pagosGasto: {
           select: { id: true },
           take: 1,
@@ -90,6 +92,10 @@ export default async function GastosPage({
 
     if (gasto.pagosGasto.length > 0) {
       redirect("/gastos?error=gasto_con_pagos");
+    }
+
+    if (await ejercicioCerradoPorPeriodo(gasto.consorcioId, gasto.periodo)) {
+      redirect("/gastos?error=ejercicio_cerrado");
     }
 
     if (gasto.liquidacion && gasto.liquidacion.estado !== "BORRADOR") {
@@ -197,6 +203,8 @@ export default async function GastosPage({
           ? "No se puede eliminar el gasto porque ya tiene pagos registrados."
           : searchParams?.error === "gasto_duplicado_reciente"
             ? "Ya existia un gasto identico creado hace instantes. Se evito generar un duplicado."
+          : searchParams?.error === "ejercicio_cerrado"
+            ? `No se puede eliminar el gasto. ${EJERCICIO_CERRADO_MENSAJE}`
           : null;
 
   return (

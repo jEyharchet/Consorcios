@@ -7,6 +7,7 @@ import {
   sumarDias,
   validarEjercicio,
 } from "./ejercicios";
+import { aperturaDesdeEjercicioAnterior } from "./cierre-confirmacion";
 import { prisma } from "./prisma";
 
 // Acceso a datos de ejercicios. Las validaciones de superposición y contigüidad
@@ -71,10 +72,21 @@ export async function crearEjercicio(
     if (errores.length > 0) return { ok: false as const, errores };
 
     const numero = existentes.reduce((max, e) => Math.max(max, e.numero), 0) + 1;
+    // Si el anterior ya está cerrado, la apertura sale de su cierre confirmado.
+    const apertura = ultimo ? await aperturaDesdeEjercicioAnterior(tx, ultimo.id) : null;
     const creado = await tx.ejercicio.create({
       data: {
         consorcioId,
         numero,
+        ...(apertura && ultimo
+          ? {
+              aperturaEstado: "INFORMADA",
+              aperturaDetalle: apertura as unknown as Prisma.InputJsonValue,
+              aperturaConfirmadaAt: new Date(),
+              aperturaConfirmadaPorUserId: userId,
+              aperturaObservaciones: `Saldos al cierre del ejercicio N.º ${ultimo.numero} (versión ${apertura.origen?.version ?? 1}).`,
+            }
+          : {}),
         fechaInicio: datos.fechaInicio,
         fechaFin: datos.fechaFin,
         vencimientoRendicion: datos.vencimientoRendicion ?? calcularVencimientoRendicion(datos.fechaFin),
@@ -130,7 +142,7 @@ export async function registrarApertura(
 
   const actual = await prisma.ejercicio.findFirst({ where: { id: ejercicioId, consorcioId } });
   if (!actual) return { ok: false, errores: ["El ejercicio no existe en el consorcio activo."] };
-  if (actual.estado === "CERRADO") {
+  if (actual.estado !== "ABIERTO") {
     return { ok: false, errores: ["El ejercicio está cerrado: la apertura no se puede modificar."] };
   }
 
@@ -139,6 +151,8 @@ export async function registrarApertura(
     where: { id: ejercicioId },
     data: {
       aperturaEstado: estado,
+      // El detalle por cuenta solo vale para una apertura informada (la que sale del cierre anterior).
+      ...(estado === "INFORMADA" ? {} : { aperturaDetalle: Prisma.DbNull }),
       aperturaObservaciones: observaciones,
       aperturaConfirmadaAt: confirmada ? new Date() : null,
       aperturaConfirmadaPorUserId: confirmada ? userId : null,
@@ -154,8 +168,11 @@ export async function eliminarEjercicio(consorcioId: number, ejercicioId: number
     const existentes = await tx.ejercicio.findMany({ where: { consorcioId }, select: SELECT_PERIODO });
     const actual = existentes.find((e) => e.id === ejercicioId);
     if (!actual) return { ok: false as const, errores: ["El ejercicio no existe en el consorcio activo."] };
-    if (actual.estado === "CERRADO") {
+    if (actual.estado !== "ABIERTO") {
       return { ok: false as const, errores: ["Un ejercicio cerrado no se puede eliminar."] };
+    }
+    if (await tx.cierreEjercicio.count({ where: { ejercicioId } })) {
+      return { ok: false as const, errores: ["El ejercicio tiene cierres registrados (aunque se haya reabierto): no se puede eliminar."] };
     }
     if (existentes.some((e) => e.fechaInicio > actual.fechaInicio)) {
       return { ok: false as const, errores: ["Solo se puede eliminar el último ejercicio registrado."] };

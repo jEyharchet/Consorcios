@@ -8,6 +8,7 @@ export const ESTADO_APERTURA_LABEL: Record<string, string> = {
 
 export const ESTADO_EJERCICIO_LABEL: Record<string, string> = {
   ABIERTO: "Abierto",
+  CERRANDO: "Cerrándose",
   CERRADO: "Cerrado",
 };
 

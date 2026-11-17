@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 
+import { ejercicioCerradoPorFecha } from "./ejercicio-bloqueo";
 import { type CuentaBancariaDestino, formatCuentaBancariaDestino, isMedioPagoExpensa, type MedioPagoExpensa } from "./fondos";
 import { prisma } from "./prisma";
 
@@ -119,6 +120,11 @@ export async function registrarPagoGasto(params: {
 
     if (!snapshot) {
       throw new PagoGastoError("gasto_inexistente");
+    }
+
+    const cerrado = await ejercicioCerradoPorFecha(snapshot.consorcioId, params.fechaPago, tx);
+    if (cerrado) {
+      throw new PagoGastoError("ejercicio_cerrado", `Ejercicio N.º ${cerrado.numero} cerrado`);
     }
 
     const hasFuturePayments = snapshot.pagosGasto.some((pago) => pago.fechaPago > params.fechaPago);
@@ -340,20 +346,6 @@ async function verificarSaldosNoNegativos(tx: Prisma.TransactionClient, consorci
   }
 }
 
-async function ejercicioCerradoEn(tx: Prisma.TransactionClient, consorcioId: number, fecha: Date) {
-  // Las fechas de pago se guardan a las 00:00Z (Vercel) o 03:00Z (local) del día; los ejercicios son DATE.
-  const dia = new Date(Date.UTC(fecha.getUTCFullYear(), fecha.getUTCMonth(), fecha.getUTCDate()));
-  return tx.ejercicio.findFirst({
-    where: {
-      consorcioId,
-      estado: "CERRADO",
-      fechaInicio: { lte: dia },
-      fechaFin: { gte: dia },
-    },
-    select: { numero: true },
-  });
-}
-
 /**
  * Edita fecha, importe, medio/cuenta y observación de un pago de gasto, y
  * corrige Tesorería:
@@ -409,7 +401,7 @@ export async function editarPagoGastoEnTransaccion(
   }
 
   for (const fecha of [pago.fechaPago, params.fechaPago]) {
-    const cerrado = await ejercicioCerradoEn(tx, pago.consorcioId, fecha);
+    const cerrado = await ejercicioCerradoPorFecha(pago.consorcioId, fecha, tx);
     if (cerrado) {
       throw new PagoGastoError("ejercicio_cerrado", `Ejercicio N.º ${cerrado.numero} cerrado`);
     }

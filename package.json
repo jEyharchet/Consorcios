@@ -16,16 +16,17 @@
     "test:email": "tsx scripts/test-email.ts"
   },
   "dependencies": {
-    "@sparticuz/chromium": "^141.0.0",
-    "@react-email/render": "^1.0.4",
     "@auth/prisma-adapter": "^2.7.4",
     "@prisma/client": "5.19.1",
+    "@react-email/render": "^1.0.4",
+    "@sparticuz/chromium": "^141.0.0",
     "better-sqlite3": "^11.8.1",
     "dotenv": "^16.6.1",
     "next": "14.2.5",
     "next-auth": "^5.0.0-beta.30",
-    "puppeteer-core": "^24.23.1",
+    "pdf-lib": "^1.17.1",
     "puppeteer": "^24.0.0",
+    "puppeteer-core": "^24.23.1",
     "react": "18.3.1",
     "react-dom": "18.3.1",
     "resend": "^6.9.3"

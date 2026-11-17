@@ -7,6 +7,7 @@ import { requireConsorcioRole } from "../../../lib/auth";
 import { redirectToOnboardingIfNoConsorcios } from "../../../lib/onboarding";
 import { getActiveConsorcioContext } from "../../../lib/consorcio-activo";
 import { getPeriodoVariants, normalizePeriodo } from "../../../lib/periodo";
+import { EJERCICIO_CERRADO_MENSAJE, ejercicioCerradoPorPeriodo } from "../../../lib/ejercicio-bloqueo";
 import { prisma } from "../../../lib/prisma";
 import { normalizeDate } from "../../../lib/relaciones";
 import { MAX_COMPROBANTE_GASTO_BYTES, MAX_COMPROBANTE_GASTO_LABEL, TIPOS_COMPROBANTE_GASTO } from "../../../lib/gasto-comprobante";
@@ -215,6 +216,10 @@ export default async function NuevoGastoPage({
       comprobanteSubidoAt = new Date();
     }
 
+    if (await ejercicioCerradoPorPeriodo(consorcioId, periodo)) {
+      redirect(`/gastos/nuevo?error=ejercicio_cerrado&consorcioId=${consorcioId}`);
+    }
+
     const liquidacionCerrada = await prisma.liquidacion.findFirst({
       where: {
         consorcioId,
@@ -297,6 +302,8 @@ export default async function NuevoGastoPage({
                           ? "El comprobante debe ser PDF, JPG, PNG o WEBP."
                         : searchParams?.error === "periodo_bloqueado"
                           ? "No se puede registrar el gasto porque el periodo ya esta emitido o cerrado."
+                          : searchParams?.error === "ejercicio_cerrado"
+                            ? `El período corresponde a un ejercicio cerrado. ${EJERCICIO_CERRADO_MENSAJE}`
                           : searchParams?.error === "gasto_duplicado_reciente"
                             ? "Ya existe un gasto identico cargado hace instantes. Revisalo en el listado antes de reintentar."
                             : null;

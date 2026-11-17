@@ -5,6 +5,7 @@ import LiquidacionPaso1Form from "../../../_components/LiquidacionPaso1Form";
 import { getAccessContext, requireConsorcioAccess, requireConsorcioRole } from "../../../../../lib/auth";
 import { getCurrentPeriodo, getPeriodoVariants, normalizePeriodo } from "../../../../../lib/periodo";
 import { prisma } from "../../../../../lib/prisma";
+import { liquidacionEnEjercicioCerrado } from "../../../../../lib/ejercicio-bloqueo";
 
 function periodoToDate(periodo: string) {
   return new Date(`${periodo}-01T00:00:00`);
@@ -158,6 +159,9 @@ export default async function LiquidacionWizardPaso1EditPage({
     }
 
     await requireConsorcioRole(liquidacionActual.consorcioId, ["ADMIN", "OPERADOR"]);
+    if (await liquidacionEnEjercicioCerrado(liquidacionActual.id)) {
+      redirect(`/liquidaciones/${liquidacionActual.id}?error=ejercicio_cerrado`);
+    }
 
     const mesRendicionValue = normalizePeriodo((formData.get("mesRendicion")?.toString() ?? "").trim());
     const mesVencimientoValue = normalizePeriodo((formData.get("mesVencimiento")?.toString() ?? "").trim());

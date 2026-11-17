@@ -1,3 +1,4 @@
+import { textoOrigenApertura } from "./apertura";
 import { formatFechaCalendarioAR } from "./ejercicios";
 import type { DatosRendicion } from "./rendicion-pdf-html";
 
@@ -117,7 +118,11 @@ export function buildLibroAdministracionHtml(datos: DatosRendicion) {
   </div>
 
   ${
-    pendientes.length > 0
+    datos.version
+      ? `<div class="muted" style="font-size:7.5pt">Cierre confirmado · versión N.º ${datos.version.numero} · huella ${esc(
+          datos.version.huella.slice(0, 16),
+        )}</div>`
+      : pendientes.length > 0
       ? `<div class="aviso">BORRADOR: hay observaciones pendientes en la simulación del cierre (${pendientes
           .map((p) => esc(p.titulo))
           .join("; ")}). No asentar hasta resolverlas.</div>`
@@ -189,7 +194,7 @@ export function buildLibroAdministracionHtml(datos: DatosRendicion) {
 
   <h2>6. Constancias</h2>
   <p class="texto">Asiento de cierre del ejercicio N.º ${ejercicio.numero}. Saldos de apertura: ${
-    ejercicio.aperturaEstado === "CERO_CONFIRMADO" ? "cero, primer ejercicio" : "según detalle de apertura"
+    ejercicio.aperturaEstado === "CERO_CONFIRMADO" ? "cero, primer ejercicio" : textoOrigenApertura(s.apertura)
   }. Importes en pesos según los registros del sistema; cobranzas y pagos por fecha efectiva, gastos y liquidaciones por período. La rendición de cuentas documentada (art. 2067 inc. e CCyC), con el detalle de gastos, el estado por unidad y el índice de comprobantes, se archiva junto con los comprobantes y vence el ${formatFechaCalendarioAR(
     datos.vencimientoRendicion,
   )}.</p>

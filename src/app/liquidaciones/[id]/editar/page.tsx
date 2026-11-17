@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { getAccessContext, requireConsorcioAccess, requireConsorcioRole } from "../../../../lib/auth";
 import { getPeriodoVariants } from "../../../../lib/periodo";
 import { prisma } from "../../../../lib/prisma";
+import { liquidacionEnEjercicioCerrado } from "../../../../lib/ejercicio-bloqueo";
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat("es-AR", {
@@ -141,6 +142,9 @@ export default async function EditarLiquidacionPage({
     }
 
     await requireConsorcioRole(liquidacionActual.consorcioId, ["ADMIN", "OPERADOR"]);
+    if (await liquidacionEnEjercicioCerrado(liquidacionActual.id)) {
+      redirect(`/liquidaciones/${liquidacionActual.id}?error=ejercicio_cerrado`);
+    }
 
     const total =
       (
@@ -178,6 +182,9 @@ export default async function EditarLiquidacionPage({
     }
 
     await requireConsorcioRole(liquidacionActual.consorcioId, ["ADMIN"]);
+    if (await liquidacionEnEjercicioCerrado(liquidacionActual.id)) {
+      redirect(`/liquidaciones/${liquidacionActual.id}?error=ejercicio_cerrado`);
+    }
 
     if (liquidacionActual.estado !== "BORRADOR") {
       redirect(`/liquidaciones/${liquidacion.id}/editar?error=estado_invalido_emitir`);
@@ -212,6 +219,9 @@ export default async function EditarLiquidacionPage({
     }
 
     await requireConsorcioRole(liquidacionActual.consorcioId, ["ADMIN"]);
+    if (await liquidacionEnEjercicioCerrado(liquidacionActual.id)) {
+      redirect(`/liquidaciones/${liquidacionActual.id}?error=ejercicio_cerrado`);
+    }
 
     if (liquidacionActual.estado !== "EMITIDA") {
       redirect(`/liquidaciones/${liquidacion.id}/editar?error=estado_invalido_cerrar`);

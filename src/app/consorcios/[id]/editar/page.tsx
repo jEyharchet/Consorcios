@@ -9,6 +9,7 @@ import {
   validateCuentaDniQrTemplate,
 } from "../../../../lib/payment-qr";
 import { prisma } from "../../../../../lib/prisma";
+import { cuentaConMovimientosEnEjercicioCerrado } from "@/lib/ejercicio-bloqueo";
 
 type CuentaBancariaQrFields = {
   qrEnabled?: boolean | null;
@@ -122,6 +123,11 @@ function getCuentaMessage(code: string | undefined) {
       return { type: "error" as const, text: "Cuenta bancaria invalida." };
     case "not_found":
       return { type: "error" as const, text: "No se encontro la cuenta bancaria." };
+    case "ejercicio_cerrado":
+      return {
+        type: "error" as const,
+        text: "La cuenta tiene movimientos en un ejercicio cerrado: no se puede eliminar. Podés desactivarla.",
+      };
     default:
       return null;
   }
@@ -347,6 +353,10 @@ export default async function EditarConsorcioPage({
 
     if (!existing) {
       redirect(`/consorcios/${consorcioId}/editar?cuentas=not_found`);
+    }
+
+    if (await cuentaConMovimientosEnEjercicioCerrado(consorcioId, cuentaId)) {
+      redirect(`/consorcios/${consorcioId}/editar?cuentas=ejercicio_cerrado`);
     }
 
     await prisma.consorcioCuentaBancaria.delete({ where: { id: cuentaId } });

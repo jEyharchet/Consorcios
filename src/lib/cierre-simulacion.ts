@@ -12,6 +12,7 @@
 //   trasladada a otra liquidación del mismo corte. No incluye intereses no
 //   liquidados.
 
+import { leerAperturaDetalle } from "./apertura";
 import { formatFechaCalendario, rangoConsultaEjercicio } from "./ejercicios";
 import { interesTrasladado } from "./expensa-traslado";
 import { tieneComprobante } from "./gasto-comprobante";
@@ -55,12 +56,18 @@ export type EjercicioSimulable = {
   fechaInicio: Date;
   fechaFin: Date;
   aperturaEstado: string;
+  aperturaDetalle?: unknown;
 };
 
 export type SimulacionCierre = Awaited<ReturnType<typeof simularCierrePeriodo>>;
 
 export async function simularCierreEjercicio(ejercicioId: number, consorcioId: number) {
-  const ejercicio = await prisma.ejercicio.findFirst({ where: { id: ejercicioId, consorcioId } });
+  // Solo los datos que definen el cálculo: la huella de la confirmación no debe
+  // cambiar por el estado del ejercicio, sus notas u otros campos de gestión.
+  const ejercicio = await prisma.ejercicio.findFirst({
+    where: { id: ejercicioId, consorcioId },
+    select: { id: true, numero: true, fechaInicio: true, fechaFin: true, aperturaEstado: true, aperturaDetalle: true },
+  });
   if (!ejercicio) return null;
   return simularCierrePeriodo(ejercicio, consorcioId);
 }
@@ -109,6 +116,7 @@ export async function simularCierrePeriodo(ejercicio: EjercicioSimulable, consor
     }),
     prisma.pago.findMany({
       where: { expensa: { unidad: { consorcioId } }, fechaPago: { lt: rango.lt } },
+      orderBy: { id: "asc" },
       select: {
         id: true,
         expensaId: true,
@@ -125,6 +133,7 @@ export async function simularCierrePeriodo(ejercicio: EjercicioSimulable, consor
     }),
     prisma.pagoGasto.findMany({
       where: { consorcioId, fechaPago: { lt: rango.lt } },
+      orderBy: { id: "asc" },
       select: {
         id: true,
         gastoId: true,
@@ -136,6 +145,7 @@ export async function simularCierrePeriodo(ejercicio: EjercicioSimulable, consor
     }),
     prisma.gasto.findMany({
       where: { consorcioId },
+      orderBy: { id: "asc" },
       select: {
         id: true,
         fecha: true,
@@ -166,6 +176,7 @@ export async function simularCierrePeriodo(ejercicio: EjercicioSimulable, consor
     }),
     prisma.expensa.findMany({
       where: { unidad: { consorcioId } },
+      orderBy: { id: "asc" },
       select: {
         id: true,
         monto: true,
@@ -178,6 +189,7 @@ export async function simularCierrePeriodo(ejercicio: EjercicioSimulable, consor
     }),
     prisma.liquidacionDeuda.findMany({
       where: { liquidacion: { consorcioId, estado: { in: ["FINALIZADA", "CERRADA"] } } },
+      orderBy: { id: "asc" },
       select: {
         expensaId: true,
         criterio: true,
@@ -198,6 +210,7 @@ export async function simularCierrePeriodo(ejercicio: EjercicioSimulable, consor
       by: ["liquidacionId"],
       where: { liquidacion: { consorcioId } },
       _sum: { redondeo: true },
+      orderBy: { liquidacionId: "asc" },
     }),
   ]);
 
@@ -225,7 +238,11 @@ export async function simularCierrePeriodo(ejercicio: EjercicioSimulable, consor
   const ajustesPeriodo = ajustesDelPeriodo.filter((m) => m.id !== ajusteCompensatorio?.id);
 
   // ---------------------------------------------------------------- Fondos
-  const aperturaConocida = ejercicio.aperturaEstado === "CERO_CONFIRMADO";
+  // Apertura conocida: cero confirmado, o informada con detalle (el cierre del ejercicio anterior).
+  const detalleApertura =
+    ejercicio.aperturaEstado === "INFORMADA" ? leerAperturaDetalle(ejercicio.aperturaDetalle) : null;
+  const aperturaConocida = ejercicio.aperturaEstado === "CERO_CONFIRMADO" || detalleApertura !== null;
+  const saldoInicialFondo = (clave: string) => detalleApertura?.fondos.find((f) => f.clave === clave)?.saldo ?? 0;
   const cuentasFondos = [
     { clave: "CAJA", nombre: "Caja", cuentaId: null as number | null, activa: true },
     ...cuentas.map((c) => ({
@@ -249,7 +266,7 @@ export async function simularCierrePeriodo(ejercicio: EjercicioSimulable, consor
     const cobranzas = sumar((m) => esCobranza(m));
     const pagos = sumar((m) => m.tipoOrigen === "PAGO_GASTO");
     const ajustes = sumar((m) => !esCobranza(m) && m.tipoOrigen !== "PAGO_GASTO");
-    const inicial = aperturaConocida ? 0 : null;
+    const inicial = aperturaConocida ? saldoInicialFondo(cuenta.clave) : null;
     const finalCalculado = inicial === null ? null : redondear(inicial + cobranzas + pagos + ajustes);
     // saldoPosterior refleja el orden de carga, no el cronológico: tomar el último cargado.
     const ultimo =
@@ -401,7 +418,7 @@ export async function simularCierrePeriodo(ejercicio: EjercicioSimulable, consor
     .sort((a, b) => a.unidad.localeCompare(b.unidad, "es", { numeric: true }));
 
   // ---------------------------------------------------------- Inconsistencias
-  if (ejercicio.aperturaEstado !== "CERO_CONFIRMADO") {
+  if (!aperturaConocida) {
     inconsistencias.push({
       codigo: "APERTURA",
       gravedad: "ALTA",
@@ -703,7 +720,8 @@ export async function simularCierrePeriodo(ejercicio: EjercicioSimulable, consor
     fondosFinal === null
       ? null
       : (() => {
-          const inicial = 0; // apertura conocida: solo CERO_CONFIRMADO por ahora
+          // Saldo neto de apertura: cero, o el del cierre del ejercicio anterior.
+          const inicial = detalleApertura ? detalleApertura.saldoNeto : 0;
           const saldoNeto = redondear(fondosFinal + creditosTotal - deudaProveedoresTotal);
           const explicado = inicial + fondoReservaLiquidado + totales.cobranzasInteres + interesesEnTraslados + redondeos;
           return {
@@ -727,7 +745,8 @@ export async function simularCierrePeriodo(ejercicio: EjercicioSimulable, consor
     periodoDesde,
     periodoHasta,
     fondos,
-    fondosInicial: aperturaConocida ? 0 : null,
+    fondosInicial: aperturaConocida ? redondear(fondos.reduce((a, f) => a + (f.inicial ?? 0), 0)) : null,
+    apertura: detalleApertura,
     fondosFinal,
     composicion,
     porMes,

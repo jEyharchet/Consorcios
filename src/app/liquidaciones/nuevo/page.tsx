@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { getActiveConsorcioContext } from "../../../lib/consorcio-activo";
 import { requireConsorcioRole } from "../../../lib/auth";
 import { getCurrentPeriodo, getPeriodoVariants, normalizePeriodo } from "../../../lib/periodo";
+import { EJERCICIO_CERRADO_MENSAJE, ejercicioCerradoPorPeriodo } from "../../../lib/ejercicio-bloqueo";
 import { prisma } from "../../../lib/prisma";
 
 function formatCurrency(value: number) {
@@ -151,6 +152,10 @@ export default async function NuevaLiquidacionPage({
         })
       )._sum.monto ?? 0;
 
+    if (await ejercicioCerradoPorPeriodo(activeConsorcioId, periodo)) {
+      redirect(`/liquidaciones/nuevo?periodo=${encodeURIComponent(periodo)}&error=ejercicio_cerrado`);
+    }
+
     try {
       const liquidacion = await prisma.liquidacion.create({
         data: {
@@ -174,6 +179,8 @@ export default async function NuevaLiquidacionPage({
   const errorMessage =
     searchParams?.error === "periodo_invalido"
       ? "El periodo debe tener formato YYYY-MM."
+      : searchParams?.error === "ejercicio_cerrado"
+        ? `El periodo corresponde a un ejercicio cerrado. ${EJERCICIO_CERRADO_MENSAJE}`
       : searchParams?.error === "duplicada"
         ? "Ya existe una liquidacion para ese consorcio y periodo."
         : null;

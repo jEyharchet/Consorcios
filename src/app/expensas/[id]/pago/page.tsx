@@ -318,7 +318,9 @@ export default async function RegistrarPagoPage({
                           ? comprobantePagoValidationMessages.max_size
                           : errorCode === "write_error"
                             ? comprobantePagoValidationMessages.write_error
-                            : null;
+                            : errorCode === "ejercicio_cerrado"
+                              ? "La fecha del cobro cae en un ejercicio cerrado. Usá una fecha posterior al cierre o reabrí el ejercicio."
+                              : null;
 
   const cuentaBancariaSeleccionada =
     defaultCuentaBancariaId !== null

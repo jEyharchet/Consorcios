@@ -11,6 +11,7 @@ import {
   formatFechaCalendario,
   formatFechaCalendarioAR,
 } from "../../../../lib/ejercicios";
+import { leerAperturaDetalle, textoOrigenApertura } from "../../../../lib/apertura";
 import { actualizarEjercicio, eliminarEjercicio, registrarApertura } from "../../../../lib/ejercicios-data";
 import { redirectToOnboardingIfNoConsorcios } from "../../../../lib/onboarding";
 import { prisma } from "../../../../lib/prisma";
@@ -115,7 +116,13 @@ export default async function EjercicioDetallePage({
     }),
   ]);
 
-  const cerrado = ejercicio.estado === "CERRADO";
+  const cerrado = ejercicio.estado !== "ABIERTO";
+  const detalleApertura = ejercicio.aperturaEstado === "INFORMADA" ? leerAperturaDetalle(ejercicio.aperturaDetalle) : null;
+  const cierreVigente = await prisma.cierreEjercicio.findFirst({
+    where: { ejercicioId: ejercicio.id, estado: "VIGENTE" },
+    select: { version: true, confirmadoAt: true, presentadaAt: true },
+  });
+  const moneda = new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 2 });
   const editable = canOperate && !cerrado;
   const eliminable = editable && !posterior;
   const dias = duracionEnDias(ejercicio);
@@ -182,6 +189,12 @@ export default async function EjercicioDetallePage({
           <p className="mt-2 text-lg font-semibold text-slate-950">
             {ESTADO_EJERCICIO_LABEL[ejercicio.estado] ?? ejercicio.estado}
           </p>
+          {cierreVigente ? (
+            <p className="mt-1 text-xs text-slate-500">
+              Versión {cierreVigente.version} del {formatDateTime(cierreVigente.confirmadoAt)}
+              {cierreVigente.presentadaAt ? " · rendición enviada" : ""}
+            </p>
+          ) : null}
         </article>
         <article className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
           <p className="text-sm font-medium text-slate-500">Duración</p>
@@ -348,10 +361,45 @@ export default async function EjercicioDetallePage({
               />
             </div>
           </div>
-          <p className="mt-3 text-xs text-slate-500">
-            El detalle por cuenta (caja, cada banco, créditos por unidad, proveedores) se cargará junto con la simulación
-            del cierre.
-          </p>
+          {detalleApertura ? (
+            <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+              <p className="font-medium text-slate-900">Detalle de la apertura ({textoOrigenApertura(detalleApertura)})</p>
+              <table className="mt-2 w-full">
+                <tbody className="divide-y divide-slate-200">
+                  {detalleApertura.fondos.map((f) => (
+                    <tr key={f.clave}>
+                      <td className="py-1.5 pr-4">{f.nombre}</td>
+                      <td className="py-1.5 text-right tabular-nums">{moneda.format(f.saldo)}</td>
+                    </tr>
+                  ))}
+                  <tr>
+                    <td className="py-1.5 pr-4">
+                      (+) Expensas pendientes de cobro ({detalleApertura.creditos.length} unidades)
+                    </td>
+                    <td className="py-1.5 text-right tabular-nums">{moneda.format(detalleApertura.creditosTotal)}</td>
+                  </tr>
+                  <tr>
+                    <td className="py-1.5 pr-4">(−) Gastos pendientes de pago ({detalleApertura.deudas.length})</td>
+                    <td className="py-1.5 text-right tabular-nums">{moneda.format(-detalleApertura.deudasTotal)}</td>
+                  </tr>
+                  <tr className="font-semibold text-slate-900">
+                    <td className="py-1.5 pr-4">Saldo neto de apertura</td>
+                    <td className="py-1.5 text-right tabular-nums">{moneda.format(detalleApertura.saldoNeto)}</td>
+                  </tr>
+                </tbody>
+              </table>
+              <p className="mt-2 text-xs text-slate-500">
+                Las expensas y los gastos pendientes no se vuelven a cargar: siguen en el sistema y se cobran o pagan con
+                fecha de este ejercicio.
+              </p>
+            </div>
+          ) : (
+            <p className="mt-3 text-xs text-slate-500">
+              Si el ejercicio anterior está en el sistema, la apertura se completa sola al confirmar su cierre (queda
+              «Informada» con los saldos de caja, bancos, expensas a cobrar y gastos a pagar). «Cero confirmado» es para
+              un primer ejercicio sin saldos previos.
+            </p>
+          )}
 
           {editable ? (
             <div className="mt-5 flex justify-end">

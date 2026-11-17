@@ -6,6 +6,7 @@ import { requireConsorcioRole } from "../../lib/auth";
 import { redirectToOnboardingIfNoConsorcios } from "../../lib/onboarding";
 import { prisma } from "../../lib/prisma";
 import RegenerarArchivosButton from "./_components/RegenerarArchivosButton";
+import { liquidacionEnEjercicioCerrado } from "../../lib/ejercicio-bloqueo";
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat("es-AR", {
@@ -98,6 +99,9 @@ export default async function LiquidacionesPage({
     }
 
     await requireConsorcioRole(liquidacion.consorcioId, ["ADMIN"]);
+    if (await liquidacionEnEjercicioCerrado(liquidacion.id)) {
+      redirect(`/liquidaciones/${liquidacion.id}?error=ejercicio_cerrado`);
+    }
 
     if (liquidacion.estado !== "BORRADOR") {
       redirect("/liquidaciones?error=estado_invalido_emitir");

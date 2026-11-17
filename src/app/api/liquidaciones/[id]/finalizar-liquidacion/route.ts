@@ -3,6 +3,7 @@ import { auth } from '../../../../../../auth';
 import { hasConsorcioRoleForUserId } from '@/lib/auth';
 import { startFinalizacionLiquidacionJob } from '@/lib/liquidacion-regeneracion-job';
 import { prisma } from '@/lib/prisma';
+import { liquidacionEnEjercicioCerrado } from '@/lib/ejercicio-bloqueo';
 
 export const runtime = 'nodejs';
 
@@ -52,6 +53,10 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     const access = await requireOperativeAccess(userId, liquidacion.consorcioId);
     if (!access.ok) {
       return json({ ok: false, reason: access.reason }, access.status);
+    }
+
+    if (await liquidacionEnEjercicioCerrado(liquidacion.id)) {
+      return json({ ok: false, reason: 'ejercicio_cerrado' }, 409);
     }
 
     let payload: Record<string, unknown> = {};

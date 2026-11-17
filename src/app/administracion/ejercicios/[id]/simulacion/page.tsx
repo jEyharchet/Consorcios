@@ -1,14 +1,19 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { huellaSimulacion, requisitosConfirmacion, revivirSimulacion } from "../../../../../lib/cierre-confirmacion";
 import { simularCierreEjercicio, type Inconsistencia } from "../../../../../lib/cierre-simulacion";
 import { getActiveConsorcioContext } from "../../../../../lib/consorcio-activo";
 import { formatFechaCalendarioAR } from "../../../../../lib/ejercicios";
 import { redirectToOnboardingIfNoConsorcios } from "../../../../../lib/onboarding";
+import { prisma } from "../../../../../lib/prisma";
 import { formatDateTime } from "../../../shared";
-import { ESTADO_APERTURA_LABEL } from "../../shared";
+import { ESTADO_APERTURA_LABEL, mensajesDesdeQuery } from "../../shared";
+import PanelCierre from "./PanelCierre";
 
 export const dynamic = "force-dynamic";
+// Confirmar el cierre genera la rendición con el anexo de comprobantes y la hoja del libro.
+export const maxDuration = 120;
 
 const moneda = new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 2 });
 
@@ -42,15 +47,96 @@ function FilaComposicion({ label, valor, total }: { label: string; valor: string
   );
 }
 
-export default async function SimulacionCierrePage({ params }: { params: { id: string } }) {
+export default async function SimulacionCierrePage({
+  params,
+  searchParams,
+}: {
+  params: { id: string };
+  searchParams?: { ok?: string; error?: string; aviso?: string };
+}) {
   const { access, activeConsorcioId } = await getActiveConsorcioContext();
   redirectToOnboardingIfNoConsorcios(access);
 
   const ejercicioId = Number(params.id);
   if (!activeConsorcioId || !Number.isInteger(ejercicioId) || ejercicioId <= 0) notFound();
 
-  const s = await simularCierreEjercicio(ejercicioId, activeConsorcioId);
+  const registro = await prisma.ejercicio.findFirst({
+    where: { id: ejercicioId, consorcioId: activeConsorcioId },
+    select: {
+      id: true,
+      consorcioId: true,
+      numero: true,
+      fechaInicio: true,
+      fechaFin: true,
+      estado: true,
+      notasRendicion: true,
+      cierres: {
+        orderBy: { version: "desc" },
+        select: {
+          id: true,
+          version: true,
+          estado: true,
+          confirmadoAt: true,
+          confirmadoPorUserId: true,
+          huella: true,
+          comprobantesAnexados: true,
+          presentadaAt: true,
+          reabiertoAt: true,
+          reabiertoPorUserId: true,
+          motivoReapertura: true,
+        },
+      },
+    },
+  });
+  if (!registro) notFound();
+
+  const esAdmin =
+    access.isSuperAdmin ||
+    access.assignments.some((a) => a.consorcioId === activeConsorcioId && a.role === "ADMIN");
+  const vigente = registro.cierres.find((c) => c.estado === "VIGENTE") ?? null;
+  const cerrado = registro.estado === "CERRADO" && vigente !== null;
+
+  // Cerrado: los resultados guardados en la confirmación. Abierto: la simulación con los datos actuales.
+  const s =
+    cerrado && vigente
+      ? revivirSimulacion(
+          (await prisma.cierreEjercicio.findUniqueOrThrow({ where: { id: vigente.id }, select: { resultados: true } }))
+            .resultados,
+        )
+      : await simularCierreEjercicio(ejercicioId, activeConsorcioId);
   if (!s) notFound();
+
+  const requisitos =
+    registro.estado === "ABIERTO" ? await requisitosConfirmacion(registro, s) : { bloqueantes: [], aVerificar: [] };
+
+  const userIds = Array.from(
+    new Set(
+      registro.cierres
+        .flatMap((c) => [c.confirmadoPorUserId, c.reabiertoPorUserId])
+        .filter((id): id is string => Boolean(id)),
+    ),
+  );
+  const [usuarios, envios] = await Promise.all([
+    userIds.length > 0
+      ? prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, name: true, email: true } })
+      : Promise.resolve([]),
+    vigente
+      ? prisma.envioEmail.findMany({
+          where: { cierreEjercicioId: vigente.id },
+          orderBy: { id: "desc" },
+          take: 100,
+          select: { id: true, tipoEnvio: true, destinatario: true, estado: true, createdAt: true },
+        })
+      : Promise.resolve([]),
+  ]);
+  const nombre = (id: string | null) => {
+    const u = usuarios.find((x) => x.id === id);
+    return u ? u.name ?? u.email : null;
+  };
+
+  const okTexto = searchParams?.ok ?? null;
+  const errores = mensajesDesdeQuery(searchParams?.error);
+  const avisos = mensajesDesdeQuery(searchParams?.aviso);
 
   const { ejercicio } = s;
   const revisar = s.inconsistencias.filter((i) => i.gravedad === "ALTA").length;
@@ -61,14 +147,17 @@ export default async function SimulacionCierrePage({ params }: { params: { id: s
     <main className="mx-auto w-full max-w-6xl px-6 py-10">
       <header className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">Simulación del cierre · Ejercicio N.º {ejercicio.numero}</h1>
+          <h1 className="text-2xl font-semibold">
+            {cerrado ? "Cierre confirmado" : "Simulación del cierre"} · Ejercicio N.º {ejercicio.numero}
+          </h1>
           <p className="mt-1 text-sm text-slate-600">
             {formatFechaCalendarioAR(ejercicio.fechaInicio)} – {formatFechaCalendarioAR(ejercicio.fechaFin)} ·{" "}
             {s.consorcio?.nombre}
           </p>
           <p className="mt-1 text-sm text-slate-500">
-            Calculada el {formatDateTime(s.generadoAt)} con los datos actuales. Se puede repetir: no modifica saldos,
-            expensas ni liquidaciones.
+            {cerrado
+              ? `Resultados guardados al confirmar (calculados el ${formatDateTime(s.generadoAt)}).`
+              : `Calculada el ${formatDateTime(s.generadoAt)} con los datos actuales. Se puede repetir: no modifica saldos, expensas ni liquidaciones.`}
           </p>
         </div>
 
@@ -79,7 +168,7 @@ export default async function SimulacionCierrePage({ params }: { params: { id: s
             rel="noreferrer"
             className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
           >
-            Rendición en PDF
+            {cerrado && vigente ? `Rendición (versión ${vigente.version})` : "Rendición en PDF (borrador)"}
           </a>
           <a
             href={`/api/ejercicios/${ejercicio.id}/libro-administracion`}
@@ -99,10 +188,61 @@ export default async function SimulacionCierrePage({ params }: { params: { id: s
         </div>
       </header>
 
-      <div className="mb-6 rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-        Borrador de trabajo para preparar la rendición. No son estados contables certificados ni reemplazan la
-        revisión documental y profesional.
-      </div>
+      {okTexto ? (
+        <div className="mb-4 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+          {okTexto}
+        </div>
+      ) : null}
+      {avisos.length > 0 ? (
+        <div className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <ul className="list-disc space-y-1 pl-5">
+            {avisos.map((a) => (
+              <li key={a}>{a}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      {errores.length > 0 ? (
+        <div className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <ul className="list-disc space-y-1 pl-5">
+            {errores.map((e) => (
+              <li key={e}>{e}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      <PanelCierre
+        ejercicioId={registro.id}
+        consorcioId={registro.consorcioId}
+        numero={registro.numero}
+        estado={registro.estado}
+        esAdmin={esAdmin}
+        notas={registro.notasRendicion}
+        huella={registro.estado === "ABIERTO" ? huellaSimulacion(s, registro.notasRendicion) : null}
+        bloqueantes={requisitos.bloqueantes}
+        aVerificar={requisitos.aVerificar}
+        versiones={registro.cierres.map((c) => ({
+          version: c.version,
+          estado: c.estado,
+          confirmadoAt: c.confirmadoAt,
+          confirmadoPor: nombre(c.confirmadoPorUserId),
+          huella: c.huella,
+          comprobantesAnexados: c.comprobantesAnexados,
+          presentadaAt: c.presentadaAt,
+          reabiertoAt: c.reabiertoAt,
+          reabiertoPor: nombre(c.reabiertoPorUserId),
+          motivoReapertura: c.motivoReapertura,
+        }))}
+        envios={envios}
+      />
+
+      {cerrado ? null : (
+        <div className="mb-6 rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+          Borrador de trabajo para preparar la rendición. No son estados contables certificados ni reemplazan la
+          revisión documental y profesional.
+        </div>
+      )}
 
       <section className="grid gap-4 md:grid-cols-4">
         <article className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">

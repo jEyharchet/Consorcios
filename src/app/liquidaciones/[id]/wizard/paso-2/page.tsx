@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { liquidacionEnEjercicioCerrado } from "../../../../../lib/ejercicio-bloqueo";
 
 import LiquidacionPaso2Form from "../../../_components/LiquidacionPaso2Form";
 import { getAccessContext, requireConsorcioAccess, requireConsorcioRole } from "../../../../../lib/auth";
@@ -262,6 +263,9 @@ export default async function LiquidacionWizardPaso2Page({
     }
 
     await requireConsorcioRole(actual.consorcioId, ["ADMIN", "OPERADOR"]);
+    if (await liquidacionEnEjercicioCerrado(actual.id)) {
+      redirect(`/liquidaciones/${actual.id}?error=ejercicio_cerrado`);
+    }
 
     if (actual.estado !== "BORRADOR") {
       redirect(`/liquidaciones/${actual.id}/wizard/paso-2?error=estado_no_borrador`);
@@ -302,6 +306,9 @@ export default async function LiquidacionWizardPaso2Page({
     }
 
     await requireConsorcioRole(actual.consorcioId, ["ADMIN", "OPERADOR"]);
+    if (await liquidacionEnEjercicioCerrado(actual.id)) {
+      redirect(`/liquidaciones/${actual.id}?error=ejercicio_cerrado`);
+    }
 
     if (actual.estado !== "BORRADOR") {
       redirect(`/liquidaciones/${actual.id}/wizard/paso-2?error=estado_no_borrador`);

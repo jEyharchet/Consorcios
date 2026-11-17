@@ -8,6 +8,7 @@ import {
   capitalTrasladado,
   interesTrasladado,
 } from "./expensa-traslado";
+import { ejercicioCerradoPorFecha } from "./ejercicio-bloqueo";
 import { type MedioPagoExpensa, isMedioPagoExpensa } from "./fondos";
 import { prisma } from "./prisma";
 
@@ -406,6 +407,11 @@ export async function registrarPagoExpensa(params: {
 
     if (!isMedioPagoExpensa(params.medioPago)) {
       throw new CobranzaError("medio_pago_invalido");
+    }
+
+    // Un cobro con fecha dentro de un ejercicio cerrado alteraría lo rendido.
+    if (await ejercicioCerradoPorFecha(snapshot.consorcio.id, params.fechaPago, tx)) {
+      throw new CobranzaError("ejercicio_cerrado");
     }
 
     const medioPago: MedioPagoExpensa = params.medioPago;

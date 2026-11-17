@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { prisma } from "../../../../lib/prisma";
+import { unidadConExpensasEnEjercicioCerrado } from "@/lib/ejercicio-bloqueo";
 import { requireConsorcioAccess, requireConsorcioRole } from "../../../lib/auth";
 import { isVigente, normalizeDate } from "../../../lib/relaciones";
 import {
@@ -214,6 +215,11 @@ export default async function UnidadDetallePage({
 
     await requireConsorcioRole(unidadActual.consorcioId, ["ADMIN"]);
 
+    // El borrado en cascada se llevaría expensas y cobros de un ejercicio cerrado.
+    if (await unidadConExpensasEnEjercicioCerrado(unidadActual.consorcioId, id)) {
+      redirect(`/unidades/${id}?error=ejercicio_cerrado`);
+    }
+
     await prisma.unidad.delete({
       where: { id },
     });
@@ -247,7 +253,9 @@ export default async function UnidadDetallePage({
             ? "Los porcentajes de expensas ordinarias y extraordinarias deben sumar 100% entre las relaciones vigentes."
             : error === "porcentajes_invalidos"
               ? "No pudimos validar la distribución de porcentajes. Probá nuevamente."
-              : null;
+              : error === "ejercicio_cerrado"
+                ? "La unidad tiene expensas de un ejercicio cerrado: no se puede eliminar."
+                : null;
   const successMessage = ok === "distribucion_guardada" ? "La distribución de notificaciones se guardó correctamente." : null;
 
   return (

@@ -14,6 +14,7 @@ import { createExpensas, isExpensaIdCollision, realignExpensaIdSequence } from "
 import { getPeriodoVariants } from "../../../lib/periodo";
 import { enviarLiquidacionCerradaEmails, formatEmailSummary } from "../../../lib/liquidacion-email";
 
+import { EJERCICIO_CERRADO_MENSAJE, liquidacionEnEjercicioCerrado } from "../../../lib/ejercicio-bloqueo";
 export default async function LiquidacionDetallePage({
   params,
   searchParams,
@@ -85,6 +86,9 @@ export default async function LiquidacionDetallePage({
     }
 
     await requireConsorcioRole(liquidacion.consorcioId, ["ADMIN", "OPERADOR"]);
+    if (await liquidacionEnEjercicioCerrado(liquidacion.id)) {
+      redirect(`/liquidaciones/${liquidacion.id}?error=ejercicio_cerrado`);
+    }
 
     if (liquidacion.estado !== "BORRADOR") {
       redirect(`/liquidaciones/${liquidacion.id}?error=estado_invalido_generar`);
@@ -192,6 +196,9 @@ export default async function LiquidacionDetallePage({
     }
 
     await requireConsorcioRole(liquidacion.consorcioId, ["ADMIN"]);
+    if (await liquidacionEnEjercicioCerrado(liquidacion.id)) {
+      redirect(`/liquidaciones/${liquidacion.id}?error=ejercicio_cerrado`);
+    }
 
     if (liquidacion.estado !== "BORRADOR") {
       redirect(`/liquidaciones/${liquidacion.id}?error=estado_invalido_emitir`);
@@ -224,6 +231,9 @@ export default async function LiquidacionDetallePage({
     }
 
     await requireConsorcioRole(liquidacion.consorcioId, ["ADMIN"]);
+    if (await liquidacionEnEjercicioCerrado(liquidacion.id)) {
+      redirect(`/liquidaciones/${liquidacion.id}?error=ejercicio_cerrado`);
+    }
 
     if (liquidacion.estado !== "EMITIDA") {
       redirect(`/liquidaciones/${liquidacion.id}?error=estado_invalido_cerrar`);
@@ -293,6 +303,9 @@ export default async function LiquidacionDetallePage({
     }
 
     await requireConsorcioRole(liquidacion.consorcioId, ["ADMIN", "OPERADOR"]);
+    if (await liquidacionEnEjercicioCerrado(liquidacion.id)) {
+      redirect(`/liquidaciones/${liquidacion.id}?error=ejercicio_cerrado`);
+    }
 
     if (liquidacion.estado !== "BORRADOR") {
       redirect(`/liquidaciones/${liquidacion.id}?error=estado_invalido_eliminar`);
@@ -404,6 +417,8 @@ export default async function LiquidacionDetallePage({
         ? "Solo se puede eliminar una liquidacion en estado BORRADOR."
       : searchParams?.error === "eliminar_con_cobranzas"
         ? "No se puede eliminar: la liquidacion tiene cobranzas registradas en sus expensas."
+      : searchParams?.error === "ejercicio_cerrado"
+        ? `El periodo de la liquidacion corresponde a un ejercicio cerrado. ${EJERCICIO_CERRADO_MENSAJE}`
       : null;
   return (
     <main className="mx-auto w-full max-w-6xl px-6 py-10">
