@@ -19,7 +19,7 @@ export default async function AdministracionPage() {
     );
   }
 
-  const [consorcio, asambleasCount, comunicacionesCount, configuracionCount, respuestasCount] = await Promise.all([
+  const [consorcio, asambleasCount, comunicacionesCount, configuracionCount, respuestasCount, ejerciciosCount] = await Promise.all([
     prisma.consorcio.findUnique({
       where: { id: activeConsorcioId },
       select: { id: true, nombre: true },
@@ -39,6 +39,11 @@ export default async function AdministracionPage() {
       },
     }),
     prisma.respuestaEmail.count({
+      where: {
+        consorcioId: activeConsorcioId,
+      },
+    }),
+    prisma.ejercicio.count({
       where: {
         consorcioId: activeConsorcioId,
       },
@@ -116,6 +121,18 @@ export default async function AdministracionPage() {
           </p>
           <p className="mt-6 text-3xl font-semibold text-slate-950">{respuestasCount}</p>
           <p className="text-sm text-slate-500">respuestas registradas</p>
+        </Link>
+        <Link
+          href="/administracion/ejercicios"
+          className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:border-slate-300"
+        >
+          <p className="text-sm font-medium uppercase tracking-wide text-slate-500">Submodulo</p>
+          <h2 className="mt-2 text-2xl font-semibold text-slate-950">Ejercicios</h2>
+          <p className="mt-3 text-sm text-slate-600">
+            Períodos económicos, saldos de apertura, rendición anual y cierre de cada ejercicio.
+          </p>
+          <p className="mt-6 text-3xl font-semibold text-slate-950">{ejerciciosCount}</p>
+          <p className="text-sm text-slate-500">ejercicios registrados</p>
         </Link>
       </section>
     </main>

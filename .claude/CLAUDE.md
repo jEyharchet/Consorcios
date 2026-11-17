@@ -9,6 +9,7 @@
 
 ## Historial de decisiones
 
+- 2026-11-16: Ejercicio económico configurable por consorcio: modelo `Ejercicio` con fechas explícitas (`DATE`, inclusive), estado, fundamento, estado de apertura y vencimiento de rendición (fin + 60 días). Migración `20261116120000_ejercicio_consorcio` aplicada en el branch Neon `dev`; **pendiente en producción**. Reglas en `src/lib/ejercicios.ts` (prueba: `scripts/test-ejercicios.ts`). `docs/cierre-anual.md` pasó a ser el diseño general; lo propio de Jara 166 quedó en `docs/cierre-anual-jara-166.md`. Pantalla en Administración → Ejercicios (`/administracion/ejercicios` y `/[id]`), con entrada en el menú lateral; escritura solo para `ADMIN`, lógica en `src/lib/ejercicios-data.ts` (transacciones serializables).
 - 2026-11-16: Fase 1 y 2 del plan de inconsistencias: repo limpio de Supabase, `vercel.json` fija `gru1`, branch Neon `dev` (`ep-empty-truth`) para local/Preview/Development, y 6 secuencias desfasadas corregidas con `setval` en producción y `dev`. `DATABASE_URL` de Production reescrita con la URL pooler conocida (era Secret, ilegible). Deploy de producción verificado (expensas y PDF de liquidación OK).
 - 2026-11-16: Las funciones de Vercel pasaron de `iad1` a `gru1` para quedar en la misma región que la base Neon (`sa-east-1`). La lentitud venía de la consulta cruzada EE.UU.–São Paulo tras volver de Supabase a Neon.
 - 2026-11-16: Se descartó Supabase; la base de producción sigue en Neon. Los cambios locales del README, `.env.example` y `scripts/migrate-neon-to-supabase.ts` que hablan de Supabase quedan obsoletos.
@@ -20,7 +21,8 @@ Ninguno. El plan de inconsistencias Neon/Supabase se cerró el 2026-11-16 (`.cla
 
 ## Pendientes conocidos
 
-- Implementar la simulación del cierre anual.
+- Implementar la simulación del cierre anual (pantalla de ejercicios lista en `/administracion/ejercicios`; falta probarla con sesión, cargar el ejercicio 1 de Jara 166 y aplicar `20261116120000_ejercicio_consorcio` en producción).
+- Drift preexistente en `dev`: `PagoGasto.updatedAt` y `RespuestaEmail.updatedAt` tienen `DEFAULT` en la base que el esquema no declara. Inofensivo; resolver con una migración nueva si se quiere alinear.
 - Evaluar `cache()` de React para deduplicar `auth()` / `getAccessContext()` en el layout.
 - Evaluar mover PDFs de liquidación de `/tmp` a almacenamiento persistente.
 - Migrar montos de `Float` a `Decimal` antes del cierre anual.

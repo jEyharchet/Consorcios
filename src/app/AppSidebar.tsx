@@ -30,6 +30,7 @@ const baseItems: SidebarItem[] = [
   { label: "Tesoreria", href: "/tesoreria", match: "prefix" },
   { label: "Administracion", href: "/administracion", match: "prefix" },
   { label: "Configuración", href: "/administracion/configuracion", match: "prefix" },
+  { label: "Ejercicios", href: "/administracion/ejercicios", match: "prefix" },
   { label: "Respuestas", href: "/administracion/respuestas", match: "prefix" },
 ];
 

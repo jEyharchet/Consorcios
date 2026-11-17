@@ -34,6 +34,39 @@ model Consorcio {
   respuestasEmail          RespuestaEmail[]
   respuestasEmailSalientes RespuestaEmailSaliente[]
   configuracion            ConsorcioConfiguracion?
+  ejercicios               Ejercicio[]
+}
+
+// Ejercicio económico de un consorcio. Las fechas son explícitas por ejercicio
+// (no se derivan de un mes de cierre fijo) para admitir primeros ejercicios
+// irregulares y cambios de fecha de cierre. Ver docs/cierre-anual.md.
+model Ejercicio {
+  id                          Int       @id @default(autoincrement())
+  consorcioId                 Int
+  numero                      Int
+  // Fechas de calendario, ambas inclusive.
+  fechaInicio                 DateTime  @db.Date
+  fechaFin                    DateTime  @db.Date
+  // ABIERTO | CERRADO
+  estado                      String    @default("ABIERTO")
+  // Reglamento, acta o decisión que fija el período.
+  fundamento                  String?
+  // PENDIENTE | CERO_CONFIRMADO | INFORMADA
+  aperturaEstado              String    @default("PENDIENTE")
+  aperturaConfirmadaAt        DateTime?
+  aperturaConfirmadaPorUserId String?
+  aperturaObservaciones       String?
+  // Por defecto fechaFin + 60 días (art. 2067 inc. e CCyC); editable.
+  vencimientoRendicion        DateTime  @db.Date
+  observaciones               String?
+  createdByUserId             String?
+  createdAt                   DateTime  @default(now())
+  updatedAt                   DateTime  @updatedAt
+
+  consorcio Consorcio @relation(fields: [consorcioId], references: [id], onDelete: Cascade)
+
+  @@unique([consorcioId, numero])
+  @@index([consorcioId, fechaInicio])
 }
 
 model ConsorcioConfiguracion {
