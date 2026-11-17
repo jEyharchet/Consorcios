@@ -45,7 +45,7 @@ export async function GET(req: Request) {
 
   try {
     const page = await browser.newPage();
-    await page.setContent(html, { waitUntil: "domcontentloaded" });
+    await page.setContent(html, { waitUntil: "load", timeout: 20000 });
 
     const pdf = await page.pdf({
       format: "A4",

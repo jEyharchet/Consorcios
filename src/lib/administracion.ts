@@ -824,8 +824,11 @@ async function renderConvocatoriaPdfBuffer(asamblea: NonNullable<AsambleaConvoca
 
   try {
     const page = await browser.newPage();
+    // "load" espera a que se descargue el logo (URL pública); con "domcontentloaded"
+    // el PDF a veces salía sin la imagen del encabezado.
     await page.setContent(buildConvocatoriaPdfHtml(asamblea), {
-      waitUntil: "domcontentloaded",
+      waitUntil: "load",
+      timeout: 20000,
     });
 
     const margenVertical = `${CONVOCATORIA_PAGINA.margenVerticalPx}px`;
@@ -857,7 +860,8 @@ async function renderCancelacionPdfBuffer(
   try {
     const page = await browser.newPage();
     await page.setContent(buildCancelacionPdfHtml(asamblea, mensajePersonalizado), {
-      waitUntil: "domcontentloaded",
+      waitUntil: "load",
+      timeout: 20000,
     });
 
     return Buffer.from(

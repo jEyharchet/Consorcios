@@ -548,7 +548,7 @@ async function htmlToPdfBuffer(html: string) {
 
   try {
     const page = await browser.newPage();
-    await page.setContent(html, { waitUntil: "domcontentloaded" });
+    await page.setContent(html, { waitUntil: "load", timeout: 20000 });
     return await page.pdf({
       format: "A4",
       printBackground: true,
