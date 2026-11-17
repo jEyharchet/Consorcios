@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { getFirmaAdministradorVigente } from "../../../../lib/administracion";
 import { ASAMBLEA_ESTADO, ASAMBLEA_TIPO } from "../../../../lib/administracion-shared";
+import { FIRMA_ALTO_PX, FIRMA_ESPACIO_PX, parseAjusteFirma } from "../../../../lib/asamblea-convocatoria-preview";
 import { requireConsorcioRole } from "../../../../lib/auth";
 import { getActiveConsorcioContext } from "../../../../lib/consorcio-activo";
 import { redirectToOnboardingIfNoConsorcios } from "../../../../lib/onboarding";
@@ -88,6 +90,8 @@ export default async function NuevaAsambleaPage({
     const ordenTitulos = formData
       .getAll("ordenTitulo")
       .map((value) => value.toString().trim());
+    const firmaEspacioPx = parseAjusteFirma(formData.get("firmaEspacioPx"), FIRMA_ESPACIO_PX);
+    const firmaAltoPx = parseAjusteFirma(formData.get("firmaAltoPx"), FIRMA_ALTO_PX);
 
     await requireConsorcioRole(consorcioId, ["ADMIN", "OPERADOR"]);
 
@@ -112,6 +116,8 @@ export default async function NuevaAsambleaPage({
         lugar,
         convocatoriaTexto: null,
         observaciones: observaciones || null,
+        firmaEspacioPx,
+        firmaAltoPx,
         estado: ASAMBLEA_ESTADO.BORRADOR,
         ordenDia: {
           create: ordenTitulos
@@ -130,6 +136,7 @@ export default async function NuevaAsambleaPage({
   }
 
   const feedback = getFeedback(searchParams?.error);
+  const firma = await getFirmaAdministradorVigente(consorcio.id);
 
   return (
     <main className="mx-auto w-full max-w-7xl px-6 py-10">
@@ -152,6 +159,9 @@ export default async function NuevaAsambleaPage({
         consorcioId={consorcio.id}
         consorcioNombre={consorcio.nombre}
         consorcioNombreLegal={consorcio.tituloLegal ?? consorcio.nombre}
+        firmaUrl={firma.firmaUrl}
+        firmaAclaracion={firma.firmaAclaracion}
+        firmaRol={firma.firmaRol}
       />
     </main>
   );

@@ -15,13 +15,15 @@ const HOLGURA_PX = 6;
 
 type Props = {
   bloques: string[];
+  /** Avisa si el último bloque (la firma) quedó solo en una hoja. */
+  onFirmaSola?: (firmaSola: boolean) => void;
 };
 
 /**
  * Previsualiza la convocatoria como hojas A4 reales: mide cada bloque con el ancho útil
  * de la hoja, los reparte en páginas y escala las hojas al ancho disponible.
  */
-export default function ConvocatoriaPaginada({ bloques }: Props) {
+export default function ConvocatoriaPaginada({ bloques, onFirmaSola }: Props) {
   const medidorRef = useRef<HTMLDivElement>(null);
   const contenedorRef = useRef<HTMLDivElement>(null);
   const [paginas, setPaginas] = useState<number[][]>([bloques.map((_, index) => index)]);
@@ -59,6 +61,11 @@ export default function ConvocatoriaPaginada({ bloques }: Props) {
   }, []);
 
   const total = paginas.length;
+  const firmaSola = total > 1 && paginas[total - 1].length === 1;
+
+  useEffect(() => {
+    onFirmaSola?.(firmaSola);
+  }, [firmaSola, onFirmaSola]);
 
   return (
     <div ref={contenedorRef} className="relative w-full">

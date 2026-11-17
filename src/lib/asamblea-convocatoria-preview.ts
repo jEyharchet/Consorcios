@@ -15,7 +15,35 @@ export type AsambleaConvocatoriaPreviewData = {
   firmaUrl?: string | null;
   firmaAclaracion?: string;
   firmaRol?: string;
+  /** Espacio entre el párrafo de cierre y la firma (px). Null = valor por defecto. */
+  firmaEspacioPx?: number | null;
+  /** Alto máximo de la imagen de la firma (px). Null = valor por defecto. */
+  firmaAltoPx?: number | null;
 };
+
+export const FIRMA_ESPACIO_PX = { min: 0, max: 80, defecto: 40 } as const;
+export const FIRMA_ALTO_PX = { min: 50, max: 110, defecto: 110 } as const;
+
+function acotar(valor: number | null | undefined, rango: { min: number; max: number; defecto: number }) {
+  if (valor === null || valor === undefined || !Number.isFinite(valor)) return rango.defecto;
+  return Math.min(rango.max, Math.max(rango.min, Math.round(valor)));
+}
+
+export function normalizarFirmaEspacioPx(valor: number | null | undefined) {
+  return acotar(valor, FIRMA_ESPACIO_PX);
+}
+
+export function normalizarFirmaAltoPx(valor: number | null | undefined) {
+  return acotar(valor, FIRMA_ALTO_PX);
+}
+
+/** Lee un ajuste de firma de un formulario: vacío o igual al valor por defecto se guarda como null. */
+export function parseAjusteFirma(valor: FormDataEntryValue | null, rango: { min: number; max: number; defecto: number }) {
+  const texto = valor?.toString().trim() ?? "";
+  if (!texto) return null;
+  const numero = acotar(Number(texto), rango);
+  return numero === rango.defecto ? null : numero;
+}
 
 /**
  * Hoja A4 en px CSS (96 dpi): 210 × 297 mm. Los márgenes se usan igual en la
@@ -87,13 +115,14 @@ function ordenItemHtml(numero: number, titulo: string) {
 }
 
 function firmaHtml(data: AsambleaConvocatoriaPreviewData) {
+  const altoFirma = normalizarFirmaAltoPx(data.firmaAltoPx);
   if (data.firmaUrl || data.firmaAclaracion?.trim() || data.firmaRol?.trim()) {
     return `
       <div style="display:flex;justify-content:flex-end;">
         <div style="width:360px;text-align:center;">
           ${
             data.firmaUrl
-              ? `<img src="${escapeHtml(data.firmaUrl)}" alt="Firma del administrador" style="display:block;max-width:300px;max-height:110px;width:auto;height:auto;object-fit:contain;margin:0 auto 10px;" />`
+              ? `<img src="${escapeHtml(data.firmaUrl)}" alt="Firma del administrador" style="display:block;max-width:300px;max-height:${altoFirma}px;width:auto;height:auto;object-fit:contain;margin:0 auto 6px;" />`
               : ""
           }
           <div style="width:260px;margin:0 auto;border-top:1px solid #94a3b8;"></div>
@@ -111,7 +140,7 @@ function firmaHtml(data: AsambleaConvocatoriaPreviewData) {
   return `
     <div style="display:flex;justify-content:flex-end;">
       <div style="width:360px;text-align:center;">
-        <div style="height:48px;"></div>
+        <div style="height:${Math.round(altoFirma * 0.45)}px;"></div>
         <div style="width:260px;margin:0 auto;border-top:1px solid #94a3b8;"></div>
         <div style="margin-top:12px;font-size:13px;color:#475569;">Firma</div>
         <div style="margin-top:2px;font-size:13px;color:#475569;">Aclaración</div>
@@ -221,7 +250,7 @@ export function buildAsambleaConvocatoriaBlocks(data: AsambleaConvocatoriaPrevie
       `<p style="margin:0;font-size:14px;line-height:1.7;color:#1f2937;">
         Se deja constancia que la presente convocatoria se realiza conforme a lo dispuesto en el Reglamento de Propiedad y Administración, cursándose en forma escrita y con la antelación allí prevista.
       </p>`,
-      40,
+      normalizarFirmaEspacioPx(data.firmaEspacioPx),
     ),
   );
 

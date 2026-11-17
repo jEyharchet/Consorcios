@@ -771,6 +771,8 @@ model Asamblea {
   firmaSubidaAt        DateTime?
   firmaAclaracion      String?
   firmaRol             String?
+  firmaEspacioPx       Int?
+  firmaAltoPx          Int?
   estado               String    @default("BORRADOR")
   observaciones        String?
   actaTexto            String?

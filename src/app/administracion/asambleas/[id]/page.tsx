@@ -19,6 +19,13 @@ import {
   ASAMBLEA_VOTACION_ESTADO,
   isAsambleaVotacionEstado,
 } from "../../../../lib/administracion-shared";
+import {
+  FIRMA_ALTO_PX,
+  FIRMA_ESPACIO_PX,
+  normalizarFirmaAltoPx,
+  normalizarFirmaEspacioPx,
+  parseAjusteFirma,
+} from "../../../../lib/asamblea-convocatoria-preview";
 import { getPersonasConsorcioParaVotacion, summarizeVotacion } from "../../../../lib/asamblea-votaciones";
 import { requireConsorcioAccess, requireConsorcioRole } from "../../../../lib/auth";
 import { formatEmailSummary } from "../../../../lib/email-tracking";
@@ -293,6 +300,16 @@ export default async function AsambleaDetallePage({
     const convocatoriaTexto = (formData.get("convocatoriaTexto")?.toString() ?? "").trim();
     const observaciones = (formData.get("observaciones")?.toString() ?? "").trim();
     const estado = (formData.get("estado")?.toString() ?? ASAMBLEA_ESTADO.BORRADOR).trim();
+    // Los ajustes de firma se cargan en mm y se guardan en px CSS (96 dpi), como en el alta.
+    // Si el valor en mm coincide con el redondeo del valor por defecto, queda el defecto exacto.
+    const mmAPx = (valor: FormDataEntryValue | null, rango: { defecto: number }) => {
+      const mm = Number(valor?.toString().trim().replace(",", ".") ?? "");
+      if (!valor?.toString().trim() || !Number.isFinite(mm)) return null;
+      if (mm === Math.round((rango.defecto * 25.4) / 96)) return String(rango.defecto);
+      return String(Math.round((mm * 96) / 25.4));
+    };
+    const firmaEspacioPx = parseAjusteFirma(mmAPx(formData.get("firmaEspacioMm"), FIRMA_ESPACIO_PX), FIRMA_ESPACIO_PX);
+    const firmaAltoPx = parseAjusteFirma(mmAPx(formData.get("firmaAltoMm"), FIRMA_ALTO_PX), FIRMA_ALTO_PX);
 
     await requireConsorcioRole(consorcioId, ["ADMIN", "OPERADOR"]);
     await ensureAsambleaEditable(id);
@@ -318,6 +335,8 @@ export default async function AsambleaDetallePage({
         lugar,
         convocatoriaTexto: convocatoriaTexto || null,
         observaciones: observaciones || null,
+        firmaEspacioPx,
+        firmaAltoPx,
         estado,
       },
     });
@@ -814,6 +833,35 @@ export default async function AsambleaDetallePage({
                 <div className="space-y-1">
                   <label htmlFor="observaciones" className="text-sm font-medium text-slate-700">Observaciones</label>
                   <textarea id="observaciones" name="observaciones" rows={4} defaultValue={asamblea.observaciones ?? ""} className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm" />
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-1">
+                    <label htmlFor="firmaEspacioMm" className="text-sm font-medium text-slate-700">Espacio antes de la firma (mm)</label>
+                    <input
+                      id="firmaEspacioMm"
+                      name="firmaEspacioMm"
+                      type="number"
+                      min={0}
+                      max={Math.floor((FIRMA_ESPACIO_PX.max * 25.4) / 96)}
+                      step={1}
+                      defaultValue={Math.round((normalizarFirmaEspacioPx(asamblea.firmaEspacioPx) * 25.4) / 96)}
+                      className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label htmlFor="firmaAltoMm" className="text-sm font-medium text-slate-700">Alto de la firma (mm)</label>
+                    <input
+                      id="firmaAltoMm"
+                      name="firmaAltoMm"
+                      type="number"
+                      min={Math.ceil((FIRMA_ALTO_PX.min * 25.4) / 96)}
+                      max={Math.floor((FIRMA_ALTO_PX.max * 25.4) / 96)}
+                      step={1}
+                      defaultValue={Math.round((normalizarFirmaAltoPx(asamblea.firmaAltoPx) * 25.4) / 96)}
+                      className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                    />
+                  </div>
                 </div>
 
                 <button type="submit" className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800">

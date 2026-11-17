@@ -574,6 +574,8 @@ async function getAsambleaConvocatoriaRecord(asambleaId: number) {
       firmaContenido: true,
       firmaAclaracion: true,
       firmaRol: true,
+      firmaEspacioPx: true,
+      firmaAltoPx: true,
       consorcio: {
         select: {
           nombre: true,
@@ -613,18 +615,66 @@ async function getAsambleaConvocatoriaRecord(asambleaId: number) {
   });
 }
 
+type AdministradorFirmaCandidato = {
+  id: number;
+  firmaContenido: Uint8Array | null;
+  firmaAclaracion: string | null;
+  firmaRol: string | null;
+  persona: { nombre: string; apellido: string } | null;
+};
+
+/** Administrador vigente que firma: el primero con firma o datos de firma cargados; si no, el más reciente. */
+function elegirAdministradorFirmante<T extends AdministradorFirmaCandidato>(administradores: T[]) {
+  return (
+    administradores.find((relation) => relation.firmaContenido || relation.firmaAclaracion || relation.firmaRol) ??
+    administradores[0]
+  );
+}
+
+function resolverAclaracionFirma(administrador: AdministradorFirmaCandidato | undefined) {
+  return (
+    administrador?.firmaAclaracion?.trim() ||
+    (administrador?.persona ? `${administrador.persona.nombre} ${administrador.persona.apellido}`.trim() : "")
+  );
+}
+
+/**
+ * Firma del administrador vigente para la previsualización de una convocatoria nueva.
+ * Usa el mismo criterio que el PDF (`buildConvocatoriaPdfHtml`).
+ */
+export async function getFirmaAdministradorVigente(consorcioId: number) {
+  const hoy = new Date();
+  const administradores = await prisma.consorcioAdministrador.findMany({
+    where: {
+      consorcioId,
+      desde: { lte: hoy },
+      OR: [{ hasta: null }, { hasta: { gte: hoy } }],
+    },
+    orderBy: [{ desde: "desc" }, { id: "desc" }],
+    select: {
+      id: true,
+      firmaContenido: true,
+      firmaAclaracion: true,
+      firmaRol: true,
+      persona: { select: { nombre: true, apellido: true } },
+    },
+  });
+
+  const administrador = elegirAdministradorFirmante(administradores);
+
+  return {
+    firmaUrl: administrador?.firmaContenido ? buildAdministradorFirmaPath(administrador.id) : null,
+    firmaAclaracion: resolverAclaracionFirma(administrador) || undefined,
+    firmaRol: administrador?.firmaRol?.trim() || "Administrador",
+  };
+}
+
 function buildConvocatoriaPdfHtml(asamblea: NonNullable<AsambleaConvocatoriaRecord>) {
-  const administradorVigente = asamblea.consorcio.administradores.find(
-    (relation) => relation.firmaContenido || relation.firmaAclaracion || relation.firmaRol,
-  ) ?? asamblea.consorcio.administradores[0];
+  const administradorVigente = elegirAdministradorFirmante(asamblea.consorcio.administradores);
 
   const firmaMimeType = administradorVigente?.firmaMimeType ?? asamblea.firmaMimeType;
   const firmaContenido = administradorVigente?.firmaContenido ?? asamblea.firmaContenido;
-  const firmaAclaracion =
-    administradorVigente?.firmaAclaracion?.trim() ||
-    (administradorVigente?.persona ? `${administradorVigente.persona.nombre} ${administradorVigente.persona.apellido}`.trim() : "") ||
-    asamblea.firmaAclaracion ||
-    undefined;
+  const firmaAclaracion = resolverAclaracionFirma(administradorVigente) || asamblea.firmaAclaracion || undefined;
   const firmaRol = administradorVigente?.firmaRol?.trim() || asamblea.firmaRol || "Administrador";
 
   const html = buildAsambleaConvocatoriaPreviewHtml({
@@ -642,6 +692,8 @@ function buildConvocatoriaPdfHtml(asamblea: NonNullable<AsambleaConvocatoriaReco
       (administradorVigente?.firmaContenido ? getArchivoUrl(buildAdministradorFirmaPath(administradorVigente.id)) : null),
     firmaAclaracion: firmaAclaracion || undefined,
     firmaRol: firmaRol || undefined,
+    firmaEspacioPx: asamblea.firmaEspacioPx,
+    firmaAltoPx: asamblea.firmaAltoPx,
   });
 
   return `

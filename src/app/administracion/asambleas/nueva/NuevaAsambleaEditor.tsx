@@ -3,7 +3,11 @@
 import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
 
 import { ASAMBLEA_TIPO } from "@/lib/administracion-shared";
-import { buildAsambleaConvocatoriaBlocks } from "@/lib/asamblea-convocatoria-preview";
+import {
+  buildAsambleaConvocatoriaBlocks,
+  FIRMA_ALTO_PX,
+  FIRMA_ESPACIO_PX,
+} from "@/lib/asamblea-convocatoria-preview";
 
 import ConvocatoriaPaginada from "./ConvocatoriaPaginada";
 
@@ -17,7 +21,15 @@ type Props = {
   consorcioId: number;
   consorcioNombre: string;
   consorcioNombreLegal: string;
+  firmaUrl: string | null;
+  firmaAclaracion?: string;
+  firmaRol?: string;
 };
+
+// px CSS a mm (96 dpi), para mostrar los ajustes en una unidad de hoja.
+function pxAMm(px: number) {
+  return Math.round((px * 25.4) / 96);
+}
 
 type AsambleaTipo = (typeof ASAMBLEA_TIPO)[keyof typeof ASAMBLEA_TIPO];
 
@@ -47,12 +59,18 @@ export default function NuevaAsambleaEditor({
   consorcioId,
   consorcioNombre,
   consorcioNombreLegal,
+  firmaUrl,
+  firmaAclaracion,
+  firmaRol,
 }: Props) {
   const [tipo, setTipo] = useState<AsambleaTipo>(ASAMBLEA_TIPO.ORDINARIA);
   const [fecha, setFecha] = useState("");
   const [hora, setHora] = useState("");
   const [lugar, setLugar] = useState("");
   const [observaciones, setObservaciones] = useState("");
+  const [firmaEspacioPx, setFirmaEspacioPx] = useState<number>(FIRMA_ESPACIO_PX.defecto);
+  const [firmaAltoPx, setFirmaAltoPx] = useState<number>(FIRMA_ALTO_PX.defecto);
+  const [firmaSola, setFirmaSola] = useState(false);
   const [ordenDelDia, setOrdenDelDia] = useState<OrdenDiaDraft[]>(() => [
     createOrdenDiaDraft(),
     createOrdenDiaDraft(),
@@ -71,8 +89,27 @@ export default function NuevaAsambleaEditor({
         lugar,
         observaciones,
         ordenDelDia,
+        firmaUrl,
+        firmaAclaracion,
+        firmaRol,
+        firmaEspacioPx,
+        firmaAltoPx,
       }),
-    [consorcioNombre, consorcioNombreLegal, tipo, fecha, hora, lugar, observaciones, ordenDelDia],
+    [
+      consorcioNombre,
+      consorcioNombreLegal,
+      tipo,
+      fecha,
+      hora,
+      lugar,
+      observaciones,
+      ordenDelDia,
+      firmaUrl,
+      firmaAclaracion,
+      firmaRol,
+      firmaEspacioPx,
+      firmaAltoPx,
+    ],
   );
 
   const puntosCargados = ordenDelDia.filter((item) => item.titulo.trim().length > 0).length;
@@ -327,6 +364,56 @@ export default function NuevaAsambleaEditor({
           <p className="text-xs text-slate-500">Una línea en blanco separa párrafos; cada párrafo puede pasar a otra hoja sin cortarse.</p>
         </div>
 
+        <fieldset className="rounded-lg border border-slate-200 p-4">
+          <legend className="px-1 text-sm font-medium text-slate-700">Firma</legend>
+          {firmaSola ? (
+            <p className="mb-3 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              La firma quedó sola en la última hoja. Reducí el espacio o el alto de la firma para acercarla a la hoja anterior.
+            </p>
+          ) : null}
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-1">
+              <label htmlFor="firmaEspacioPx" className="flex justify-between text-xs font-medium text-slate-600">
+                <span>Espacio antes de la firma</span>
+                <span className="tabular-nums text-slate-500">{pxAMm(firmaEspacioPx)} mm</span>
+              </label>
+              <input
+                id="firmaEspacioPx"
+                name="firmaEspacioPx"
+                type="range"
+                min={FIRMA_ESPACIO_PX.min}
+                max={FIRMA_ESPACIO_PX.max}
+                step={2}
+                value={firmaEspacioPx}
+                onChange={(event) => setFirmaEspacioPx(Number(event.target.value))}
+                className="w-full accent-slate-900"
+              />
+            </div>
+            <div className="space-y-1">
+              <label htmlFor="firmaAltoPx" className="flex justify-between text-xs font-medium text-slate-600">
+                <span>Alto de la firma</span>
+                <span className="tabular-nums text-slate-500">{pxAMm(firmaAltoPx)} mm</span>
+              </label>
+              <input
+                id="firmaAltoPx"
+                name="firmaAltoPx"
+                type="range"
+                min={FIRMA_ALTO_PX.min}
+                max={FIRMA_ALTO_PX.max}
+                step={2}
+                value={firmaAltoPx}
+                onChange={(event) => setFirmaAltoPx(Number(event.target.value))}
+                className="w-full accent-slate-900"
+              />
+            </div>
+          </div>
+          {!firmaUrl ? (
+            <p className="mt-2 text-xs text-slate-500">
+              El administrador vigente no tiene firma cargada: se deja el espacio para firmar a mano.
+            </p>
+          ) : null}
+        </fieldset>
+
         <button type="submit" className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800">
           Crear asamblea
         </button>
@@ -339,7 +426,7 @@ export default function NuevaAsambleaEditor({
         </div>
 
         <div className="max-h-[calc(100vh-150px)] overflow-y-auto bg-slate-100 p-5">
-          <ConvocatoriaPaginada bloques={bloques} />
+          <ConvocatoriaPaginada bloques={bloques} onFirmaSola={setFirmaSola} />
         </div>
       </section>
     </div>
